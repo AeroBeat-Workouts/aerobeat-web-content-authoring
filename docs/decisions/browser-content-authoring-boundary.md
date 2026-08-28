@@ -1,9 +1,13 @@
 # Browser Content Authoring Boundary
 
-**Status:** Accepted scaffold boundary
+**Status:** Accepted and implemented
 
-`@aerobeat/web-content-authoring` consumes provider-neutral inspected source material and produces validated canonical AeroBeat packages. It does not call BeatSaver, parse provider DTOs, render product UI, play audio, score gameplay, or select runtime content.
+`@aerobeat/web-content-authoring` consumes provider-neutral inspected source material and produces validated AeroBeat packages. Its only source capability is `{manifest, listEntryPaths(), readEntry(path)}`. It does not call BeatSaver, parse provider DTOs, render product UI, play audio, score gameplay, or select runtime content.
 
-The implementation will isolate deterministic conversion behind a structured-clone-safe Worker protocol. Persistence and export occur only after canonical validation succeeds. Cancellation must not leave partial durable packages. IndexedDB schemas, migrations, quota behavior, source-cache retention, artifact hashes, recipes, rulesets, and provenance are explicit public diagnostics rather than hidden implementation state.
+Conversion runs behind a versioned, structured-clone-safe, abortable Worker protocol without a `SharedArrayBuffer` requirement. Only the selected difficulty bytes and plain manifest/options cross into the Worker. ZIP closures and raw media do not enter public snapshots or iframe messages.
 
-`aerobeat-content-core` remains the canonical authored-content authority. The Godot authoring implementation is a parity reference, not a browser runtime dependency. Cross-language golden fixtures will compare semantic outputs without importing sibling internals.
+The implementation normalizes compatible v2/v3/v4 Standard maps, preserves Flow source-grid semantics, and generates the four frozen Boxing prototype variants. Recipe/ruleset selection remains explicit metadata. Semantic and Spatial rulesets intentionally share generated beats at this prototype stage; Task 4C does not choose or promote a production winner.
+
+Persistence and export occur only after validation. A new job, cancellation, or service destruction invalidates older generations; stale completions cannot update snapshots or remain durably persisted. IndexedDB schema/migration, memory fallback, optional source cache, quota estimates, deterministic export, hashes, recipes, rulesets, and provenance are explicit and testable.
+
+`aerobeat-content-core` remains the canonical authored-content authority. Godot authoring is the parity reference, not a browser dependency. JavaScript number values cannot preserve Godot Variant integer/float identity, so browser canonical JSON hashes are deterministic but are not claimed as Godot hashes. Cross-language tests lock semantic outputs (event identity/order/lineage/targets/checkpoints) and publish a distinct deterministic semantic parity hash.

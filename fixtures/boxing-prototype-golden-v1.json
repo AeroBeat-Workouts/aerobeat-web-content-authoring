@@ -1,0 +1,47 @@
+{
+  "fixtureId": "boxing-prototype-golden-v1",
+  "license": "synthetic-aerobeat-test-data",
+  "provenance": "Sanitized fixture copied from aerobeat-tool-content-authoring commit 3954782; no third-party media or metadata payloads.",
+  "sourceCompatibility": "BeatSaver normalized v2/v3/v4 colorNotes and obstacles; no third-party audio, cover, archive, or metadata payloads",
+  "bpm": 120,
+  "difficulty": "Hard",
+  "songToken": "sanitized-golden",
+  "sourceSummary": {
+    "colorNotes": [
+      {"start": 1, "cell": 8, "hand": "left", "direction": 1, "sourceIndex": 0},
+      {"start": 2, "cell": 5, "hand": "right", "direction": 0, "sourceIndex": 1},
+      {"start": 3, "cell": 2, "hand": "left", "direction": 2, "sourceIndex": 2},
+      {"start": 4, "cell": 6, "hand": "left", "direction": 8, "sourceIndex": 3},
+      {"start": 4, "cell": 5, "hand": "right", "direction": 8, "sourceIndex": 4},
+      {"start": 5, "cell": 5, "hand": "left", "direction": 8, "sourceIndex": 5},
+      {"start": 6, "cell": 7, "hand": "right", "direction": 1, "sourceIndex": 6}
+    ],
+    "bombNotes": [],
+    "obstacles": [
+      {"start": 6, "duration": 1, "x": 0, "y": 0, "width": 1, "height": 3, "sourceIndex": 0}
+    ],
+    "sliders": [],
+    "burstSliders": []
+  },
+  "godotExpected": {
+    "sourceHash": "sha256:1234929b0354082da0344e277cab32dbddfe2b9b5a9ca3e6837d51c13f550bad",
+    "contentHashes": {
+      "row_family_balanced_height_v1|boxing_semantic_track_v1": "sha256:fdd2ac922c3fad65c42b1d9788a7cf2a087c36e11962a7eedb52019ff0a19074",
+      "row_family_balanced_height_v1|boxing_spatial_grid_v1": "sha256:ac668908d367c723bc05e8b7846160b784b22a2e43578bc15605ff2d26a59dbd",
+      "cut_family_source_height_v1|boxing_semantic_track_v1": "sha256:3fa176d58e9c4b973af5df5e02f68c6b7ee5d531368d60f40a7fa0a81436c1b5",
+      "cut_family_source_height_v1|boxing_spatial_grid_v1": "sha256:4ea5852ac7748f3dc7767716fd866a0ce2398f37c553d90465280e75760674bb"
+    },
+    "rowTypes": ["uppercut_left", "straight_right", "hook_left", "guard", "straight_left", "straight_right", "weave_right"],
+    "cutTypes": ["straight_left", "uppercut_right", "hook_left", "guard", "straight_left", "straight_right", "weave_right"],
+    "rowEventIds": [
+      "boxing-uppercut-left-902ad35edffe",
+      "boxing-straight-right-1895353f05c0",
+      "boxing-hook-left-b79926c70521",
+      "boxing-guard-eda75053e1a0",
+      "boxing-straight-left-8d587c038c1f",
+      "boxing-straight-right-cc6d4aadec92",
+      "boxing-weave-right-23a93deff994"
+    ]
+  },
+  "webSemanticParityHash": "sha256:de34c3904777a49aa10fc36007a614e57caba1ea15bbe7db077cf15b80aaf910"
+}

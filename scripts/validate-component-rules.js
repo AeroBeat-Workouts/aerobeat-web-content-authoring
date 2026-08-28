@@ -40,4 +40,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Component-only scaffold check passed.");
+console.log("Component-only visible-surface check passed.");

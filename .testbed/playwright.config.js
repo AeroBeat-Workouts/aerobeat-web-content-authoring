@@ -1,13 +1,10 @@
 // @ts-check
 
 /**
- * Playwright config placeholder.
- *
- * Browser-visible authoring tests must fail on unexpected console warning and
- * error messages. Add explicit listeners before enabling real Task 4C tests.
- *
- * @type {{ testDir: string }}
+ * Browser harness policy: `scripts/validate-browser-authoring.js` captures page
+ * console warning/error events and page errors and fails on every unexpected item.
  */
-export default {
-  testDir: "./test"
-};
+export default Object.freeze({
+  testDir: "./test",
+  consolePolicy: Object.freeze({ warning: "fail", error: "fail", pageError: "fail" })
+});

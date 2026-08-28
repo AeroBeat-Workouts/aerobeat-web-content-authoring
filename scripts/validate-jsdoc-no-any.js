@@ -43,4 +43,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("JSDoc/no-escape scaffold check passed.");
+console.log("JSDoc/no-escape check passed.");

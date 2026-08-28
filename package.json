@@ -1,8 +1,9 @@
 {
   "name": "@aerobeat/web-content-authoring",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "files": [
     "src/",
     "README.md",
@@ -10,19 +11,31 @@
     "docs/decisions/"
   ],
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./worker": "./src/conversion-worker.js"
   },
   "scripts": {
-    "check": "npm run check:jsdoc && npm run check:imports && npm run check:components && npm run check:console",
+    "check": "npm run check:types && npm run check:jsdoc && npm run check:imports && npm run check:components && npm run check:console && npm run check:contract",
+    "check:types": "tsc --noEmit --allowJs --checkJs --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext --lib ES2022,DOM,WebWorker src/*.js scripts/*.js .testbed/demo/main.js",
     "check:jsdoc": "node scripts/validate-jsdoc-no-any.js",
     "check:imports": "node scripts/validate-public-imports.js",
     "check:components": "node scripts/validate-component-rules.js",
     "check:console": "node scripts/validate-playwright-console-noise.js",
-    "test": "npm run check && npm run test:unit",
-    "test:unit": "node scripts/validate-package-surface.js",
-    "test:browser": "npm run check:console && node scripts/validate-browser-placeholder.js",
+    "check:contract": "node scripts/validate-package-surface.js",
+    "test": "npm run check && npm run test:unit && npm run test:real",
+    "test:unit": "node scripts/validate-authoring-service.js",
+    "test:real": "node scripts/validate-real-map-conversion.js",
+    "test:browser": "node scripts/validate-browser-authoring.js",
     "demo": "npm --prefix .testbed run demo",
     "testbed:serve": "npm --prefix .testbed run serve",
     "testbed:link-self": "node scripts/link-testbed-self.js"
+  },
+  "devDependencies": {
+    "@aerobeat/web-contracts": "file:../aerobeat-web-contracts",
+    "@aerobeat/web-vendor-beatsaver": "file:../aerobeat-web-vendor-beatsaver",
+    "@types/node": "^22.20.1",
+    "fake-indexeddb": "^6.2.2",
+    "playwright": "^1.46.1",
+    "typescript": "^5.9.2"
   }
 }

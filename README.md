@@ -1,72 +1,104 @@
 # aerobeat-web-content-authoring
 
-Provider-neutral browser content conversion, local authoring persistence, and package export foundations for AeroBeat Web.
+Provider-neutral browser conversion, local authoring persistence, and deterministic package export for AeroBeat Web.
 
 ## Responsibility
 
-This package owns the browser boundary that will coordinate conversion of already-inspected, normalized source material into canonical AeroBeat song packages. Future implementation belongs behind an abortable Worker protocol and will own deterministic recipe execution, progress and cancellation, package validation handoff, conversion provenance, local IndexedDB persistence, and browser package export.
+`@aerobeat/web-content-authoring` consumes a safe source bundle with exactly this capability boundary:
 
-This scaffold establishes only the package and contract foundation. It does not yet convert content, start Workers, open IndexedDB, or export archives.
-
-## Ownership Boundaries
-
-- `aerobeat-content-core` remains the canonical owner of durable AeroBeat song-package and chart semantics.
-- `aerobeat-tool-content-authoring` remains the Godot/offline authoring implementation and parity reference.
-- `aerobeat-web-vendor-beatsaver` will acquire and inspect BeatSaver or local ZIP sources and emit normalized source-material manifests/entries.
-- This package consumes provider-neutral normalized source material. It must not call BeatSaver APIs, depend on provider DTOs, choose product playlists, or own archive acquisition policy.
-- `aerobeat-web-content` will load validated generated packages for runtime use. It does not perform conversion.
-- `aerobeat-web-gameplay` owns playback-session interpretation and scoring.
-- `aerobeat-web-ui` owns visible authoring/progress/storage/export controls.
-- `aerobeat-web-assembly` composes services and product policy.
-
-## Future Worker Boundary
-
-Conversion must run outside the UI thread through a versioned, structured-clone-safe protocol. Requests will identify normalized source material, immutable recipe/ruleset versions, and requested outputs. Responses will expose progress, diagnostics, deterministic artifact metadata, and terminal success/cancellation/failure without leaking provider-native objects.
-
-Workers must not access the DOM, product UI, camera, audio playback, or runtime gameplay services. Cancellation must not leave partially persisted packages.
-
-## Future Persistence and Export Boundary
-
-IndexedDB will store validated generated packages, migrations, optional source-cache entries, and quota diagnostics. Browser export will produce deterministic package artifacts only after canonical validation succeeds. Storage policy, schema versions, migration behavior, source-cache retention, hashes, and provenance must remain explicit and testable.
-
-No IndexedDB database, Worker, converter, or export implementation exists in this scaffold.
-
-## Public API Surface
-
-`src/index.js` currently exports only:
-
-- the package marker;
-- the service ID and contract version;
-- a truthful frozen scaffold descriptor showing which future capabilities are not implemented.
-
-Task 4C will replace the scaffold-only capability state with the real service while preserving the public ownership boundary.
-
-## Development Shape
-
-```text
-/
-  src/
-  scripts/
-  fixtures/
-  assets/
-  docs/decisions/
-  .testbed/
+```js
+{
+  manifest,
+  listEntryPaths(),
+  readEntry(path)
+}
 ```
 
-Fixtures are deterministic contract inputs, not playable song packages or copied provider archives. `.testbed/node_modules` and installed/generated artifacts are local state and must not be committed.
+It selects one explicit Standard difficulty, adapts only selected entry copies into a structured-clone-safe Worker request, normalizes Beat Saber v2/v3/v4 data, and emits one Flow chart plus the four frozen Boxing prototype combinations:
+
+- Semantic Track · Row Family
+- Spatial Grid · Row Family
+- Semantic Track · Cut Family
+- Spatial Grid · Cut Family
+
+The package does not call BeatSaver APIs, inspect ZIP structures, depend on provider DTOs, choose playlists, render UI, play media, score gameplay, or select a production Boxing winner.
+
+## Canonical and Cross-Language Boundaries
+
+`aerobeat-content-core` remains the durable authored-content authority. Godot authoring commit `3954782` is the algorithm/parity reference; browser authoring is an independent implementation.
+
+The browser locks the canonical contract, recipes, rulesets, event IDs, lineage, target grids, timing, reach, spacing optimizer, guard relocation, obstacle checkpoints, modifiers, and conversion traces. JavaScript loses Godot's integer-versus-float Variant distinction, so ordinary sorted JavaScript JSON cannot truthfully reproduce every Godot SHA-256. The package therefore:
+
+- preserves and validates browser-local deterministic package/source/content hashes;
+- never labels those hashes as Godot hashes;
+- locks event types, event IDs, ordering, lineage and targets against the sanitized Godot golden;
+- exports a documented `semanticParityHash` over a language-neutral projection.
+
+`fixtures/boxing-prototype-golden-v1.json` records both the authoritative Godot hashes and the separate browser semantic parity hash.
+
+## Service
+
+```js
+import { createAeroWebContentAuthoringService } from "@aerobeat/web-content-authoring";
+
+const service = createAeroWebContentAuthoringService({
+  useBrowserWorker: true,
+  useIndexedDb: true
+});
+
+const authored = await service.convertAndPersist(acquiredSource, {
+  difficulty: "Expert",
+  sourceId: "4858",
+  sourceVersionHash: "431ffaa53a1e45ffab6c81a895e456f6aad1e038",
+  includeAudio: true,
+  cacheSourceEntries: false,
+  signal
+});
+```
+
+Public operations:
+
+- `convertAndPersist(source, options)`
+- `cancel(jobId?)`
+- `getSnapshot()` / `subscribe(listener)`
+- `listPackages()` / `loadPackage(handle)` / `deletePackage(handle)`
+- `readAsset(handle, path)`
+- `estimateStorage()` / `migrateStorage()`
+- `exportPackage(handle)`
+- `getCapabilities()` / `destroy()`
+
+A new conversion aborts the previous job. Cancellation, replacement and destruction suppress stale completion. Durable writes happen only after Worker conversion and package validation; an abort observed after a write removes that record.
+
+Public snapshots and persistence handles conform to the finalized web contracts and contain no ZIP, difficulty, or audio bytes. Raw source/audio copies remain inside source, Worker-transfer, persistence, and explicit `readAsset`/export boundaries.
+
+## Worker Protocol
+
+The protocol is version 1 and uses structured-clone-safe plain data plus `Uint8Array`. It does not require `SharedArrayBuffer`. A real disposable module Worker adapter and deterministic inline fallback are provided. Browser Worker transfer detaches its private request copy rather than the vendor source closure.
+
+## Persistence and Export
+
+IndexedDB database `aerobeat-web-content-authoring` is schema version 2 with `packages` and `meta` stores plus v1 record migration. The memory adapter provides identical list/load/delete/quota behavior for tests and unsupported contexts. Optional source-cache entries are disabled unless requested.
+
+Exports use deterministic `AEROPKG1` framing: magic, canonical metadata length, canonical package/asset table JSON, then assets in lexicographic path order. The asset table records offsets, lengths and SHA-256 hashes. Export contains no creation timestamp.
 
 ## Validation
 
-Run before handoff:
-
 ```bash
 npm run check
-npm test
+npm run test:unit
+npm run test:real
 npm run test:browser
 ```
 
-The scaffold checks strict JSDoc/no-escape posture, public import boundaries, component-only scene posture, Playwright console-noise policy, the package export descriptor, and deterministic placeholder fixture/browser surfaces.
+Coverage includes:
 
-## Documentation Handoff
+- strict JavaScript ESM/JSDoc and public import boundaries;
+- v2/v3/v4 normalization and Flow preservation;
+- sanitized Godot semantic golden parity and deterministic reruns;
+- Worker cancellation and no-partial-persistence behavior;
+- memory and IndexedDB list/load/delete/quota paths;
+- deterministic package export;
+- Chromium module Worker + IndexedDB + zero warning/error console policy;
+- real uncommitted BeatSaver fixtures `4858` Standard Expert and `3D44B` Standard Hard.
 
-Keep implementation decisions in `docs/decisions/`. Public contributor or product documentation belongs in `aerobeat-web-docs` after the browser authoring contract is accepted.
+Real archives and audio are local test inputs and are never committed.

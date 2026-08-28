@@ -1,55 +1,56 @@
 // @ts-check
 
-/**
- * Truthful capability state for the browser content-authoring service scaffold.
- *
- * @typedef {Readonly<{
- *   providerNeutralSourceInput: boolean,
- *   conversionWorker: boolean,
- *   cancellation: boolean,
- *   localPersistence: boolean,
- *   packageExport: boolean
- * }>} AeroWebContentAuthoringCapabilities
- */
-
-/**
- * Public descriptor for the browser content-authoring service boundary.
- *
- * @typedef {Readonly<{
- *   packageId: "aero.web.content-authoring",
- *   serviceId: "aero.content.authoring",
- *   contractVersion: 1,
- *   implementationState: "scaffold",
- *   capabilities: AeroWebContentAuthoringCapabilities
- * }>} AeroWebContentAuthoringServiceDescriptor
- */
+export { parseBeatMapDifficulty, AuthoringParseError } from "./beatmap.js";
+export { canonicalJson, prefixedSha256, sha256Hex } from "./canonical.js";
+export { convertDifficulty } from "./converter.js";
+export {
+  boxingPrototypeContractId,
+  cutFamilyRecipeId,
+  recipeDefinitions,
+  rowFamilyRecipeId,
+  rulesetDefinitions,
+  semanticTrackRulesetId,
+  spatialGridRulesetId
+} from "./definitions.js";
+export { exportAuthoredPackage, inspectAuthoredPackageExport } from "./export.js";
+export { semanticParityHash, semanticParityProjection } from "./parity.js";
+export {
+  authoringDatabaseName,
+  authoringDatabaseVersion,
+  authoringPersistenceNamespace,
+  createIndexedDbPersistenceAdapter,
+  createMemoryPersistenceAdapter
+} from "./persistence.js";
+export { createAeroWebContentAuthoringService } from "./service.js";
+export { prepareSourceMaterial } from "./source-material.js";
+export { validateAuthoredPackage } from "./validator.js";
+export {
+  authoringWorkerProtocolVersion,
+  createBrowserAuthoringWorkerAdapter,
+  createInlineAuthoringWorkerAdapter,
+  executeWorkerConversion
+} from "./worker-protocol.js";
 
 /** @type {"aero.web.content-authoring"} */
 export const aeroWebContentAuthoringPackageId = "aero.web.content-authoring";
-
 /** @type {"aero.content.authoring"} */
 export const aeroWebContentAuthoringServiceId = "aero.content.authoring";
-
 /** @type {1} */
 export const aeroWebContentAuthoringContractVersion = 1;
 
-/**
- * Creates a frozen, truthful descriptor for the scaffold-only public service.
- *
- * @returns {AeroWebContentAuthoringServiceDescriptor}
- */
 export function createAeroWebContentAuthoringServiceDescriptor() {
   return Object.freeze({
     packageId: aeroWebContentAuthoringPackageId,
     serviceId: aeroWebContentAuthoringServiceId,
     contractVersion: aeroWebContentAuthoringContractVersion,
-    implementationState: "scaffold",
+    implementationState: "implemented",
     capabilities: Object.freeze({
       providerNeutralSourceInput: true,
-      conversionWorker: false,
-      cancellation: false,
-      localPersistence: false,
-      packageExport: false
+      conversionWorker: true,
+      cancellation: true,
+      localPersistence: true,
+      packageExport: true,
+      sharedArrayBufferRequired: false
     })
   });
 }

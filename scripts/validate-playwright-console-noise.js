@@ -8,4 +8,4 @@ if (!config.includes("console") || !config.includes("warning") || !config.includ
   process.exit(1);
 }
 
-console.log("Playwright console-noise scaffold check passed.");
+console.log("Playwright console warning/error policy check passed.");
