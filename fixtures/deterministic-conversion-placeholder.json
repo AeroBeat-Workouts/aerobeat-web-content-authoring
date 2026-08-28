@@ -1,0 +1,18 @@
+{
+  "fixtureId": "aero.web.content-authoring.placeholder.v1",
+  "sourceMaterial": {
+    "provider": "normalized-fixture",
+    "manifestVersion": 1,
+    "contentHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "requestedRecipe": {
+    "recipeId": "placeholder-only",
+    "recipeVersion": 1
+  },
+  "expected": {
+    "implementationState": "scaffold",
+    "conversionAvailable": false,
+    "persistenceAvailable": false,
+    "exportAvailable": false
+  }
+}

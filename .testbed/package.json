@@ -1,0 +1,12 @@
+{
+  "name": "@aerobeat/web-content-authoring-testbed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo": "echo \"Add a repo-local Vite or static demo when content-authoring scenes need serving.\"",
+    "serve": "echo \"Define host, port, cache busting, QR/link output, served roots, and secure-context handling before mobile validation.\"",
+    "test": "echo \"Add Worker conversion, cancellation, IndexedDB, export, and parity tests in Task 4C.\"",
+    "test:browser": "echo \"Add Playwright browser tests for provider-neutral authoring flows in Task 4C.\""
+  }
+}
