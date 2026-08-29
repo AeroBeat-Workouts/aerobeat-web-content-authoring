@@ -25,7 +25,7 @@ The package does not call BeatSaver APIs, inspect ZIP structures, depend on prov
 
 ## Canonical and Cross-Language Boundaries
 
-`aerobeat-content-core` remains the durable authored-content authority. Godot authoring commit `3954782` is the algorithm/parity reference; browser authoring is an independent implementation.
+`aerobeat-content-core` remains the durable authored-content authority. Godot authoring commit `59c93de` and content-core commit `476da22` are the final audited algorithm/contract references; browser authoring is an independent implementation.
 
 The browser locks the canonical contract, recipes, rulesets, event IDs, lineage, target grids, timing, reach, spacing optimizer, guard relocation, obstacle checkpoints, modifiers, and conversion traces. JavaScript loses Godot's integer-versus-float Variant distinction, so ordinary sorted JavaScript JSON cannot truthfully reproduce every Godot SHA-256. The package therefore:
 
@@ -69,17 +69,19 @@ Public operations:
 
 A new conversion aborts the previous job. Cancellation, replacement and destruction suppress stale completion. Durable writes happen only after Worker conversion and package validation; an abort observed after a write removes that record.
 
-Public snapshots and persistence handles conform to the finalized web contracts and contain no ZIP, difficulty, or audio bytes. Raw source/audio copies remain inside source, Worker-transfer, persistence, and explicit `readAsset`/export boundaries.
+Public snapshots and persistence handles conform to the finalized web contracts and contain no ZIP, difficulty, audio, `Blob`, `File`, provider object, or browser capability values. Request metadata is narrowed before the first snapshot. Raw source/audio copies remain inside source, Worker-transfer, persistence, and explicit `readAsset`/export boundaries.
+
+Source adaptation accepts only bounded own data: ordinary dense path/difficulty arrays, normalized unique paths, bounded selected bytes and text, and optional lowercase SHA-256 expectations. When an expected difficulty or audio hash is supplied, mismatch fails closed before conversion or persistence; no coercion/accessor hooks execute.
 
 ## Worker Protocol
 
-The protocol is version 1 and uses structured-clone-safe plain data plus `Uint8Array`. It does not require `SharedArrayBuffer`. A real disposable module Worker adapter and deterministic inline fallback are provided. Browser Worker transfer detaches its private request copy rather than the vendor source closure.
+The protocol is version 1 and uses an exact, bounded, job-bound structured-clone-safe message shape containing plain data plus one selected `Uint8Array`. Manifest/options identities and verified hashes must agree. It does not require `SharedArrayBuffer`. A real disposable module Worker adapter and deterministic inline fallback are provided. Browser Worker transfer detaches its private request copy rather than the vendor source closure; cancellation, replacement, destruction, malformed messages, and mismatched job IDs settle exactly once.
 
 ## Persistence and Export
 
 IndexedDB database `aerobeat-web-content-authoring` is schema version 2 with `packages` and `meta` stores plus v1 record migration. The memory adapter provides identical list/load/delete/quota behavior for tests and unsupported contexts. Optional source-cache entries are disabled unless requested.
 
-Exports use deterministic `AEROPKG1` framing: magic, canonical metadata length, canonical package/asset table JSON, then assets in lexicographic path order. The asset table records offsets, lengths and SHA-256 hashes. Export contains no creation timestamp.
+Exports use deterministic `AEROPKG1` framing: magic, bounded canonical metadata length, canonical package/asset table JSON, then normalized unique assets in code-point lexicographic path order. Inspection requires contiguous bounded offsets, exact total length, verified package/asset SHA-256 hashes, and no trailing bytes. Export contains no creation timestamp. IndexedDB deletion and stale-job cleanup use single read/write transactions with write-token protection; quota errors fail with `quota_exceeded`.
 
 ## Validation
 

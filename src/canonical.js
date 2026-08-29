@@ -27,11 +27,19 @@ function serialize(value, seen) {
     return JSON.stringify(Object.is(value, -0) ? 0 : value);
   }
   if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) throw new TypeError("Canonical JSON accepts ordinary arrays only");
     if (seen.has(value)) throw new TypeError("Canonical JSON rejects cycles");
+    const ownKeys = Reflect.ownKeys(value);
+    if (ownKeys.some((key) => typeof key !== "string" || (key !== "length" && (!/^(0|[1-9][0-9]*)$/u.test(key) || Number(key) >= value.length)))) throw new TypeError("Canonical JSON rejects extended arrays");
     seen.add(value);
-    const result = `[${value.map((entry) => serialize(entry, seen)).join(",")}]`;
+    const parts = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor?.enumerable || !("value" in descriptor) || descriptor.value === undefined) throw new TypeError("Canonical JSON rejects sparse arrays, accessors and undefined values");
+      parts.push(serialize(descriptor.value, seen));
+    }
     seen.delete(value);
-    return result;
+    return `[${parts.join(",")}]`;
   }
   if (!isPlainRecord(value)) {
     throw new TypeError("Canonical JSON accepts plain data records only");

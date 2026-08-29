@@ -20,7 +20,7 @@ harnessWindow.runAuthoringHarness = async () => {
   const loaded = await service.loadPackage(authored.handle);
   const audio = await service.readAsset(authored.handle, "song.ogg");
   const exported = await service.exportPackage(authored.handle);
-  const inspected = inspectAuthoredPackageExport(exported.bytes);
+  const inspected = await inspectAuthoredPackageExport(exported.bytes);
   await service.deletePackage(authored.handle);
   const remaining = await service.listPackages();
   const snapshot = service.getSnapshot();

@@ -3,43 +3,51 @@
 import { canonicalJson, isPlainRecord, prefixedSha256 } from "./canonical.js";
 
 /**
- * Cross-language semantic projection. It deliberately excludes language-specific
- * canonical JSON hashes while preserving identities, lineage, event ordering,
- * targets, checkpoints and Flow semantics.
+ * Cross-language semantic projection. Language-specific canonical hashes are excluded;
+ * definitions, timing, lineage, ordering, targets, checkpoints, modifiers and traces are not.
  *
  * @param {unknown} packageValue
  */
 export function semanticParityProjection(packageValue) {
-  if (!isPlainRecord(packageValue) || !Array.isArray(packageValue.charts)) throw new TypeError("Package charts are required for semantic parity");
+  if (!isPlainRecord(packageValue)) throw new TypeError("Package is required for semantic parity");
+  canonicalJson(packageValue);
+  if (!Array.isArray(packageValue.charts)) throw new TypeError("Package charts are required for semantic parity");
   return {
     packageSchema: packageValue.schemaId,
-    source: isPlainRecord(packageValue.source) ? { provider: packageValue.source.provider, sourceId: packageValue.source.sourceId, sourceVersionHash: packageValue.source.sourceVersionHash, difficulty: packageValue.source.difficulty } : null,
+    packageSchemaVersion: packageValue.schemaVersion,
+    packageVersion: packageValue.packageVersion,
+    packageId: packageValue.packageId,
+    songId: packageValue.songId,
+    source: isPlainRecord(packageValue.source) ? pick(packageValue.source, ["provider", "sourceId", "sourceVersionHash", "difficulty", "sourceDifficultyPath"]) : null,
+    song: isPlainRecord(packageValue.song) ? pick(packageValue.song,["schemaId","schemaVersion","recordVersion","songId","songName","durationSec","audio","timing"]) : null,
+    sets: Array.isArray(packageValue.sets) ? packageValue.sets.map((set)=>isPlainRecord(set)?pick(set,["schemaId","schemaVersion","recordVersion","setId","setName","songId","chartId"]):null) : [],
+    recipeDefinitions: Array.isArray(packageValue.recipeDefinitions) ? packageValue.recipeDefinitions.map(projectDefinition) : [],
+    rulesetDefinitions: Array.isArray(packageValue.rulesetDefinitions) ? packageValue.rulesetDefinitions.map(projectDefinition) : [],
+    presentationSuggestion: Object.hasOwn(packageValue,"presentationSuggestion")?packageValue.presentationSuggestion:null,
     charts: packageValue.charts.map((chart) => {
       if (!isPlainRecord(chart)) return null;
+      const prototype = isPlainRecord(chart.prototype) ? chart.prototype : null;
       return {
-        chartId: chart.chartId,
-        mode: chart.mode,
-        difficulty: chart.difficulty,
-        recipeId: isPlainRecord(chart.prototype) ? chart.prototype.recipeId : null,
-        rulesetId: isPlainRecord(chart.prototype) ? chart.prototype.rulesetId : null,
-        modifiers: isPlainRecord(chart.prototype) ? chart.prototype.modifiers : [],
+        schemaId: chart.schemaId, schemaVersion: chart.schemaVersion, recordVersion: chart.recordVersion, chartId: chart.chartId, chartName: chart.chartName, mode: chart.mode, difficulty: chart.difficulty,
+        prototype: prototype ? pick(prototype, ["contractId", "recipeId", "recipeVersion", "rulesetId", "rulesetVersion", "modifiers", "regenerationRequiredFor"]) : null,
+        presentationSuggestion: Object.hasOwn(chart, "presentationSuggestion") ? chart.presentationSuggestion : null,
         beats: Array.isArray(chart.beats) ? chart.beats.map(projectBeat) : []
       };
-    })
+    }),
+    traces: projectTraces(packageValue.conversionTrace)
   };
 }
 
+/** @param {unknown} value */
+function projectDefinition(value){if(!isPlainRecord(value))return null;const result={};for(const key of Reflect.ownKeys(value)){if(typeof key!=="string"||/hash/iu.test(key))continue;const descriptor=Object.getOwnPropertyDescriptor(value,key);if(descriptor&&"value" in descriptor&&descriptor.enumerable)result[key]=descriptor.value;}return result;}
+/** @param {unknown} value */
+function projectTraces(value){if(!isPlainRecord(value))return null;const boxing=Array.isArray(value.boxing)?value.boxing.map((trace)=>isPlainRecord(trace)?{...pick(trace,["chartId","difficulty","bpm","recipeId","rulesetId","sourceDifficultyPath","sourceBeatmapVersion"]),optimizer:trace.optimizer,events:trace.events}:null):[];const flow=Array.isArray(value.flow)?value.flow:null;return{boxing,flow};}
+/** @param {Record<string, unknown>} value @param {readonly string[]} keys */
+function pick(value,keys){const result={};for(const key of keys){const descriptor=Object.getOwnPropertyDescriptor(value,key);if(descriptor&&"value" in descriptor&&descriptor.enumerable)result[key]=descriptor.value;}return result;}
 /** @param {unknown} beat */
 function projectBeat(beat) {
   if (!isPlainRecord(beat)) return null;
-  const projected = {};
-  for (const key of ["start", "end", "type", "eventId", "sourceEventIds", "hand", "placement", "direction", "angleOffset", "requiresDirection", "cells", "startPlacement", "endPlacement", "startDirection", "endDirection", "tailPlacement", "checkpointCount", "modifier", "spatialTarget", "guardTarget", "checkpoint", "blockedCells"]) {
-    if (Object.hasOwn(beat, key)) projected[key] = beat[key];
-  }
-  return projected;
+  return pick(beat, ["start", "end", "type", "eventId", "sourceEventIds", "hand", "placement", "direction", "angleOffset", "requiresDirection", "cells", "startPlacement", "endPlacement", "startDirection", "endDirection", "tailPlacement", "checkpointCount", "modifier", "spatialTarget", "guardTarget", "checkpoint", "blockedCells"]);
 }
-
 /** @param {unknown} packageValue */
-export async function semanticParityHash(packageValue) {
-  return prefixedSha256(canonicalJson(semanticParityProjection(packageValue)));
-}
+export async function semanticParityHash(packageValue) { return prefixedSha256(canonicalJson(semanticParityProjection(packageValue))); }

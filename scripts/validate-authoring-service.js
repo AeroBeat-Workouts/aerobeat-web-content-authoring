@@ -38,7 +38,13 @@ for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
   const fixture = syntheticDifficulty(format);
   const summary = parseBeatMapDifficulty(new TextEncoder().encode(JSON.stringify(fixture)), format);
   assert.equal(summary.colorNotes.length, 7, `${format} must normalize all notes`);
+  assert.equal(summary.bombNotes.length, 1, `${format} must normalize its bomb`);
   assert.equal(summary.obstacles.length, 1, `${format} must normalize its obstacle`);
+  assert.equal(summary.sliders.length, 1, `${format} must normalize its arc`);
+  assert.equal(summary.burstSliders.length, format === "v2" ? 0 : 1, `${format} must normalize supported bursts`);
+  const convertedFormat=await convertDifficulty(summary,{...options,songToken:`synthetic-${format}`,sourceBeatmapVersion:format});
+  const flow=/** @type {{beats:Record<string,unknown>[]}} */(convertedFormat.charts.find((chart)=>chart.mode==="flow"));
+  const flowTypes=flow.beats.map((beat)=>beat.type);for(const type of ["note","bomb","obstacle","arc"])assert.ok(flowTypes.includes(type),`${format} Flow must preserve ${type}`);if(format!=="v2")assert.ok(flowTypes.includes("burst"),`${format} Flow must preserve burst`);
 }
 
 const source = syntheticSourceBundle("v3");
@@ -56,13 +62,14 @@ const loaded = await service.loadPackage(authored.handle);
 assert.deepEqual(loaded.package, authored.package);
 assert.deepEqual(await service.readAsset(authored.handle, "song.ogg"), new Uint8Array([1, 2, 3, 4]));
 const exported = await service.exportPackage(authored.handle);
-const inspected = inspectAuthoredPackageExport(exported.bytes);
+const inspected = await inspectAuthoredPackageExport(exported.bytes);
 assert.equal(inspected.packageId, authored.handle.packageId);
 assert.equal(inspected.assets.length, 1);
 assert.equal(await service.deletePackage(authored.handle), true);
 assert.equal((await service.listPackages()).length, 0);
 assert.ok(snapshots.some((snapshot) => snapshot.state === "converting"));
 assert.ok(snapshots.some((snapshot) => snapshot.state === "persisting"));
+assert.equal(snapshots.some((entry)=>containsBinary(entry)),false,"public snapshots must never contain raw source or media bytes");assert.equal(containsBinary(authored.handle),false,"persistence handles must remain metadata-only");
 service.destroy();
 
 const deferred = createDeferred();
@@ -84,9 +91,9 @@ console.log("Deterministic Worker conversion, Godot semantic parity, persistence
 /** @param {"v2" | "v3" | "v4"} format */
 function syntheticDifficulty(format) {
   const notes = golden.sourceSummary.colorNotes;
-  if (format === "v2") return { _version: "2.6.0", _notes: notes.map((note) => ({ _time: note.start, _lineIndex: note.cell % 4, _lineLayer: Math.floor(note.cell / 4), _type: note.hand === "left" ? 0 : 1, _cutDirection: note.direction })), _obstacles: [{ _time: 6, _duration: 1, _lineIndex: 0, _type: 0, _width: 1 }] };
-  if (format === "v3") return { version: "3.3.0", colorNotes: notes.map((note) => ({ b: note.start, x: note.cell % 4, y: Math.floor(note.cell / 4), c: note.hand === "left" ? 0 : 1, d: note.direction })), bombNotes: [], obstacles: [{ b: 6, d: 1, x: 0, y: 0, w: 1, h: 3 }], sliders: [], burstSliders: [] };
-  return { version: "4.0.0", colorNotesData: notes.map((note) => ({ x: note.cell % 4, y: Math.floor(note.cell / 4), c: note.hand === "left" ? 0 : 1, d: note.direction })), colorNotes: notes.map((note, i) => ({ b: note.start, i })), bombNotesData: [], bombNotes: [], obstaclesData: [{ d: 1, x: 0, y: 0, w: 1, h: 3 }], obstacles: [{ b: 6, i: 0 }], arcsData: [], arcs: [], chainsData: [], chains: [] };
+  if (format === "v2") return { _version: "2.6.0", _notes: [...notes.map((note) => ({ _time: note.start, _lineIndex: note.cell % 4, _lineLayer: Math.floor(note.cell / 4), _type: note.hand === "left" ? 0 : 1, _cutDirection: note.direction })),{_time:7,_lineIndex:3,_lineLayer:1,_type:3,_cutDirection:8}], _obstacles: [{ _time: 6, _duration: 1, _lineIndex: 0, _type: 0, _width: 1 }],_sliders:[{_headTime:1,_tailTime:2,_headLineIndex:0,_headLineLayer:2,_tailLineIndex:1,_tailLineLayer:1,_colorType:0,_headCutDirection:1,_tailCutDirection:0,_headControlPointLengthMultiplier:1.2,_tailControlPointLengthMultiplier:0.8,_sliderMidAnchorMode:1}] };
+  if (format === "v3") return { version: "3.3.0", colorNotes: notes.map((note) => ({ b: note.start, x: note.cell % 4, y: Math.floor(note.cell / 4), c: note.hand === "left" ? 0 : 1, d: note.direction })), bombNotes: [{b:7,x:3,y:1}], obstacles: [{ b: 6, d: 1, x: 0, y: 0, w: 1, h: 3 }], sliders: [{b:1,tb:2,x:0,y:2,tx:1,ty:1,c:0,d:1,tc:0,mu:1.2,tmu:0.8,m:1}], burstSliders: [{b:3,tb:3.5,x:2,y:0,tx:3,ty:1,c:0,d:2,sc:3,s:0.5}] };
+  return { version: "4.0.0", colorNotesData: notes.map((note) => ({ x: note.cell % 4, y: Math.floor(note.cell / 4), c: note.hand === "left" ? 0 : 1, d: note.direction })), colorNotes: notes.map((note, i) => ({ b: note.start, i })), bombNotesData: [{x:3,y:1}], bombNotes: [{b:7,i:0}], obstaclesData: [{ d: 1, x: 0, y: 0, w: 1, h: 3 }], obstacles: [{ b: 6, i: 0 }], arcsData: [{m:1.2,tm:0.8,a:1}], arcs: [{hb:1,tb:2,hi:0,ti:1,ai:0}], chainsData: [{tx:3,ty:1,c:3,s:0.5}], chains: [{hb:3,tb:3.5,i:2,ci:0}] };
 }
 
 /** @param {"v2" | "v3" | "v4"} format */
@@ -102,3 +109,5 @@ function syntheticSourceBundle(format) {
 function createDeferred() { let resolve = () => undefined; const promise = new Promise((done) => { resolve = () => done(undefined); }); return { promise, resolve }; }
 /** @param {string} code */
 function codedError(code) { const error = new Error(code); Object.assign(error, { code }); return error; }
+/** @param {unknown} value @param {Set<object>} [seen] */
+function containsBinary(value,seen=new Set()){if(value instanceof Uint8Array||value instanceof ArrayBuffer||typeof Blob!=="undefined"&&value instanceof Blob||typeof File!=="undefined"&&value instanceof File)return true;if(!value||typeof value!=="object"||seen.has(value))return false;seen.add(value);for(const key of Reflect.ownKeys(value)){const descriptor=Object.getOwnPropertyDescriptor(value,key);if(descriptor&&"value" in descriptor&&containsBinary(descriptor.value,seen))return true;}return false;}
