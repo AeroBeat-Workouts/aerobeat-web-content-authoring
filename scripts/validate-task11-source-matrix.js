@@ -120,9 +120,26 @@ for (const format of ["v2", "v3", "v4"]) {
 }
 
 await assertMaterialProfileDifference();
+await assertMalformedProfiles();
+await assertWorkerProfileHashMismatch();
 await assertFinalWorkerProfileBinding();
-await assert.rejects(() => normalizeConverterProfile({ ...prototypeReachConverterProfile, contentHash: "0".repeat(64) }), (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "converter_profile_hash_mismatch"));
+await assertStaleProfileResponse();
 console.log(`Task 11 source matrix ${fixtureHash} passed: ${JSON.stringify(results)}`);
+
+async function assertMalformedProfiles() {
+  await assert.rejects(()=>normalizeConverterProfile({...prototypeReachConverterProfile,contentHash:"0".repeat(64)}),coded("converter_profile_hash_mismatch"));
+  await assert.rejects(()=>normalizeConverterProfile({...prototypeReachConverterProfile,class:"live_visual"}),coded("converter_profile_invalid"));
+  await assert.rejects(()=>normalizeConverterProfile({...prototypeReachConverterProfile,settings:{guardRelocationRadius:9,reachAllowanceSubcells:1}}),coded("converter_profile_settings_invalid"));
+  await assert.rejects(()=>normalizeConverterProfile({...prototypeReachConverterProfile,settings:{...prototypeReachConverterProfile.settings,unexpected:1}}),coded("converter_profile_settings_invalid"));
+}
+
+async function assertWorkerProfileHashMismatch() {
+  const formatFixture=fixture.formats.v3;const difficultyBytes=encoder.encode(JSON.stringify(formatFixture.beatmap));const difficultyHash=await prefixedSha256(difficultyBytes);const honest=createInlineAuthoringWorkerAdapter();
+  const worker={kind:"inline",async convert(request,runtime={}){const changed=structuredClone(request);changed.options.converterProfile.contentHash="0".repeat(64);return honest.convert(changed,runtime);},destroy(){honest.destroy();}};
+  const persistence=createMemoryPersistenceAdapter({quotaBytes:64*1024*1024});const service=createAeroWebContentAuthoringService({worker,persistence,now:()=>11});const source=sourceBundle("v3",formatFixture.sourceBeatmapVersion,difficultyBytes,audioBytes);
+  await assert.rejects(()=>service.convertAndPersist({providerId:"synthetic",sourceHash:formatFixture.sourceVersionHash,source},{difficulty:fixture.difficulty,sourceProvider:"synthetic",sourceId:"task11-matrix-v3",sourceVersionHash:formatFixture.sourceVersionHash,expectedAudioContentHash:audioHash,expectedDifficultyContentHashes:{"Hard.dat":difficultyHash},converterProfile:prototypeReachConverterProfile,includeAudio:true}),coded("converter_profile_hash_mismatch"));
+  assert.equal((await service.listPackages()).length,0,"Worker profile hash mismatch must not persist");service.destroy();
+}
 
 async function assertFinalWorkerProfileBinding() {
   const formatFixture=fixture.formats.v3;const difficultyBytes=encoder.encode(JSON.stringify(formatFixture.beatmap));const difficultyHash=await prefixedSha256(difficultyBytes);const honest=createInlineAuthoringWorkerAdapter();
@@ -130,6 +147,17 @@ async function assertFinalWorkerProfileBinding() {
   const persistence=createMemoryPersistenceAdapter({quotaBytes:64*1024*1024});const service=createAeroWebContentAuthoringService({worker,persistence,now:()=>11});const source=sourceBundle("v3",formatFixture.sourceBeatmapVersion,difficultyBytes,audioBytes);
   await assert.rejects(()=>service.convertAndPersist({providerId:"synthetic",sourceHash:formatFixture.sourceVersionHash,source},{difficulty:fixture.difficulty,sourceProvider:"synthetic",sourceId:"task11-matrix-v3",sourceVersionHash:formatFixture.sourceVersionHash,expectedAudioContentHash:audioHash,expectedDifficultyContentHashes:{"Hard.dat":difficultyHash},converterProfile:prototypeReachConverterProfile,includeAudio:true}),(error)=>Boolean(error&&typeof error==="object"&&"code" in error&&error.code==="worker_result_invalid"));
   assert.equal((await service.listPackages()).length,0,"profile-mismatched Worker result must not persist");service.destroy();
+}
+
+async function assertStaleProfileResponse() {
+  const formatFixture=fixture.formats.v3;const difficultyBytes=encoder.encode(JSON.stringify(formatFixture.beatmap));const difficultyHash=await prefixedSha256(difficultyBytes);const honest=createInlineAuthoringWorkerAdapter();const arrivals=[deferred(),deferred()];const pending=[];
+  const worker={kind:"inline",convert(request){const index=pending.length;return new Promise((resolve,reject)=>{pending.push({request:structuredClone(request),resolve,reject});arrivals[index].resolve();});},destroy(){honest.destroy();}};
+  const persistence=createMemoryPersistenceAdapter({quotaBytes:64*1024*1024});const service=createAeroWebContentAuthoringService({worker,persistence,now:()=>11});const options={difficulty:fixture.difficulty,sourceProvider:"synthetic",sourceId:"task11-matrix-v3",sourceVersionHash:formatFixture.sourceVersionHash,expectedAudioContentHash:audioHash,expectedDifficultyContentHashes:{"Hard.dat":difficultyHash},includeAudio:true};
+  const first=service.convertAndPersist({providerId:"synthetic",sourceHash:formatFixture.sourceVersionHash,source:sourceBundle("v3",formatFixture.sourceBeatmapVersion,difficultyBytes,audioBytes)},{...options,converterProfile:canonicalConverterProfile});const firstRejected=assert.rejects(first,coded("operation_aborted"));await arrivals[0].promise;
+  const second=service.convertAndPersist({providerId:"synthetic",sourceHash:formatFixture.sourceVersionHash,source:sourceBundle("v3",formatFixture.sourceBeatmapVersion,difficultyBytes,audioBytes)},{...options,converterProfile:prototypeReachConverterProfile});await arrivals[1].promise;
+  pending[1].resolve(await honest.convert(pending[1].request));const completed=await second;
+  pending[0].resolve(await honest.convert(pending[0].request));await firstRejected;
+  const records=await service.listPackages();assert.equal(records.length,1,"stale profile response must never persist");const loaded=await service.loadPackage(completed.handle);assert.equal((/** @type {{source:{converterProfile:{contentHash:string}}}} */(loaded.package)).source.converterProfile.contentHash,prototypeReachConverterProfile.contentHash,"newest regenerated profile provenance must win");service.destroy();
 }
 
 async function assertMaterialProfileDifference() {
@@ -172,5 +200,8 @@ function assertUniqueLineage(beats) {
   }
 }
 
+/** @param {string} code */
+function coded(code){return(error)=>Boolean(error&&typeof error==="object"&&"code" in error&&error.code===code);}
+function deferred(){let resolve=()=>undefined;const promise=new Promise((done)=>{resolve=()=>done(undefined);});return{promise,resolve};}
 /** @param {string} left @param {string} right */
 function compareCodePoints(left, right) { return left < right ? -1 : left > right ? 1 : 0; }
