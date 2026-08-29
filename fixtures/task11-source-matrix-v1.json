@@ -1,0 +1,98 @@
+{
+  "schema": "aerobeat/task11_source_matrix",
+  "version": 1,
+  "fixtureId": "task11-source-matrix-v1",
+  "fixtureHash": "sha256:4ccd13b1ff28381b118259b26b817ebd29ca85f0c2ba5f00c46fb74f36284cba",
+  "license": "Synthetic AeroBeat test data; no third-party map or media content.",
+  "sourceToken": "task11-matrix",
+  "difficulty": "Hard",
+  "bpm": 120,
+  "requestedModifierSets": [
+    [],
+    ["crossed_guard"],
+    ["cross_body"],
+    ["any_punch"],
+    ["no_squats"],
+    ["no_weaves"],
+    ["any_punch", "cross_body", "crossed_guard", "no_squats", "no_weaves"]
+  ],
+  "formats": {
+    "v2": {
+      "sourceBeatmapVersion": "2.6.0",
+      "beatmap": {
+        "_version": "2.6.0",
+        "_notes": [
+          {"_time": 1, "_lineIndex": 1, "_lineLayer": 1, "_type": 0, "_cutDirection": 1},
+          {"_time": 2, "_lineIndex": 2, "_lineLayer": 1, "_type": 1, "_cutDirection": 1},
+          {"_time": 3, "_lineIndex": 1, "_lineLayer": 0, "_type": 0, "_cutDirection": 2},
+          {"_time": 4, "_lineIndex": 2, "_lineLayer": 0, "_type": 1, "_cutDirection": 3},
+          {"_time": 5, "_lineIndex": 1, "_lineLayer": 2, "_type": 0, "_cutDirection": 0},
+          {"_time": 6, "_lineIndex": 2, "_lineLayer": 2, "_type": 1, "_cutDirection": 0},
+          {"_time": 8, "_lineIndex": 1, "_lineLayer": 1, "_type": 0, "_cutDirection": 8},
+          {"_time": 8, "_lineIndex": 2, "_lineLayer": 1, "_type": 1, "_cutDirection": 8},
+          {"_time": 9, "_lineIndex": 2, "_lineLayer": 1, "_type": 0, "_cutDirection": 8},
+          {"_time": 9, "_lineIndex": 1, "_lineLayer": 1, "_type": 1, "_cutDirection": 8},
+          {"_time": 11, "_lineIndex": 3, "_lineLayer": 1, "_type": 3, "_cutDirection": 8}
+        ],
+        "_obstacles": [
+          {"_time": 10, "_duration": 1, "_lineIndex": 0, "_type": 0, "_width": 2}
+        ],
+        "_sliders": [
+          {"_headTime": 1, "_tailTime": 3, "_headLineIndex": 1, "_headLineLayer": 1, "_tailLineIndex": 1, "_tailLineLayer": 0, "_colorType": 0, "_headCutDirection": 1, "_tailCutDirection": 2, "_headControlPointLengthMultiplier": 1.2, "_tailControlPointLengthMultiplier": 0.8, "_sliderMidAnchorMode": 1}
+        ]
+      }
+    },
+    "v3": {
+      "sourceBeatmapVersion": "3.3.0",
+      "beatmap": {
+        "version": "3.3.0",
+        "colorNotes": [
+          {"b": 1, "x": 1, "y": 1, "c": 0, "d": 1},
+          {"b": 2, "x": 2, "y": 1, "c": 1, "d": 1},
+          {"b": 3, "x": 1, "y": 0, "c": 0, "d": 2},
+          {"b": 4, "x": 2, "y": 0, "c": 1, "d": 3},
+          {"b": 5, "x": 1, "y": 2, "c": 0, "d": 0},
+          {"b": 6, "x": 2, "y": 2, "c": 1, "d": 0},
+          {"b": 8, "x": 1, "y": 1, "c": 0, "d": 8},
+          {"b": 8, "x": 2, "y": 1, "c": 1, "d": 8},
+          {"b": 9, "x": 2, "y": 1, "c": 0, "d": 8},
+          {"b": 9, "x": 1, "y": 1, "c": 1, "d": 8}
+        ],
+        "bombNotes": [{"b": 11, "x": 3, "y": 1}],
+        "obstacles": [{"b": 10, "d": 1, "x": 0, "y": 0, "w": 2, "h": 3}],
+        "sliders": [{"b": 1, "tb": 3, "x": 1, "y": 1, "tx": 1, "ty": 0, "c": 0, "d": 1, "tc": 2, "mu": 1.2, "tmu": 0.8, "m": 1}],
+        "burstSliders": [{"b": 4, "tb": 4.5, "x": 2, "y": 0, "tx": 3, "ty": 1, "c": 1, "d": 3, "sc": 3, "s": 0.5}]
+      }
+    },
+    "v4": {
+      "sourceBeatmapVersion": "4.0.0",
+      "beatmap": {
+        "version": "4.0.0",
+        "colorNotesData": [
+          {"x": 1, "y": 1, "c": 0, "d": 1},
+          {"x": 2, "y": 1, "c": 1, "d": 1},
+          {"x": 1, "y": 0, "c": 0, "d": 2},
+          {"x": 2, "y": 0, "c": 1, "d": 3},
+          {"x": 1, "y": 2, "c": 0, "d": 0},
+          {"x": 2, "y": 2, "c": 1, "d": 0},
+          {"x": 1, "y": 1, "c": 0, "d": 8},
+          {"x": 2, "y": 1, "c": 1, "d": 8},
+          {"x": 2, "y": 1, "c": 0, "d": 8},
+          {"x": 1, "y": 1, "c": 1, "d": 8}
+        ],
+        "colorNotes": [
+          {"b": 1, "i": 0}, {"b": 2, "i": 1}, {"b": 3, "i": 2}, {"b": 4, "i": 3}, {"b": 5, "i": 4}, {"b": 6, "i": 5},
+          {"b": 8, "i": 6}, {"b": 8, "i": 7}, {"b": 9, "i": 8}, {"b": 9, "i": 9}
+        ],
+        "bombNotesData": [{"x": 3, "y": 1}],
+        "bombNotes": [{"b": 11, "i": 0}],
+        "obstaclesData": [{"d": 1, "x": 0, "y": 0, "w": 2, "h": 3}],
+        "obstacles": [{"b": 10, "i": 0}],
+        "arcsData": [{"m": 1.2, "tm": 0.8, "a": 1}],
+        "arcs": [{"hb": 1, "tb": 3, "hi": 0, "ti": 2, "ai": 0}],
+        "chainsData": [{"tx": 3, "ty": 1, "c": 3, "s": 0.5}],
+        "chains": [{"hb": 4, "tb": 4.5, "i": 3, "ci": 0}]
+      }
+    }
+  }
+}

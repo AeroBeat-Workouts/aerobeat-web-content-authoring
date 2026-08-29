@@ -101,6 +101,9 @@ Coverage includes:
 - memory and IndexedDB list/load/delete/quota paths;
 - deterministic package export;
 - Chromium module Worker + IndexedDB + zero warning/error console policy;
-- real uncommitted BeatSaver fixtures `4858` Standard Expert and `3D44B` Standard Hard.
+- content-hashed synthetic Task 11 v2/v3/v4 source-matrix conversion through the public service, including exact chart IDs, lineage, modifier unions and stable semantic hashes;
+- real uncommitted BeatSaver fixtures `4858` Standard Expert and `3D44B` Standard Hard with copied audio hash/path, persistence reload, deterministic `AEROPKG1` inspection and atomic deletion.
 
-Real archives and audio are local test inputs and are never committed.
+Real archives and audio are local test inputs and are never committed. Override their locations with `AEROBEAT_BEATSAVER_4858_ZIP` and `AEROBEAT_BEATSAVER_3D44B_ZIP`; otherwise the test checks the established local vendor `.testbed` paths and fails with the explicit `missing-local-fixture` code only when no supported readable path exists.
+
+Converter-profile identity is intentionally not accepted by this package yet. The only conversion settings in this slice are the existing bounded modifier list, which is already bound into generated chart identity. A selected external converter profile therefore remains regeneration-required and must not be reported as applied until a future conversion contract both materially changes converter settings and binds its exact identity through request, Worker source, trace and package provenance.
