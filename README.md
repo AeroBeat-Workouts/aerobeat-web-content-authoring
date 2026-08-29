@@ -14,7 +14,7 @@ Provider-neutral browser conversion, local authoring persistence, and determinis
 }
 ```
 
-It selects one explicit Standard difficulty, adapts only selected entry copies into a structured-clone-safe Worker request, normalizes Beat Saber v2/v3/v4 data, and emits one Flow chart plus the four frozen Boxing prototype combinations. Flow keeps cardinal directions `0..3`, maps diagonal `4/5` to up and `6/7` to down, and keeps `8` as direction-free so every valid Beat Saber cut direction satisfies the cardinal gameplay contract:
+It selects one explicit Standard difficulty, adapts only selected entry copies into a structured-clone-safe Worker request, normalizes Beat Saber v2/v3/v4 data, and emits one Flow chart plus the four frozen Boxing prototype combinations:
 
 - Semantic Track · Row Family
 - Spatial Grid · Row Family

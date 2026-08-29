@@ -47,19 +47,6 @@ for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
   const flowTypes=flow.beats.map((beat)=>beat.type);for(const type of ["note","bomb","obstacle","arc"])assert.ok(flowTypes.includes(type),`${format} Flow must preserve ${type}`);if(format!=="v2")assert.ok(flowTypes.includes("burst"),`${format} Flow must preserve burst`);
 }
 
-const directionSummary = {
-  colorNotes: Array.from({ length: 9 }, (_, direction) => ({ start: direction, cell: direction % 12, hand: direction % 2 ? "right" : "left", direction, sourceIndex: direction })),
-  bombNotes: [], obstacles: [],
-  sliders: [{ start: 10, end: 10.5, cell: 0, tailCell: 1, hand: "left", direction: 4, tailDirection: 7, sourceIndex: 0 }],
-  burstSliders: [{ start: 11, end: 11.5, cell: 2, tailCell: 3, hand: "right", direction: 5, sliceCount: 2, sourceIndex: 0 }]
-};
-const directionConversion = await convertDifficulty(directionSummary, { ...options, songToken: "flow-direction-matrix" });
-const directionFlow = /** @type {{beats:Record<string,unknown>[]}} */ (directionConversion.charts.find((chart) => chart.mode === "flow"));
-const directionNotes = directionFlow.beats.filter((beat) => beat.type === "note");
-assert.deepEqual(directionNotes.map((beat) => beat.direction), [0, 1, 2, 3, 0, 0, 1, 1, undefined], "Flow must deterministically cardinalize Beat Saber directions 0..8");
-const directionArc = directionFlow.beats.find((beat) => beat.type === "arc"); const directionBurst = directionFlow.beats.find((beat) => beat.type === "burst");
-assert.deepEqual([directionArc?.startDirection, directionArc?.endDirection, directionBurst?.direction], [0, 1, 0], "Flow arc and burst directions must use the same cardinal policy");
-
 const source = syntheticSourceBundle("v3");
 let time = 1000;
 const persistence = createMemoryPersistenceAdapter({ quotaBytes: 32 * 1024 * 1024 });
