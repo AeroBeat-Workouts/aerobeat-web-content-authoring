@@ -120,6 +120,7 @@ for (const format of ["v2", "v3", "v4"]) {
 }
 
 await assertMaterialProfileDifference();
+await assertGuardRadiusSubcellDifference();
 await assertMalformedProfiles();
 await assertWorkerProfileHashMismatch();
 await assertFinalWorkerProfileBinding();
@@ -158,6 +159,16 @@ async function assertStaleProfileResponse() {
   pending[1].resolve(await honest.convert(pending[1].request));const completed=await second;
   pending[0].resolve(await honest.convert(pending[0].request));await firstRejected;
   const records=await service.listPackages();assert.equal(records.length,1,"stale profile response must never persist");const loaded=await service.loadPackage(completed.handle);assert.equal((/** @type {{source:{converterProfile:{contentHash:string}}}} */(loaded.package)).source.converterProfile.contentHash,prototypeReachConverterProfile.contentHash,"newest regenerated profile provenance must win");service.destroy();
+}
+
+async function assertGuardRadiusSubcellDifference() {
+  const summary={colorNotes:[{start:1,cell:4,hand:"left",direction:8,sourceIndex:0},{start:1,cell:5,hand:"right",direction:8,sourceIndex:1}],bombNotes:[],obstacles:[{start:1,duration:0.5,x:0,y:1,width:1,height:1,sourceIndex:0}],sliders:[],burstSliders:[]};
+  const base={difficulty:/** @type {const} */("Hard"),songToken:"profile-guard-radius",songName:"Profile Guard Radius",bpm:120,sourceProvider:"synthetic",sourceId:"profile-guard-radius",sourceVersionHash:"0".repeat(40),sourceDifficultyPath:"Hard.dat",sourceBeatmapVersion:"v3"};
+  const legacy=await convertDifficulty(summary,base);const canonical=await convertDifficulty(summary,{...base,converterProfile:canonicalConverterProfile});const reach=await convertDifficulty(summary,{...base,converterProfile:prototypeReachConverterProfile});
+  const guards=(result)=>result.charts.filter((chart)=>chart.mode==="boxing").reduce((count,chart)=>count+(/** @type {Record<string,unknown>[]} */(chart.beats)).filter((beat)=>beat.type==="guard").length,0);
+  assert.equal(guards(legacy),4,"no-profile conversion must preserve unrestricted legacy guard relocation");
+  assert.equal(guards(canonical),0,"radius 1 subcell must reject an adjacent 4x3-cell relocation because its center displacement is 2 subcells");
+  assert.equal(guards(reach),4,"radius 2 subcells must allow the same independently paired per-hand relocation");
 }
 
 async function assertMaterialProfileDifference() {
