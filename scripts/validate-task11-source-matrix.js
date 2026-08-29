@@ -123,6 +123,7 @@ await assertMaterialProfileDifference();
 await assertGuardRadiusSubcellDifference();
 await assertMalformedProfiles();
 await assertWorkerProfileHashMismatch();
+await assertPerTraceProfileTampering();
 await assertFinalWorkerProfileBinding();
 await assertStaleProfileResponse();
 console.log(`Task 11 source matrix ${fixtureHash} passed: ${JSON.stringify(results)}`);
@@ -141,6 +142,31 @@ async function assertWorkerProfileHashMismatch() {
   await assert.rejects(()=>service.convertAndPersist({providerId:"synthetic",sourceHash:formatFixture.sourceVersionHash,source},{difficulty:fixture.difficulty,sourceProvider:"synthetic",sourceId:"task11-matrix-v3",sourceVersionHash:formatFixture.sourceVersionHash,expectedAudioContentHash:audioHash,expectedDifficultyContentHashes:{"Hard.dat":difficultyHash},converterProfile:prototypeReachConverterProfile,includeAudio:true}),coded("converter_profile_hash_mismatch"));
   assert.equal((await service.listPackages()).length,0,"Worker profile hash mismatch must not persist");service.destroy();
 }
+
+async function assertPerTraceProfileTampering() {
+  const cases=[
+    {label:"first trace stale profile",profile:prototypeReachConverterProfile,mutate:(packageRecord)=>{boxingTraces(packageRecord)[0].converterProfile=structuredClone(canonicalConverterProfile);},issue:"converter_profile_boxing_trace_mismatch"},
+    {label:"middle trace stale profile",profile:prototypeReachConverterProfile,mutate:(packageRecord)=>{boxingTraces(packageRecord)[2].converterProfile=structuredClone(canonicalConverterProfile);},issue:"converter_profile_boxing_trace_mismatch"},
+    {label:"last trace stale profile",profile:prototypeReachConverterProfile,mutate:(packageRecord)=>{boxingTraces(packageRecord)[3].converterProfile=structuredClone(canonicalConverterProfile);},issue:"converter_profile_boxing_trace_mismatch"},
+    {label:"missing Boxing trace profile",profile:prototypeReachConverterProfile,mutate:(packageRecord)=>{delete boxingTraces(packageRecord)[1].converterProfile;},issue:"converter_profile_boxing_trace_mismatch"},
+    {label:"extra Flow trace profile",profile:prototypeReachConverterProfile,mutate:(packageRecord)=>{flowTraces(packageRecord)[0].converterProfile=structuredClone(prototypeReachConverterProfile);},issue:"converter_profile_flow_trace_forbidden"},
+    {label:"unbound no-profile Boxing trace",profile:null,mutate:(packageRecord)=>{boxingTraces(packageRecord)[0].converterProfile=structuredClone(canonicalConverterProfile);},issue:"converter_profile_unbound"}
+  ];
+  for(const testCase of cases)await assertRejectedTraceTamper(testCase);
+}
+
+/** @param {{label:string,profile:Readonly<Record<string,unknown>>|null,mutate:(packageRecord:Record<string,unknown>)=>void,issue:string}} testCase */
+async function assertRejectedTraceTamper(testCase){
+  const formatFixture=fixture.formats.v3;const difficultyBytes=encoder.encode(JSON.stringify(formatFixture.beatmap));const difficultyHash=await prefixedSha256(difficultyBytes);const honest=createInlineAuthoringWorkerAdapter();let focusedIssueObserved=false;
+  const worker={kind:"inline",async convert(request,runtime={}){const result=/** @type {Record<string,unknown>} */(structuredClone(await honest.convert(request,runtime)));const packageRecord=/** @type {Record<string,unknown>} */(result.package);testCase.mutate(packageRecord);const validation=await validateAuthoredPackage(packageRecord);focusedIssueObserved=validation.issues.some((entry)=>entry.code===testCase.issue);result.packageHash=await prefixedSha256(canonicalJson(packageRecord));result.semanticParityHash=await semanticParityHash(packageRecord);return result;},destroy(){honest.destroy();}};
+  const persistence=createMemoryPersistenceAdapter({quotaBytes:64*1024*1024});const service=createAeroWebContentAuthoringService({worker,persistence,now:()=>11});const source=sourceBundle("v3",formatFixture.sourceBeatmapVersion,difficultyBytes,audioBytes);const requestOptions={difficulty:fixture.difficulty,sourceProvider:"synthetic",sourceId:"task11-matrix-v3",sourceVersionHash:formatFixture.sourceVersionHash,expectedAudioContentHash:audioHash,expectedDifficultyContentHashes:{"Hard.dat":difficultyHash},includeAudio:true,...(testCase.profile?{converterProfile:testCase.profile}:{})};
+  await assert.rejects(()=>service.convertAndPersist({providerId:"synthetic",sourceHash:formatFixture.sourceVersionHash,source},requestOptions),coded("worker_result_invalid"),testCase.label);assert.equal(focusedIssueObserved,true,`${testCase.label} must emit ${testCase.issue}`);assert.equal((await service.listPackages()).length,0,`${testCase.label} must persist nothing`);service.destroy();
+}
+
+/** @param {Record<string,unknown>} packageRecord */
+function boxingTraces(packageRecord){const trace=/** @type {Record<string,unknown>} */(packageRecord.conversionTrace);return/** @type {Record<string,unknown>[]} */(trace.boxing);}
+/** @param {Record<string,unknown>} packageRecord */
+function flowTraces(packageRecord){const trace=/** @type {Record<string,unknown>} */(packageRecord.conversionTrace);return/** @type {Record<string,unknown>[]} */(trace.flow);}
 
 async function assertFinalWorkerProfileBinding() {
   const formatFixture=fixture.formats.v3;const difficultyBytes=encoder.encode(JSON.stringify(formatFixture.beatmap));const difficultyHash=await prefixedSha256(difficultyBytes);const honest=createInlineAuthoringWorkerAdapter();
