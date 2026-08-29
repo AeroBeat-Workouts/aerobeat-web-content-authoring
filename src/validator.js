@@ -1,6 +1,7 @@
 // @ts-check
 
 import { canonicalJson, isPlainRecord, prefixedSha256 } from "./canonical.js";
+import { normalizeConverterProfile } from "./converter-profile.js";
 import { boxingPrototypeContractId, cutFamilyRecipeId, recipeDefinitions, recipeVersion, rowFamilyRecipeId, rulesetDefinitions, rulesetVersion, semanticTrackRulesetId, spatialGridRulesetId, supportedModifiers, timingWindowMs, freshnessMs } from "./definitions.js";
 
 /**
@@ -25,6 +26,9 @@ export async function validateAuthoredPackage(packageValue) {
     if (canonicalJson(packageValue.recipeDefinitions) !== canonicalJson(recipeDefinitions)) issue("recipe_definitions_invalid", "recipeDefinitions", "Recipe definitions must exactly match the frozen authoring contract");
     if (canonicalJson(packageValue.rulesetDefinitions) !== canonicalJson(rulesetDefinitions)) issue("ruleset_definitions_invalid", "rulesetDefinitions", "Ruleset definitions must exactly match the frozen authoring contract");
   } catch { issue("definitions_invalid", "recipeDefinitions", "Definitions must be canonical plain data"); }
+  const sourceProfile=isPlainRecord(packageValue.source)?packageValue.source.converterProfile:undefined;const traceProfile=isPlainRecord(packageValue.conversionTrace)?packageValue.conversionTrace.converterProfile:undefined;
+  /** @type {Readonly<Record<string,unknown>> | null} */ let converterProfile=null;
+  if(sourceProfile!==undefined||traceProfile!==undefined){try{converterProfile=await normalizeConverterProfile(sourceProfile);if(canonicalJson(traceProfile)!==canonicalJson(converterProfile))issue("converter_profile_trace_mismatch","conversionTrace.converterProfile","Conversion trace profile must exactly match package source provenance");}catch(cause){issue("converter_profile_invalid","source.converterProfile",cause instanceof Error?cause.message:"Converter profile is invalid");}}
   const charts = Array.isArray(packageValue.charts) ? packageValue.charts : [];
   if (charts.length !== 5) issue("chart_count_invalid", "charts", "One difficulty must contain Flow plus four Boxing charts");
   const chartIds = new Set(); const matrix = new Set(); let flowCount = 0;
@@ -44,6 +48,7 @@ export async function validateAuthoredPackage(packageValue) {
     if (prototype.recipeVersion !== recipeVersion || prototype.rulesetVersion !== rulesetVersion) issue("prototype_version_invalid", `${path}.prototype`, "Prototype recipe/ruleset versions must match frozen definitions");
     matrix.add(`${String(prototype.recipeId)}|${String(prototype.rulesetId)}`);
     for (const hashName of ["sourceHash", "recipeHash", "rulesetHash", "contentHash"]) if (!validHash(prototype[hashName])) issue("prototype_hash_invalid", `${path}.prototype.${hashName}`, "Hash must be sha256 plus 64 lowercase hexadecimal digits");
+    if(converterProfile){try{if(canonicalJson(prototype.converterProfile)!==canonicalJson(converterProfile))issue("converter_profile_chart_mismatch",`${path}.prototype.converterProfile`,"Chart converter profile must exactly match package provenance");const expectedContentHash=await prefixedSha256(canonicalJson({beats:chart.beats,recipeId:prototype.recipeId,rulesetId:prototype.rulesetId,sourceHash:prototype.sourceHash,converterProfile}));if(prototype.contentHash!==expectedContentHash)issue("converter_profile_content_hash_mismatch",`${path}.prototype.contentHash`,"Chart content hash must bind converter profile identity and generated beats");}catch{issue("converter_profile_chart_mismatch",`${path}.prototype.converterProfile`,"Chart converter profile is invalid");}}else if(prototype.converterProfile!==undefined)issue("converter_profile_unbound",`${path}.prototype.converterProfile`,"Chart converter profile requires package source provenance");
     const modifiers = Array.isArray(prototype.modifiers) ? prototype.modifiers.map(String) : [];
     const normalizedModifiers = [...new Set(modifiers)].sort();
     const emittedModifiers = [...new Set(chart.beats.filter(isPlainRecord).map((beat) => beat.modifier).filter((value) => typeof value === "string"))];

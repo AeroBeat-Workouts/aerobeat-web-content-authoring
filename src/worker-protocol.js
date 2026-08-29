@@ -1,6 +1,7 @@
 // @ts-check
 
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord, prefixedSha256 } from "./canonical.js";
+import { normalizeConverterProfile } from "./converter-profile.js";
 import { parseBeatMapDifficulty } from "./beatmap.js";
 import { supportedModifiers } from "./definitions.js";
 import { convertDifficulty } from "./converter.js";
@@ -20,6 +21,7 @@ export const authoringWorkerProtocolVersion = 1;
  */
 export async function executeWorkerConversion(request, runtime = {}) {
   const normalized = narrowRequest(request);
+  if (normalized.options.converterProfile) normalized.options.converterProfile = await normalizeConverterProfile(normalized.options.converterProfile);
   checkAbort(runtime.signal);
   safeProgress(runtime.onProgress, 0.05, "parsing");
   const sourceSummary = parseBeatMapDifficulty(normalized.difficultyBytes, normalized.format);
@@ -104,7 +106,7 @@ function narrowRequest(request) {
   const selected = /** @type {Record<string, unknown>} */ (manifest.selectedDifficulty);
   if (!boundedString(selected.difficulty,64) || !selected.difficulty || !boundedString(selected.path,1024) || !selected.path || !validHash(selected.contentHash)) throw workerError("worker_request_invalid", "Worker selected difficulty values are invalid");
   const requiredOptions = ["difficulty", "songToken", "songName", "bpm", "sourceProvider", "sourceId", "sourceVersionHash", "sourceDifficultyPath", "sourceBeatmapVersion", "sourceDifficultyHash", "audioPath", "audioContentHash", "modifiers"];
-  if (!hasOnlyDataKeys(record.options, requiredOptions, ["presentationSuggestion"]) || !requiredOptions.every((key) => Object.hasOwn(/** @type {object} */ (record.options), key))) throw workerError("worker_request_invalid", "Worker conversion options are invalid");
+  if (!hasOnlyDataKeys(record.options, requiredOptions, ["presentationSuggestion","converterProfile"]) || !requiredOptions.every((key) => Object.hasOwn(/** @type {object} */ (record.options), key))) throw workerError("worker_request_invalid", "Worker conversion options are invalid");
   const conversionOptions = /** @type {Record<string, unknown>} */ (record.options);
   for (const field of ["difficulty","songToken","songName","sourceProvider","sourceId","sourceVersionHash","sourceDifficultyPath","sourceBeatmapVersion","audioPath"]) if (!boundedString(conversionOptions[field],1024)) throw workerError("worker_request_invalid", "Worker conversion text is invalid");
   if (typeof conversionOptions.bpm !== "number" || !Number.isFinite(conversionOptions.bpm) || conversionOptions.bpm <= 0 || !validHash(conversionOptions.sourceDifficultyHash) || !optionalHash(conversionOptions.audioContentHash)) throw workerError("worker_request_invalid", "Worker conversion values are invalid");
@@ -113,9 +115,13 @@ function narrowRequest(request) {
   const audioMatches=(conversionOptions.audioPath===manifest.audioPath&&conversionOptions.audioContentHash===manifest.audioContentHash)||(conversionOptions.audioPath===""&&conversionOptions.audioContentHash==="");
   if (conversionOptions.difficulty !== selected.difficulty || conversionOptions.sourceDifficultyPath !== selected.path || conversionOptions.sourceDifficultyHash !== selected.contentHash || conversionOptions.bpm !== manifest.bpm || conversionOptions.sourceProvider !== manifest.sourceProvider || conversionOptions.sourceId !== manifest.sourceId || conversionOptions.sourceVersionHash !== manifest.sourceVersionHash || !audioMatches) throw workerError("worker_request_invalid", "Worker options do not match the inspected manifest");
   if (Object.hasOwn(conversionOptions, "presentationSuggestion")) { if (!isPlainRecord(conversionOptions.presentationSuggestion)) throw workerError("worker_request_invalid", "Worker presentation suggestion is invalid"); let encoded; try { encoded=canonicalJson(conversionOptions.presentationSuggestion); } catch { throw workerError("worker_request_invalid", "Worker presentation suggestion must contain plain data"); } if(new TextEncoder().encode(encoded).byteLength>64*1024)throw workerError("worker_request_invalid","Worker presentation suggestion exceeds the size limit"); }
+  if (Object.hasOwn(conversionOptions, "converterProfile") && !converterProfileShape(conversionOptions.converterProfile)) throw workerError("worker_request_invalid", "Worker converter profile shape is invalid");
   const major = Number(manifest.sourceFormatMajor); const format = major === 2 ? "v2" : major === 3 ? "v3" : "v4";
   return { jobId: /** @type {string} */ (record.jobId), difficultyBytes: Uint8Array.from(record.difficultyBytes), format, options: /** @type {WorkerConversionOptions} */ (cloneData(conversionOptions)) };
 }
+
+/** @param {unknown} value */
+function converterProfileShape(value){if(!hasExactDataKeys(value,["schema","version","profileId","profileVersion","class","label","experimental","settings","contentHash"]))return false;const profile=/** @type {Record<string,unknown>} */(value);if(profile.schema!=="aerobeat/prototype_profile"||profile.version!==1||profile.class!=="converter_regeneration"||profile.experimental!==true||!boundedString(profile.profileId,128)||!profile.profileId||!boundedString(profile.profileVersion,64)||!profile.profileVersion||!boundedString(profile.label,256)||!profile.label||typeof profile.contentHash!=="string"||!(/^[0-9a-f]{64}$/u).test(profile.contentHash))return false;if(!hasExactDataKeys(profile.settings,["guardRelocationRadius","reachAllowanceSubcells"]))return false;const settings=/** @type {Record<string,unknown>} */(profile.settings);return Number.isInteger(settings.guardRelocationRadius)&&Number(settings.guardRelocationRadius)>=0&&Number(settings.guardRelocationRadius)<=8&&Number.isInteger(settings.reachAllowanceSubcells)&&Number(settings.reachAllowanceSubcells)>=0&&Number(settings.reachAllowanceSubcells)<=8;}
 
 /** @param {unknown} value @param {string} expectedJobId */
 function narrowWorkerMessage(value, expectedJobId) {

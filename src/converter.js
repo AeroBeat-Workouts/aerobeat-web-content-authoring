@@ -1,6 +1,7 @@
 // @ts-check
 
 import { canonicalJson, cloneData, deepFreeze, prefixedSha256 } from "./canonical.js";
+import { normalizeConverterProfile } from "./converter-profile.js";
 import {
   boxingPrototypeContractId,
   cutFamilyRecipeId,
@@ -27,7 +28,7 @@ import {
  * Convert one normalized difficulty into Flow plus four Boxing charts.
  *
  * @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary
- * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceDifficultyPath: string, sourceBeatmapVersion: string, sourceDifficultyHash?: string, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>}} options
+ * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceDifficultyPath: string, sourceBeatmapVersion: string, sourceDifficultyHash?: string, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>}} options
  * @param {(progress: number, phase: string) => void} [onProgress]
  * @returns {Promise<Readonly<{package: DataRecord, packageHash: string, sourceHash: string, charts: DataRecord[], traces: DataRecord[], flowTrace: DataRecord}>>}
  */
@@ -36,15 +37,17 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const difficulty = normalizeDifficulty(options.difficulty);
   const songToken = sanitizeToken(options.songToken || options.sourceId || "imported");
   const modifiers = normalizeModifiers(options.modifiers ?? []);
+  const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
+  const converterSettings = converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 8, reachAllowanceSubcells: 0, profileApplied: false };
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const sourceDifficultyHash = options.sourceDifficultyHash ?? await prefixedSha256(canonicalJson(sourceSummary));
   const charts = [];
   const traces = [];
   let matrixIndex = 0;
   for (const recipe of recipeDefinitions) {
-    const generated = await generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers);
+    const generated = await generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings);
     for (const rulesetId of [semanticTrackRulesetId, spatialGridRulesetId]) {
-      const chart = await chartFor(generated, difficulty, songToken, recipe, rulesetId, sourceHash, modifiers, options.presentationSuggestion);
+      const chart = await chartFor(generated, difficulty, songToken, recipe, rulesetId, sourceHash, modifiers, options.presentationSuggestion, converterProfile);
       charts.push(chart);
       traces.push({
         chartId: chart.chartId,
@@ -57,6 +60,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
         sourceDifficultyPath: options.sourceDifficultyPath,
         sourceBeatmapVersion: options.sourceBeatmapVersion,
         sourceDifficultyHash,
+        ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
         optimizer: cloneData(generated.optimizer),
         events: cloneData(generated.trace)
       });
@@ -83,7 +87,8 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
       sourceVersionHash: options.sourceVersionHash,
       difficulty,
       sourceDifficultyPath: options.sourceDifficultyPath,
-      sourceHash
+      sourceHash,
+      ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {})
     },
     song: {
       schemaId: "aerobeat.song.v1",
@@ -99,7 +104,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
     sets,
     recipeDefinitions: cloneData(recipeDefinitions),
     rulesetDefinitions: cloneData(rulesetDefinitions),
-    conversionTrace: { boxing: traces, flow: [flow.trace] },
+    conversionTrace: { boxing: traces, flow: [flow.trace], ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}) },
     presentationSuggestion: options.presentationSuggestion ? cloneData(options.presentationSuggestion) : null
   };
   const packageHash = await prefixedSha256(canonicalJson(packageRecord));
@@ -107,8 +112,8 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   return deepFreeze({ package: packageRecord, packageHash, sourceHash, charts, traces, flowTrace: flow.trace });
 }
 
-/** @param {DataRecord} generated @param {Difficulty} difficulty @param {string} songToken @param {DataRecord} recipe @param {string} rulesetId @param {string} sourceHash @param {readonly string[]} modifiers @param {Readonly<Record<string, unknown>> | undefined} suggestion */
-async function chartFor(generated, difficulty, songToken, recipe, rulesetId, sourceHash, modifiers, suggestion) {
+/** @param {DataRecord} generated @param {Difficulty} difficulty @param {string} songToken @param {DataRecord} recipe @param {string} rulesetId @param {string} sourceHash @param {readonly string[]} modifiers @param {Readonly<Record<string, unknown>> | undefined} suggestion @param {Readonly<Record<string, unknown>> | null} converterProfile */
+async function chartFor(generated, difficulty, songToken, recipe, rulesetId, sourceHash, modifiers, suggestion, converterProfile) {
   const recipeId = String(recipe.recipeId);
   const recipeShort = recipeId === rowFamilyRecipeId ? "row-family" : "cut-family";
   const rulesetShort = rulesetId === semanticTrackRulesetId ? "semantic-track" : "spatial-grid";
@@ -116,7 +121,7 @@ async function chartFor(generated, difficulty, songToken, recipe, rulesetId, sou
   const recipeHash = await prefixedSha256(canonicalJson(recipe));
   const ruleset = rulesetDefinitions.find((candidate) => candidate.rulesetId === rulesetId) ?? rulesetDefinitions[0];
   const rulesetHash = await prefixedSha256(canonicalJson(ruleset));
-  const contentHash = await prefixedSha256(canonicalJson({ beats, recipeId, rulesetId, sourceHash }));
+  const contentHash = await prefixedSha256(canonicalJson({ beats, recipeId, rulesetId, sourceHash, ...(converterProfile ? { converterProfile } : {}) }));
   const allModifiers = [...modifiers];
   for (const beat of /** @type {DataRecord[]} */ (beats)) {
     if (typeof beat.modifier === "string" && !allModifiers.includes(beat.modifier)) allModifiers.push(beat.modifier);
@@ -127,15 +132,15 @@ async function chartFor(generated, difficulty, songToken, recipe, rulesetId, sou
     chartId: `ab-chart-${songToken}-boxing-${difficulty.toLowerCase()}-${rulesetShort}-${recipeShort}`,
     chartName: `${titleize(songToken)} ${difficulty} Boxing - ${titleize(rulesetShort)} / ${titleize(recipeShort)}`,
     mode: "boxing", difficulty,
-    prototype: { contractId: boxingPrototypeContractId, recipeId, recipeVersion, rulesetId, rulesetVersion, sourceHash, recipeHash, rulesetHash, contentHash, modifiers: allModifiers, regenerationRequiredFor: ["punchMinSpacingMs", "reachSubcellsPerBeat", "familyBalance", "guardRelocation"] },
+    prototype: { contractId: boxingPrototypeContractId, recipeId, recipeVersion, rulesetId, rulesetVersion, sourceHash, recipeHash, rulesetHash, contentHash, modifiers: allModifiers, ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}), regenerationRequiredFor: ["punchMinSpacingMs", "reachSubcellsPerBeat", "familyBalance", "guardRelocation"] },
     beats
   };
   if (suggestion) Object.assign(chart, { presentationSuggestion: cloneData(suggestion) });
   return chart;
 }
 
-/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers */
-async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers) {
+/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} converterSettings */
+async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings) {
   const trace = [];
   const obstacleWindows = obstaclesFor(sourceSummary.obstacles ?? [], bpm);
   const groups = noteGroups(sourceSummary.colorNotes ?? []);
@@ -153,7 +158,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers)
     candidates.push({ kind: "punch", start, note, family, targetRow, sourceEventIds, stableId: sourceEventIds.join("+") });
   }
   candidates.sort(candidateOrder);
-  const optimizer = selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty);
+  const optimizer = selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings);
   const beats = [];
   let lastPunchMs = -1e9; let previousHand = "";
   const wristSubcell = { left: seedSubcell(5), right: seedSubcell(6) }; const wristBeat = { left: 0, right: 0 };
@@ -161,7 +166,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers)
   for (const candidate of candidates) {
     const start = Number(candidate.start); const startMs = beatToMs(start, bpm);
     if (candidate.kind === "guard") {
-      const emitted = await emitGuard(candidate, obstacleWindows, wristSubcell, wristBeat, difficulty, bpm, String(recipe.recipeId));
+      const emitted = await emitGuard(candidate, obstacleWindows, wristSubcell, wristBeat, difficulty, bpm, String(recipe.recipeId), converterSettings);
       trace.push(emitted.trace);
       if (emitted.ok && emitted.beat) {
         beats.push(emitted.beat); const target = emitted.beat.guardTarget;
@@ -176,7 +181,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers)
     if (!safe.length) { trace.push(dropTrace(candidate, "spatial_target_blocked")); continue; }
     spatial.acceptedSubcells = safe;
     const deltaBeats = Math.max(start - wristBeat[/** @type {"left" | "right"} */ (hand)], 0);
-    const target = safe.find((subcell) => reachable(wristSubcell[/** @type {"left" | "right"} */ (hand)], subcell, deltaBeats, reachSubcellsPerBeat[difficulty], blocked));
+    const target = safe.find((subcell) => reachable(wristSubcell[/** @type {"left" | "right"} */ (hand)], subcell, deltaBeats, reachSubcellsPerBeat[difficulty] + converterSettings.reachAllowanceSubcells, blocked));
     if (target === undefined) { trace.push(dropTrace(candidate, "unreachable_after_optimizer")); continue; }
     if (startMs - lastPunchMs < punchMinSpacingMs) { trace.push(dropTrace(candidate, "punch_min_spacing", { previousHand, spacingMs: startMs - lastPunchMs })); continue; }
     const type = `${family}_${hand}`; const generatedEventId = await eventId(String(recipe.recipeId), String(candidate.stableId), type);
@@ -193,16 +198,16 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers)
     beats.push(emitted); trace.push({ sourceEventIds: [sourceId], start: window.startBeat, action: "emit", kind: "obstacle_checkpoint", type, blockedCells, noseSafeCells: safeCells });
   }
   beats.sort((left, right) => Number(left.start) - Number(right.start) || String(left.eventId).localeCompare(String(right.eventId)));
-  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, selectedStableIds: [...optimizer.selected.keys()] } };
+  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
 }
 
 const optimizerPriority = ["retained_punches", "hand_alternation", "family_balance", "source_order", "stable_event_id"];
 
-/** @param {DataRecord[]} candidates @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty */
-function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty) {
+/** @param {DataRecord[]} candidates @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} converterSettings */
+function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty, converterSettings) {
   const punches = []; const infeasible = new Map();
   const guardTimesMs = candidates.filter((candidate) => candidate.kind === "guard").map((candidate) => beatToMs(Number(candidate.start), bpm));
-  for (const candidate of candidates) { if (candidate.kind !== "punch") continue; const punchMs = beatToMs(Number(candidate.start), bpm); const reserved = guardTimesMs.some((guardMs) => Math.abs(punchMs - guardMs) <= timingWindowMs + 0.0001); const reason = reserved ? "guard_window_reserved_before_optimizer" : staticInfeasibility(candidate, bpm, obstacles, difficulty); if (reason) infeasible.set(String(candidate.stableId), reason); else punches.push(candidate); }
+  for (const candidate of candidates) { if (candidate.kind !== "punch") continue; const punchMs = beatToMs(Number(candidate.start), bpm); const reserved = guardTimesMs.some((guardMs) => Math.abs(punchMs - guardMs) <= timingWindowMs + 0.0001); const reason = reserved ? "guard_window_reserved_before_optimizer" : staticInfeasibility(candidate, bpm, obstacles, difficulty, converterSettings); if (reason) infeasible.set(String(candidate.stableId), reason); else punches.push(candidate); }
   punches.sort(candidateOrder); const best = [[]];
   for (let index = 0; index < punches.length; index += 1) {
     const candidate = punches[index]; let compatible = -1; const candidateMs = beatToMs(Number(candidate.start), bpm);
@@ -212,11 +217,11 @@ function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty) {
   return { selected: new Map(best.at(-1).map((candidate) => [String(candidate.stableId), true])), infeasible };
 }
 
-/** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty */
-function staticInfeasibility(candidate, bpm, obstacles, difficulty) {
+/** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} converterSettings */
+function staticInfeasibility(candidate, bpm, obstacles, difficulty, converterSettings) {
   const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const spatial = spatialTarget(String(candidate.family), hand, Number(candidate.targetRow)); const blocked = blockedSubcellsAt(beatToMs(Number(candidate.start), bpm), obstacles);
   let safe = false; let reach = false; const seed = hand === "left" ? 5 : 6;
-  for (const subcell of /** @type {number[]} */ (spatial.acceptedSubcells)) { if (blocked.has(subcell)) continue; safe = true; if (reachable(seedSubcell(seed), subcell, Number(candidate.start), reachSubcellsPerBeat[difficulty], blocked)) { reach = true; break; } }
+  for (const subcell of /** @type {number[]} */ (spatial.acceptedSubcells)) { if (blocked.has(subcell)) continue; safe = true; if (reachable(seedSubcell(seed), subcell, Number(candidate.start), reachSubcellsPerBeat[difficulty] + converterSettings.reachAllowanceSubcells, blocked)) { reach = true; break; } }
   return !safe ? "spatial_target_blocked_before_optimizer" : !reach ? "unreachable_before_optimizer" : "";
 }
 
@@ -243,9 +248,9 @@ function blockedSubcellsAt(timeMs, windows) { const blocked = new Set(); for (co
 /** @param {number[]} cells */
 function obstacleType(cells) { let left = 0; let right = 0; for (const cell of cells) cell % 4 <= 1 ? left += 1 : right += 1; return left > right ? "weave_right" : right > left ? "weave_left" : "squat"; }
 
-/** @param {DataRecord} candidate @param {ObstacleWindow[]} obstacles @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty @param {number} bpm @param {string} recipeIdValue */
-async function emitGuard(candidate, obstacles, wristSubcell, wristBeat, difficulty, bpm, recipeIdValue) {
-  const notes = /** @type {DataRecord[]} */ (candidate.notes); const left = noteForHand(notes, "left"); const right = noteForHand(notes, "right"); const crossed = Number(left.cell) % 4 > Number(right.cell) % 4; const sourcePair = [topLeftCell(Number(left.cell)), topLeftCell(Number(right.cell))]; const start = Number(candidate.start); const blocked = blockedSubcellsAt(beatToMs(start, bpm), obstacles); const pair = chooseGuardPair(sourcePair, crossed, blocked, start, wristSubcell, wristBeat, difficulty);
+/** @param {DataRecord} candidate @param {ObstacleWindow[]} obstacles @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty @param {number} bpm @param {string} recipeIdValue @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} converterSettings */
+async function emitGuard(candidate, obstacles, wristSubcell, wristBeat, difficulty, bpm, recipeIdValue, converterSettings) {
+  const notes = /** @type {DataRecord[]} */ (candidate.notes); const left = noteForHand(notes, "left"); const right = noteForHand(notes, "right"); const crossed = Number(left.cell) % 4 > Number(right.cell) % 4; const sourcePair = [topLeftCell(Number(left.cell)), topLeftCell(Number(right.cell))]; const start = Number(candidate.start); const blocked = blockedSubcellsAt(beatToMs(start, bpm), obstacles); const pair = chooseGuardPair(sourcePair, crossed, blocked, start, wristSubcell, wristBeat, difficulty, converterSettings);
   if (!pair.length) return { ok: false, trace: dropTrace(candidate, "guard_no_legal_pair") };
   const leftCell = crossed ? pair[1] : pair[0]; const rightCell = crossed ? pair[0] : pair[1]; const sourceEventIds = cloneData(candidate.sourceEventIds); const id = await eventId(recipeIdValue, String(candidate.stableId), "guard");
   const beat = { start, type: "guard", eventId: id, sourceEventIds, guardTarget: { leftCell, rightCell, crossed, sourcePair }, checkpoint: { kind: "instantaneous", freshnessMs, timingWindowMs }, timingWindowMs, evidenceFreshnessMs: freshnessMs };
@@ -253,8 +258,8 @@ async function emitGuard(candidate, obstacles, wristSubcell, wristBeat, difficul
   return { ok: true, beat, trace: { sourceEventIds, eventId: id, start, action: "emit", kind: "guard", sourcePair, generatedPair: pair, crossed } };
 }
 
-/** @param {number[]} sourcePair @param {boolean} crossed @param {Set<number>} blocked @param {number} start @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty */
-function chooseGuardPair(sourcePair, crossed, blocked, start, wristSubcell, wristBeat, difficulty) { const sourceSorted = [...sourcePair].sort((a,b)=>a-b); const candidates = []; for (const pair of guardPairs) { const subcells = [seedSubcell(pair[0]), seedSubcell(pair[1])]; if (blocked.has(subcells[0]) || blocked.has(subcells[1])) continue; const leftTarget = crossed ? subcells[1] : subcells[0]; const rightTarget = crossed ? subcells[0] : subcells[1]; const rate = reachSubcellsPerBeat[difficulty]; if (!reachable(wristSubcell.left, leftTarget, Math.max(start-wristBeat.left,0), rate, blocked) || !reachable(wristSubcell.right, rightTarget, Math.max(start-wristBeat.right,0), rate, blocked)) continue; const sourceRow = Math.floor(sourceSorted[0]/4) === Math.floor(sourceSorted[1]/4) ? Math.floor(sourceSorted[0]/4) : 1; const pairRow = Math.floor(pair[0]/4); const sourceMid=(sourceSorted[0]+sourceSorted[1])/2; const pairMid=(pair[0]+pair[1])/2; candidates.push({pair:[...pair],row:Math.abs(pairRow-sourceRow),mid:Math.abs(pairMid-sourceMid),center:Math.abs(pairMid-5.5),id:pair[0]}); } candidates.sort((a,b)=>a.row-b.row||a.mid-b.mid||a.center-b.center||a.id-b.id); return candidates[0]?.pair ?? []; }
+/** @param {number[]} sourcePair @param {boolean} crossed @param {Set<number>} blocked @param {number} start @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} converterSettings */
+function chooseGuardPair(sourcePair, crossed, blocked, start, wristSubcell, wristBeat, difficulty, converterSettings) { const sourceSorted = [...sourcePair].sort((a,b)=>a-b); const candidates = []; for (const pair of guardPairs) { if(Math.max(cellDistance(sourceSorted[0],pair[0]),cellDistance(sourceSorted[1],pair[1]))>converterSettings.guardRelocationRadius)continue;const subcells = [seedSubcell(pair[0]), seedSubcell(pair[1])]; if (blocked.has(subcells[0]) || blocked.has(subcells[1])) continue; const leftTarget = crossed ? subcells[1] : subcells[0]; const rightTarget = crossed ? subcells[0] : subcells[1]; const rate = reachSubcellsPerBeat[difficulty]+converterSettings.reachAllowanceSubcells; if (!reachable(wristSubcell.left, leftTarget, Math.max(start-wristBeat.left,0), rate, blocked) || !reachable(wristSubcell.right, rightTarget, Math.max(start-wristBeat.right,0), rate, blocked)) continue; const sourceRow = Math.floor(sourceSorted[0]/4) === Math.floor(sourceSorted[1]/4) ? Math.floor(sourceSorted[0]/4) : 1; const pairRow = Math.floor(pair[0]/4); const sourceMid=(sourceSorted[0]+sourceSorted[1])/2; const pairMid=(pair[0]+pair[1])/2; candidates.push({pair:[...pair],row:Math.abs(pairRow-sourceRow),mid:Math.abs(pairMid-sourceMid),center:Math.abs(pairMid-5.5),id:pair[0]}); } candidates.sort((a,b)=>a.row-b.row||a.mid-b.mid||a.center-b.center||a.id-b.id); return candidates[0]?.pair ?? []; }
 
 /** @param {string} family @param {string} hand @param {number} row */
 function spatialTarget(family, hand, row) { let column = hand === "left" ? 1 : 2; let targetRow = clamp(row,0,2); let direction=""; let sourceCell=-1; if (family === "hook") { column=hand==="left"?2:1; direction=hand==="left"?"right":"left"; sourceCell=targetRow*4+(hand==="left"?1:2); } else if (family === "uppercut") { targetRow=Math.min(targetRow,1); direction="up"; sourceCell=(targetRow+1)*4+column; } const targetCell=targetRow*4+column; const result={targetCell,acceptedSubcells:acceptedSubcells(targetCell,family,hand),sourceCell}; if(direction) Object.assign(result,{entryDirection:direction}); if(family==="straight") Object.assign(result,{qualificationMs:straightQualificationMs,semanticQualification:"straight"}); return result; }
@@ -302,6 +307,8 @@ function topLeftRow(cell){return 2-clamp(Math.floor(cell/4),0,2);}
 function topLeftCell(cell){return topLeftRow(cell)*4+clamp(cell%4,0,3);}
 /** @param {number} cell */
 function seedSubcell(cell){const row=clamp(Math.floor(cell/4),0,2),column=clamp(cell%4,0,3);return(row*2+1)*8+column*2+1;}
+/** @param {number} left @param {number} right */
+function cellDistance(left,right){return Math.abs(Math.floor(left/4)-Math.floor(right/4))+Math.abs(left%4-right%4);}
 /** @param {number} beat @param {number} bpm */
 function beatToMs(beat,bpm){return beat*60000/Math.max(bpm,1);}
 /** @param {number} value @param {number} minimum @param {number} maximum */
