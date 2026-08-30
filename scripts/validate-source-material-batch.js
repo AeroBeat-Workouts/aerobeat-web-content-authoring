@@ -84,6 +84,18 @@ await assert.rejects(
 );
 assert.equal(mixedOnly.readCounts.size, 0);
 
+// Catalyst contains only Standard gameplay, so mixed v4 exclusion remains locked by a synthetic source.
+const mixedV4 = makeSource([
+  { characteristic: "Lightshow", difficulty: "ExpertPlus", path: "Lightshow.dat" },
+  { characteristic: "OneSaber", difficulty: "Hard", path: "OneSaber.dat" },
+  difficulty("Expert", "Expert.dat")
+], 4);
+const mixedV4Batch = await prepareAllStandardSourceMaterials(mixedV4.source, {});
+assert.deepEqual(mixedV4Batch.materials.map((material) => material.requestManifest.selectedDifficulty.difficulty), ["Expert"]);
+assert.equal(mixedV4Batch.materials[0].requestManifest.sourceFormatMajor, 4);
+assert.equal(mixedV4.readCounts.has("Lightshow.dat"), false);
+assert.equal(mixedV4.readCounts.has("OneSaber.dat"), false);
+
 const bounded = makeSource([difficulty("Hard", "Hard.dat"), difficulty("Expert", "Expert.dat")]);
 await assert.rejects(
   () => prepareAllStandardSourceMaterials(bounded.source, { limits: { selectedBytes: chartBytes.Hard.byteLength + chartBytes.Expert.byteLength + audioBytes.byteLength - 1 } }),
@@ -105,8 +117,8 @@ console.log("all-Standard source material validation passed");
 /** @param {string} name @param {string} path */
 function difficulty(name, path) { return { characteristic: "Standard", difficulty: name, path }; }
 
-/** @param {Record<string, unknown>[]} difficulties */
-function makeSource(difficulties) {
+/** @param {Record<string, unknown>[]} difficulties @param {number} [sourceFormatMajor] */
+function makeSource(difficulties, sourceFormatMajor = 3) {
   const entries = new Map([
     ["Info.dat", infoBytes],
     ["Song.ogg", audioBytes],
@@ -124,7 +136,7 @@ function makeSource(difficulties) {
   let lists = 0;
   const source = {
     manifest: {
-      sourceFormatMajor: 3,
+      sourceFormatMajor,
       infoPath: "Info.dat",
       songName: "Batch Fixture",
       songAuthorName: "Fixture Artist",

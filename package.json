@@ -27,6 +27,7 @@
     "test:matrix": "node scripts/validate-task11-source-matrix.js",
     "test:security": "node scripts/validate-security-audit.js",
     "test:real": "node scripts/validate-real-map-conversion.js",
+    "test:catalyst": "node scripts/validate-catalyst-standard-batch.js",
     "test:browser": "node scripts/validate-browser-authoring.js",
     "demo": "npm --prefix .testbed run demo",
     "testbed:serve": "npm --prefix .testbed run serve",
