@@ -9,33 +9,76 @@ const defaultLimits = Object.freeze({ difficultyBytes: 64 * 1024 * 1024, audioBy
 const maximumDifficulties = 100;
 const maximumIdentityChars = 512;
 
+/** Canonical Standard difficulty order shared by batch authoring and product presentation. */
+export const standardDifficultyOrder = Object.freeze(["Easy", "Normal", "Hard", "Expert", "ExpertPlus"]);
+
 /**
- * Adapt the vendor bundle closure into a structured-clone-safe Worker request plus
- * child-local assets. Only selected entry copies are read and integrity-checked.
- *
+ * Adapt one selected Standard difficulty into a Worker-safe request plus child-local assets.
  * @param {unknown} acquired
- * @param {{difficulty: string, sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, cacheSourceEntries?: boolean, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, limits?: Partial<typeof defaultLimits>}} options
+ * @param {{difficulty: string, sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, cacheSourceEntries?: boolean, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, limits?: Partial<typeof defaultLimits>, signal?: AbortSignal}} options
  */
 export async function prepareSourceMaterial(acquired, options) {
+  const batch = await prepareSourceMaterialSet(acquired, options, false);
+  return batch.materials[0];
+}
+
+/**
+ * Adapt every exact Standard difficulty in canonical order. Audio is read and hashed once.
+ * @param {unknown} acquired
+ * @param {{sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, cacheSourceEntries?: boolean, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, limits?: Partial<typeof defaultLimits>, signal?: AbortSignal}} options
+ */
+export async function prepareAllStandardSourceMaterials(acquired, options) {
+  return prepareSourceMaterialSet(acquired, options, true);
+}
+
+/** @param {unknown} acquired @param {Record<string, unknown>} options @param {boolean} all */
+async function prepareSourceMaterialSet(acquired, options, all) {
   if (!isPlainRecord(acquired) || !isPlainRecord(options)) throw sourceError("source_invalid", "Source acquisition and options must be plain records");
   const nestedSource = dataProperty(acquired, "source");
   const source = isPlainRecord(nestedSource) ? nestedSource : acquired;
   if (!isSourceBundle(source)) throw sourceError("source_bundle_invalid", "Source must expose manifest, listEntryPaths and readEntry as data properties");
   const manifest = /** @type {Record<string, unknown>} */ (dataProperty(source, "manifest"));
   const limits = normalizeLimits(dataProperty(options, "limits"));
-  const difficulties = arrayData(dataProperty(manifest, "difficulties"), maximumDifficulties, "source_manifest_invalid");
-  const difficultyValue = dataProperty(options, "difficulty");
-  if (typeof difficultyValue !== "string" || difficultyValue.length > 64) throw sourceError("difficulty_invalid", "Difficulty must be a bounded string");
-  const wanted = normalizeDifficulty(difficultyValue);
+  const signalValue = dataProperty(options, "signal");
+  const signal = signalValue instanceof AbortSignal ? signalValue : undefined;
+  if (signalValue !== undefined && !signal) throw sourceError("source_options_invalid", "signal must be an AbortSignal");
+  checkAbort(signal);
+  const advertised = arrayData(dataProperty(manifest, "difficulties"), maximumDifficulties, "source_manifest_invalid");
+  /** @type {{difficulty: string, path: string}[]} */
   let selected;
-  for (const entry of difficulties) {
-    if (!isPlainRecord(entry) || dataProperty(entry, "characteristic") !== "Standard") continue;
-    const candidate = dataProperty(entry, "difficulty");
-    if (typeof candidate === "string" && candidate.length <= 64 && normalizeDifficulty(candidate) === wanted) { selected = entry; break; }
+  if (all) {
+    const byDifficulty = new Map();
+    for (const entry of advertised) {
+      if (!isPlainRecord(entry) || dataProperty(entry, "characteristic") !== "Standard") continue;
+      const candidate = dataProperty(entry, "difficulty");
+      if (typeof candidate !== "string" || candidate.length > 64) throw sourceError("difficulty_invalid", "Standard difficulty must be a bounded supported string");
+      const difficulty = normalizeDifficulty(candidate);
+      if (byDifficulty.has(difficulty)) throw sourceError("difficulty_duplicate", `Standard ${difficulty} is advertised more than once`);
+      byDifficulty.set(difficulty, entry);
+    }
+    selected = standardDifficultyOrder.filter((difficulty) => byDifficulty.has(difficulty)).map((difficulty) => {
+      const entry = /** @type {Record<string, unknown>} */ (byDifficulty.get(difficulty));
+      const pathValue = dataProperty(entry, "path");
+      if (typeof pathValue !== "string" || !pathValue) throw sourceError("difficulty_unavailable", `Standard ${difficulty} has no source path`);
+      return { difficulty, path: normalizePath(pathValue, limits.pathChars) };
+    });
+  } else {
+    const difficultyValue = dataProperty(options, "difficulty");
+    if (typeof difficultyValue !== "string" || difficultyValue.length > 64) throw sourceError("difficulty_invalid", "Difficulty must be a bounded string");
+    const wanted = normalizeDifficulty(difficultyValue);
+    selected = [];
+    for (const entry of advertised) {
+      if (!isPlainRecord(entry) || dataProperty(entry, "characteristic") !== "Standard") continue;
+      const candidate = dataProperty(entry, "difficulty");
+      if (typeof candidate === "string" && candidate.length <= 64 && normalizeDifficulty(candidate) === wanted) {
+        const pathValue = dataProperty(entry, "path");
+        if (typeof pathValue !== "string" || !pathValue) break;
+        selected = [{ difficulty: wanted, path: normalizePath(pathValue, limits.pathChars) }];
+        break;
+      }
+    }
   }
-  const selectedPathValue = selected ? dataProperty(selected, "path") : undefined;
-  if (typeof selectedPathValue !== "string" || !selectedPathValue) throw sourceError("difficulty_unavailable", `Standard ${wanted} is not available in this source`);
-  const selectedPath = normalizePath(selectedPathValue, limits.pathChars);
+  if (!selected.length) throw sourceError("difficulty_unavailable", all ? "No supported Standard difficulty is available in this source" : "Selected Standard difficulty is not available in this source");
   const listEntryPaths = /** @type {() => readonly string[]} */ (dataProperty(source, "listEntryPaths"));
   const readEntry = /** @type {(path: string) => Uint8Array} */ (dataProperty(source, "readEntry"));
   let listedValue;
@@ -48,34 +91,50 @@ export async function prepareSourceMaterial(acquired, options) {
     if (listedByNormalized.has(normalized)) throw sourceError("source_paths_duplicate", "Source entry paths collide after case and Unicode normalization");
     listedByNormalized.set(normalized, original);
   }
-  const difficultyOriginal = listedByNormalized.get(selectedPath);
-  if (!difficultyOriginal) throw sourceError("source_entry_missing", "Selected difficulty is absent from the advertised source entries");
-  const difficultyBytes = readBounded(readEntry, source, difficultyOriginal, limits.difficultyBytes, "difficulty");
-  const expectedDifficulty = expectedPathHash(dataProperty(options, "expectedDifficultyContentHashes"), selectedPath, limits.pathChars);
-  const difficultyContentHash = await verifyExpectedHash(difficultyBytes, expectedDifficulty, "difficulty_hash_mismatch");
+
+  const prepared = [];
+  let selectedByteCount = 0;
+  for (const item of selected) {
+    checkAbort(signal);
+    const original = listedByNormalized.get(item.path);
+    if (!original) throw sourceError("source_entry_missing", `Standard ${item.difficulty} is absent from the advertised source entries`);
+    const bytes = readBounded(readEntry, source, original, limits.difficultyBytes, "difficulty");
+    selectedByteCount += bytes.byteLength;
+    if (!Number.isSafeInteger(selectedByteCount) || selectedByteCount > limits.selectedBytes) throw sourceError("source_selected_bytes_exceeded", "Selected source data exceeds the authoring byte limit");
+    const expected = expectedPathHash(dataProperty(options, "expectedDifficultyContentHashes"), item.path, limits.pathChars);
+    const contentHash = await verifyExpectedHash(bytes, expected, "difficulty_hash_mismatch");
+    checkAbort(signal);
+    prepared.push({ ...item, bytes, contentHash });
+  }
 
   const audioPathValue = dataProperty(manifest, "audioPath");
   const audioPath = typeof audioPathValue === "string" && audioPathValue ? normalizePath(audioPathValue, limits.pathChars) : "";
   const audioOriginal = audioPath ? listedByNormalized.get(audioPath) : undefined;
   if (audioPath && !audioOriginal) throw sourceError("source_entry_missing", "Audio is absent from the advertised source entries");
+  checkAbort(signal);
   const audioBytes = audioOriginal ? readBounded(readEntry, source, audioOriginal, limits.audioBytes, "audio") : new Uint8Array();
-  if (difficultyBytes.byteLength + audioBytes.byteLength > limits.selectedBytes) throw sourceError("source_selected_bytes_exceeded", "Selected source data exceeds the authoring byte limit");
+  if (!Number.isSafeInteger(selectedByteCount + audioBytes.byteLength) || selectedByteCount + audioBytes.byteLength > limits.selectedBytes) throw sourceError("source_selected_bytes_exceeded", "Selected source data exceeds the authoring byte limit");
   const expectedAudio = optionalExpectedHash(dataProperty(options, "expectedAudioContentHash"), "expectedAudioContentHash");
-  if(expectedAudio&&!audioBytes.byteLength)throw sourceError("audio_hash_mismatch","Expected audio is absent from the selected source");
+  if (expectedAudio && !audioBytes.byteLength) throw sourceError("audio_hash_mismatch", "Expected audio is absent from the selected source");
   const audioContentHash = audioBytes.byteLength ? await verifyExpectedHash(audioBytes, expectedAudio, "audio_hash_mismatch") : "";
+  checkAbort(signal);
 
   const cache = [];
   if (dataProperty(options, "cacheSourceEntries") === true) {
     const infoPathValue = dataProperty(manifest, "infoPath");
     const infoPath = typeof infoPathValue === "string" && infoPathValue ? normalizePath(infoPathValue, limits.pathChars) : "";
-    for (const path of [infoPath, selectedPath].filter(Boolean)) {
+    const requiredCachePaths = [...new Set([infoPath, ...prepared.map((item) => item.path)].filter(Boolean))];
+    for (const path of requiredCachePaths) {
+      checkAbort(signal);
       const original = listedByNormalized.get(path);
       if (!original) throw sourceError("source_entry_missing", "Requested cache entry is absent");
-      const cachedBytes=path===selectedPath?Uint8Array.from(difficultyBytes):readBounded(readEntry, source, original, limits.cacheEntryBytes, "cache");
-      if(cachedBytes.byteLength>limits.cacheEntryBytes)throw sourceError("source_entry_too_large","cache entry exceeds the byte limit");
+      const preparedEntry = prepared.find((item) => item.path === path);
+      const cachedBytes = preparedEntry ? Uint8Array.from(preparedEntry.bytes) : readBounded(readEntry, source, original, limits.cacheEntryBytes, "cache");
+      if (cachedBytes.byteLength > limits.cacheEntryBytes) throw sourceError("source_entry_too_large", "cache entry exceeds the byte limit");
       cache.push({ path, bytes: cachedBytes });
     }
   }
+
   const sourceProviderOption = optionalIdentity(dataProperty(options, "sourceProvider"), "sourceProvider");
   const providerId = boundedDataString(dataProperty(acquired, "providerId"));
   const sourceProvider = sourceProviderOption || providerId || "local";
@@ -88,22 +147,16 @@ export async function prepareSourceMaterial(acquired, options) {
   const major = dataProperty(manifest, "sourceFormatMajor");
   if (!Number.isInteger(major) || ![2, 3, 4].includes(Number(major))) throw sourceError("source_format_unsupported", "Only Beat Saber v2, v3 and v4 are supported");
   const bpmValue = dataProperty(manifest, "bpm");
-  const requestManifest = deepFreeze({
-    schemaId: "aerobeat.authoring-source.v1",
-    sourceFormatMajor: major,
+  const common = {
+    schemaId: "aerobeat.authoring-source.v1", sourceFormatMajor: major,
     infoPath: boundedDataString(dataProperty(manifest, "infoPath"), limits.pathChars),
     songName: boundedDataString(dataProperty(manifest, "songName")) || "Imported Song",
-    songAuthorName: boundedDataString(dataProperty(manifest, "songAuthorName")),
-    levelAuthorName: boundedDataString(dataProperty(manifest, "levelAuthorName")),
-    bpm: typeof bpmValue === "number" ? positive(bpmValue, 120) : 120,
-    audioPath,
-    audioContentHash,
-    selectedDifficulty: { difficulty: wanted, path: selectedPath, contentHash: difficultyContentHash },
-    sourceProvider,
-    sourceId,
-    sourceVersionHash
-  });
-  return deepFreeze({ requestManifest, difficultyBytes: Uint8Array.from(difficultyBytes), audio: audioPath ? [{ path: audioPath, bytes: Uint8Array.from(audioBytes), contentHash: audioContentHash }] : [], sourceCache: cache });
+    songAuthorName: boundedDataString(dataProperty(manifest, "songAuthorName")), levelAuthorName: boundedDataString(dataProperty(manifest, "levelAuthorName")),
+    bpm: typeof bpmValue === "number" ? positive(bpmValue, 120) : 120, audioPath, audioContentHash, sourceProvider, sourceId, sourceVersionHash
+  };
+  const audio = audioPath ? [{ path: audioPath, bytes: Uint8Array.from(audioBytes), contentHash: audioContentHash }] : [];
+  const materials = prepared.map((item) => deepFreeze({ requestManifest: deepFreeze({ ...common, selectedDifficulty: { difficulty: item.difficulty, path: item.path, contentHash: item.contentHash } }), difficultyBytes: Uint8Array.from(item.bytes), audio, sourceCache: cache }));
+  return deepFreeze({ materials, audio, sourceCache: cache, sourceProvider, sourceId, sourceVersionHash, songName: common.songName, audioPath, audioContentHash });
 }
 
 /** @param {unknown} value @returns {value is SourceBundle} */
@@ -130,6 +183,8 @@ function boundedDataString(value,maximum=maximumIdentityChars){if(value===undefi
 function optionalIdentity(value,field){if(value===undefined||value===null||value==="")return"";if(typeof value!=="string"||value.length>maximumIdentityChars)throw sourceError("source_options_invalid",`${field} must be a bounded string`);return value;}
 /** @param {Uint8Array} bytes @param {string} expected @param {string} mismatchCode */
 async function verifyExpectedHash(bytes,expected,mismatchCode){const actual=await prefixedSha256(bytes);if(expected&&actual!==expected)throw sourceError(mismatchCode,`Expected ${expected} but received ${actual}`);return actual;}
+/** @param {AbortSignal | undefined} signal */
+function checkAbort(signal){if(signal?.aborted)throw sourceError("operation_aborted","Source preparation was cancelled");}
 /** @param {number} value @param {number} fallback */
 function positive(value,fallback){return Number.isFinite(value)&&value>0?value:fallback;}
 /** @param {string} message @param {unknown} cause */

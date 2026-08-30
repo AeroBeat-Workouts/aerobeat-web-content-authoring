@@ -14,7 +14,7 @@ Provider-neutral browser conversion, local authoring persistence, and determinis
 }
 ```
 
-It selects one explicit Standard difficulty, adapts only selected entry copies into a structured-clone-safe Worker request, normalizes Beat Saber v2/v3/v4 data, and emits one Flow chart plus the four frozen Boxing prototype combinations:
+It adapts one explicit Standard difficulty, or prepares every exact Standard difficulty in canonical Easy → Normal → Hard → Expert → ExpertPlus order, using only required entry copies and one shared audio read/hash. Worker conversion remains one difficulty per request and emits one Flow chart plus the four frozen Boxing prototype combinations:
 
 - Semantic Track · Row Family
 - Spatial Grid · Row Family
@@ -58,6 +58,7 @@ const authored = await service.convertAndPersist(acquiredSource, {
 
 Public operations:
 
+- `prepareSourceMaterial(source, options)` / `prepareAllStandardSourceMaterials(source, options)`
 - `convertAndPersist(source, options)`
 - `cancel(jobId?)`
 - `getSnapshot()` / `subscribe(listener)`

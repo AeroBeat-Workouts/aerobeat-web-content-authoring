@@ -23,7 +23,7 @@ export {
   createMemoryPersistenceAdapter
 } from "./persistence.js";
 export { createAeroWebContentAuthoringService } from "./service.js";
-export { prepareSourceMaterial } from "./source-material.js";
+export { prepareAllStandardSourceMaterials, prepareSourceMaterial, standardDifficultyOrder } from "./source-material.js";
 export { validateAuthoredPackage } from "./validator.js";
 export {
   authoringWorkerProtocolVersion,
