@@ -23,7 +23,7 @@
     "check:console": "node scripts/validate-playwright-console-noise.js",
     "check:contract": "node scripts/validate-package-surface.js",
     "test": "npm run check && npm run test:unit && npm run test:security && npm run test:real",
-    "test:unit": "node scripts/validate-authoring-service.js && node scripts/validate-task11-source-matrix.js && node scripts/validate-source-material-batch.js && node scripts/validate-persistence-collections-memory.js && node scripts/validate-persistence-collections-indexeddb.js",
+    "test:unit": "node scripts/validate-authoring-service.js && node scripts/validate-task11-source-matrix.js && node scripts/validate-source-material-batch.js && node scripts/validate-persistence-collections-memory.js && node scripts/validate-persistence-collections-indexeddb.js && node scripts/validate-authoring-batch-service.js",
     "test:matrix": "node scripts/validate-task11-source-matrix.js",
     "test:security": "node scripts/validate-security-audit.js",
     "test:real": "node scripts/validate-real-map-conversion.js",

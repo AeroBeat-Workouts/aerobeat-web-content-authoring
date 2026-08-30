@@ -1,12 +1,12 @@
 // @ts-check
 
-import { canonicalJson, cloneData, deepFreeze, isPlainRecord } from "./canonical.js";
+import { canonicalJson, cloneData, deepFreeze, isPlainRecord, prefixedSha256 } from "./canonical.js";
 import { normalizeConverterProfile } from "./converter-profile.js";
 import { supportedModifiers } from "./definitions.js";
 import { exportAuthoredPackage } from "./export.js";
 import { authoringPersistenceNamespace, createIndexedDbPersistenceAdapter, createMemoryPersistenceAdapter } from "./persistence.js";
 import { semanticParityHash } from "./parity.js";
-import { prepareSourceMaterial } from "./source-material.js";
+import { prepareAllStandardSourceMaterials, prepareSourceMaterial } from "./source-material.js";
 import { createBrowserAuthoringWorkerAdapter, createInlineAuthoringWorkerAdapter } from "./worker-protocol.js";
 import { validateAuthoredPackage } from "./validator.js";
 
@@ -92,12 +92,88 @@ export function createAeroWebContentAuthoringService(options = {}) {
         throw cause;
       } finally { normalizedOptions.signal?.removeEventListener("abort", externalAbort); }
     },
+    /**
+     * Convert every exact Standard difficulty sequentially and atomically persist one collection.
+     * @param {unknown} acquired
+     * @param {{sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
+     */
+    async convertAllStandardAndPersist(acquired, requestOptions) {
+      assertOpen();
+      const normalizedOptions = normalizeBatchRequestOptions(requestOptions);
+      if (normalizedOptions.includeAudio === false) throw authoringError("request_invalid", "Batch conversion requires shared audio");
+      const converterProfile = normalizedOptions.converterProfile ? await normalizeConverterProfile(normalizedOptions.converterProfile) : null;
+      assertOpen(); active?.abort.abort();
+      const generation = ++sequence; const jobId = `authoring-${generation}`; const abort = new AbortController(); active = { jobId, generation, abort };
+      const externalAbort = () => abort.abort(); normalizedOptions.signal?.addEventListener("abort", externalAbort, { once: true });
+      let persistedCollectionId = "";
+      try {
+        publish(makeSnapshot(jobId, "inspecting", 0.04, normalizedOptions.sourceId ?? null, normalizedOptions.sourceVersionHash ?? null, null, null, null, null));
+        const prepared = await prepareAllStandardSourceMaterials(acquired, normalizedOptions);
+        checkCurrent(generation, abort.signal);
+        if (!prepared.audioPath || !prepared.audioContentHash || prepared.audio.length !== 1) throw authoringError("audio_required", "Batch conversion requires one verified audio asset");
+        const packageRows = []; const resultRows = []; const packageHashes = [];
+        for (let index = 0; index < prepared.materials.length; index += 1) {
+          checkCurrent(generation, abort.signal);
+          const material = prepared.materials[index]; const manifest = material.requestManifest; const difficulty = String(manifest.selectedDifficulty.difficulty);
+          const workerRequest = {
+            schema: "aerobeat/authoring_worker_request", version: 1, kind: "convert", jobId: `${jobId}-${index + 1}`,
+            manifest: cloneData(manifest), difficultyBytes: Uint8Array.from(material.difficultyBytes),
+            options: {
+              difficulty, songToken: slug(String(manifest.songName || manifest.sourceId)), songName: manifest.songName, bpm: manifest.bpm,
+              sourceProvider: manifest.sourceProvider, sourceId: manifest.sourceId, sourceVersionHash: manifest.sourceVersionHash,
+              sourceDifficultyPath: manifest.selectedDifficulty.path, sourceBeatmapVersion: `v${manifest.sourceFormatMajor}`,
+              sourceDifficultyHash: manifest.selectedDifficulty.contentHash, audioPath: manifest.audioPath, audioContentHash: manifest.audioContentHash,
+              modifiers: [...normalizedOptions.modifiers],
+              ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
+              ...(normalizedOptions.presentationSuggestion ? { presentationSuggestion: cloneData(normalizedOptions.presentationSuggestion) } : {})
+            }
+          };
+          publish(makeSnapshot(jobId, "converting", 0.1 + index / prepared.materials.length * 0.8, prepared.sourceId, prepared.sourceVersionHash, difficulty, null, null, null));
+          const result = await worker.convert(workerRequest, { signal: abort.signal, onProgress(progress, phase) { if (!isCurrent(generation)) return; publish(makeSnapshot(jobId, phase === "validating" ? "validating" : "converting", 0.1 + (index + bounded(progress)) / prepared.materials.length * 0.8, prepared.sourceId, prepared.sourceVersionHash, difficulty, null, null, null)); } });
+          checkCurrent(generation, abort.signal);
+          if (!isPlainRecord(result)) throw authoringError("worker_result_invalid", "Worker did not return a validated package");
+          const resultPackage = dataProperty(result, "package"), resultPackageHash = dataProperty(result, "packageHash"), resultParityHash = dataProperty(result, "semanticParityHash"), resultSourceHash = dataProperty(result, "sourceHash");
+          if (!isPlainRecord(resultPackage) || typeof resultPackageHash !== "string" || typeof resultParityHash !== "string" || typeof resultSourceHash !== "string") throw authoringError("worker_result_invalid", "Worker did not return a validated package");
+          const trustedValidation = await validateAuthoredPackage(resultPackage);
+          if (!trustedValidation.valid || trustedValidation.packageHash !== resultPackageHash || !await workerResultMatchesManifest(resultPackage, manifest, true, converterProfile, resultParityHash, resultSourceHash)) throw authoringError("worker_result_invalid", "Worker batch package failed validation or source/profile binding");
+          const packageIdValue = dataProperty(resultPackage, "packageId"); if (typeof packageIdValue !== "string") throw authoringError("worker_result_invalid", "Worker package identity is invalid");
+          const key = `${packageIdValue}@${resultPackageHash.slice(7, 19)}`;
+          packageRows.push({ key, package: cloneData(resultPackage), packageHash: resultPackageHash, assets: [], sourceCache: material.sourceCache, createdAtMs: now(), schemaVersion: persistence.schemaVersion, writeToken: jobId, assetRefs: [{ path: prepared.audioPath, contentHash: prepared.audioContentHash }] });
+          packageHashes.push(resultPackageHash);
+          resultRows.push({ difficultyId: difficulty, difficultyLabel: difficulty, packageId: packageIdValue, handle: persistenceHandle(persistence.kind, key, packageIdValue, resultPackageHash) });
+        }
+        checkCurrent(generation, abort.signal);
+        const profileId = converterProfile ? String(converterProfile.profileId) : "aero.converter.legacy";
+        const profileHash = converterProfile ? String(converterProfile.contentHash) : "unprofiled";
+        const collectionIdentity = { sourceProvider: prepared.sourceProvider, sourceId: prepared.sourceId, sourceVersionHash: prepared.sourceVersionHash, converterProfileId: profileId, converterProfileHash: profileHash, modifierIds: [...normalizedOptions.modifiers], packageHashes };
+        persistedCollectionId = `collection:${(await prefixedSha256(canonicalJson(collectionIdentity))).slice(7)}`;
+        const collectionRecord = { collectionId: persistedCollectionId, songName: prepared.songName, sourceProvider: prepared.sourceProvider, sourceId: prepared.sourceId, sourceVersionHash: prepared.sourceVersionHash, converterProfileId: profileId, converterProfileHash: profileHash, modifierIds: [...normalizedOptions.modifiers], packageKeys: packageRows.map((row) => row.key), packages: resultRows.map((row, index) => ({ packageKey: packageRows[index].key, packageId: row.packageId, difficultyId: row.difficultyId, difficultyLabel: row.difficultyLabel })), createdAtMs: now(), schemaVersion: persistence.schemaVersion, writeToken: jobId };
+        publish(makeSnapshot(jobId, "persisting", 0.94, prepared.sourceId, prepared.sourceVersionHash, null, null, null, null));
+        const collection = await persistence.putCollection({ collection: collectionRecord, packages: packageRows, assets: [{ contentHash: prepared.audioContentHash, bytes: prepared.audio[0].bytes }] }, { signal: abort.signal });
+        checkCurrent(generation, abort.signal);
+        const packages = resultRows.map((row) => deepFreeze(row)); const defaultPackage = packages[0];
+        const completed = makeSnapshot(jobId, "complete", 1, prepared.sourceId, prepared.sourceVersionHash, null, null, null, defaultPackage.handle);
+        publish(completed); active = null;
+        return deepFreeze({ collection, packages, defaultPackage });
+      } catch (cause) {
+        if (persistedCollectionId) { const stored = await persistence.getCollection(persistedCollectionId).catch(() => null); if (stored?.writeToken === jobId) await persistence.deleteCollection(persistedCollectionId).catch(() => false); }
+        const cancelled = abort.signal.aborted || errorCode(cause) === "operation_aborted" || !isCurrent(generation);
+        const failed = makeSnapshot(jobId, cancelled ? "cancelled" : "failed", cancelled ? snapshot.progress : 1, snapshot.sourceId, snapshot.sourceVersionHash, null, cancelled ? "operation_aborted" : errorCode(cause), cancelled ? "Conversion was cancelled" : errorMessage(cause), null);
+        if (isCurrent(generation)) { publish(failed); active = null; }
+        throw cause;
+      } finally { normalizedOptions.signal?.removeEventListener("abort", externalAbort); }
+    },
     /** @param {string} [jobId] */
     cancel(jobId) { if (active && (!jobId || active.jobId === jobId)) { active.abort.abort(); return true; } return false; },
     getSnapshot() { return snapshot; },
     /** @param {(snapshot: ReturnType<typeof makeSnapshot>) => void} listener */
     subscribe(listener) { assertOpen(); if (typeof listener !== "function") throw authoringError("listener_invalid", "Listener must be a function"); listeners.add(listener); notify(listener); return () => listeners.delete(listener); },
     async listPackages() { assertOpen(); return deepFreeze(await persistence.list()); },
+    async listCollections() { assertOpen(); return deepFreeze(await persistence.listCollections()); },
+    /** @param {string} collectionId */
+    async getCollection(collectionId) { assertOpen(); const id = collectionKey(collectionId); const collections = await persistence.listCollections(); assertOpen(); return collections.find((collection) => collection.collectionId === id) ?? null; },
+    /** @param {string} collectionId */
+    async deleteCollection(collectionId) { assertOpen(); return persistence.deleteCollection(collectionKey(collectionId)); },
     /** @param {Readonly<Record<string, unknown>> | string} handle */
     async loadPackage(handle) { assertOpen(); const record = await requireRecord(handle); return deepFreeze({ handle: persistenceHandle(persistence.kind, record.key, String(record.package.packageId), record.packageHash), package: /** @type {Record<string, unknown>} */ (cloneData(record.package)), assetPaths: Object.freeze(record.assets.map((entry) => entry.path)) }); },
     /** @param {Readonly<Record<string, unknown>> | string} handle @param {string} path */
@@ -132,6 +208,8 @@ function makeSnapshot(jobId,state,progress,sourceId,sourceVersionHash,difficulty
 function persistenceHandle(storage,key,packageId,packageHash){const [algorithm,value]=packageHash.split(":");return deepFreeze({schema:"aerobeat/persistence_handle",version:1,storage:storage==="indexeddb"?"indexeddb":"memory",namespace:authoringPersistenceNamespace,key,packageId,packageHash:{schema:"aerobeat/content_hash",version:1,algorithm,value}});}
 /** @param {Readonly<Record<string, unknown>> | string} handle */
 function keyFor(handle){if(typeof handle==="string"&&handle.length<=1024&&handle)return handle;if(isPlainRecord(handle)){const key=dataProperty(handle,"key");if(typeof key==="string"&&key&&key.length<=1024)return key;}throw authoringError("handle_invalid","Persistence handle is invalid");}
+/** @param {unknown} value */
+function collectionKey(value){if(typeof value!=="string"||!value||value.length>1024)throw authoringError("collection_invalid","Collection identity must be a bounded string");return value;}
 /** @param {number} value */
 function bounded(value){return Math.max(0,Math.min(1,Number.isFinite(value)?value:0));}
 /** @param {string} value */
@@ -156,6 +234,14 @@ function normalizeRequestOptions(value){
   for(const field of ["expectedDifficultyContentHashes","limits","presentationSuggestion","converterProfile"]){const entry=dataProperty(value,field);if(entry!==undefined){if(!isPlainRecord(entry))throw authoringError("request_invalid",`${field} must be a plain record`);let encoded;try{encoded=canonicalJson(entry);}catch{throw authoringError("request_invalid",`${field} must contain plain data only`);}if(new TextEncoder().encode(encoded).byteLength>64*1024)throw authoringError("request_invalid",`${field} exceeds the size limit`);Object.assign(result,{[field]:cloneData(entry)});}}
   const signal=dataProperty(value,"signal");if(signal!==undefined){if(typeof AbortSignal==="undefined"||!(signal instanceof AbortSignal))throw authoringError("request_invalid","signal must be an AbortSignal");Object.assign(result,{signal});}
   return Object.freeze(result);
+}
+/** @param {unknown} value @returns {Readonly<NormalizedRequestOptions>} */
+function normalizeBatchRequestOptions(value){
+  if(!isPlainRecord(value))throw authoringError("request_invalid","Batch authoring options must be a plain record");
+  const allowed=new Set(["sourceProvider","sourceId","sourceVersionHash","expectedAudioContentHash","expectedDifficultyContentHashes","modifiers","presentationSuggestion","converterProfile","cacheSourceEntries","includeAudio","limits","signal"]);
+  /** @type {Record<string, unknown>} */ const narrowed={difficulty:"Easy"};
+  for(const key of Reflect.ownKeys(value)){if(typeof key!=="string"||!allowed.has(key))throw authoringError("request_invalid","Batch authoring options contain an unknown field");const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable||descriptor.value===undefined)throw authoringError("request_invalid","Batch authoring options must contain enumerable data properties");narrowed[key]=descriptor.value;}
+  return normalizeRequestOptions(narrowed);
 }
 /** @param {Record<string, unknown>} record @param {string} key */
 function dataProperty(record,key){const descriptor=Object.getOwnPropertyDescriptor(record,key);return descriptor&&"value" in descriptor&&descriptor.enumerable?descriptor.value:undefined;}

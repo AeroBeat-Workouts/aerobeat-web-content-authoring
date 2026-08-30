@@ -59,16 +59,19 @@ const authored = await service.convertAndPersist(acquiredSource, {
 Public operations:
 
 - `prepareSourceMaterial(source, options)` / `prepareAllStandardSourceMaterials(source, options)`
-- `convertAndPersist(source, options)`
+- `convertAndPersist(source, options)` / `convertAllStandardAndPersist(source, options)`
 - `cancel(jobId?)`
 - `getSnapshot()` / `subscribe(listener)`
 - `listPackages()` / `loadPackage(handle)` / `deletePackage(handle)`
+- `listCollections()` / `getCollection(collectionId)` / `deleteCollection(collectionId)`
 - `readAsset(handle, path)`
 - `estimateStorage()` / `migrateStorage()`
 - `exportPackage(handle)`
 - `getCapabilities()` / `destroy()`
 
 A new conversion aborts the previous job. Cancellation, replacement and destruction suppress stale completion. Durable writes happen only after Worker conversion and package validation; an abort observed after a write removes that record.
+
+`convertAllStandardAndPersist` prepares one verified archive/audio source, converts canonical Standard difficulties sequentially, independently validates each unchanged one-difficulty v1 package, and then performs one collection transaction. The returned bounded collection/package handles contain no media bytes. Shared audio is stored once by content hash and resolved into self-contained `readAsset` and `AEROPKG1` export operations. Worker, validation, cancellation, and quota failure before transaction completion expose no partial collection.
 
 Public snapshots and persistence handles conform to the finalized web contracts and contain no ZIP, difficulty, audio, `Blob`, `File`, provider object, or browser capability values. Request metadata is narrowed before the first snapshot. Raw source/audio copies remain inside source, Worker-transfer, persistence, and explicit `readAsset`/export boundaries.
 
