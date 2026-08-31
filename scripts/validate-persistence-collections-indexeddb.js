@@ -50,6 +50,12 @@ await createVersionThreeStaleDatabase(staleName, legacyPackage, legacyPackageHas
 const migrated = createIndexedDbPersistenceAdapter({ indexedDB, databaseName: staleName });
 const stalePackages = await migrated.list();
 assert.equal(stalePackages.length, 2, "v4 migration must retain legacy package records");
+const migratedRaw = await inspectVersionFourDatabase(staleName);
+assert.equal(migratedRaw.packages.length, 2, "v4 migration must retain every legacy package row");
+assert.ok(migratedRaw.packages.every((row) => row.flowCellOrientation === "beatsaber_bottom_left_legacy"), "v4 migration must mark every legacy package stale internally");
+assert.equal(migratedRaw.collections[0].flowCellOrientation, "beatsaber_bottom_left_legacy", "v4 migration must mark the legacy collection stale internally");
+assert.equal(migratedRaw.assets.length, 1, "v4 migration must retain shared asset rows");
+assert.deepEqual(migratedRaw.assets[0].bytes, bytes, "v4 migration must retain shared asset bytes exactly");
 assert.deepEqual(Object.keys(stalePackages[0]), ["key", "packageId", "packageHash", "songName", "difficulty", "createdAtMs", "assetCount", "sourceCacheCount"], "public package summary keys must remain exact");
 const staleCollections = await migrated.listCollections();
 assert.equal(staleCollections.length, 2, "v4 migration must retain the authored collection and ungrouped management entry");
@@ -63,6 +69,7 @@ const service = createAeroWebContentAuthoringService({ persistence: migrated });
 const legacyExport = await service.exportPackage("inverted-flow");
 assert.ok(legacyExport.byteLength > 0, "stale package export must remain available for recovery");
 await assert.rejects(() => service.loadPackage("inverted-flow"), hasCode("flow_orientation_reimport_required"));
+await assert.rejects(() => service.readAsset("inverted-flow", "media/audio/song.ogg"), hasCode("flow_orientation_reimport_required"), "stale media/play reads must fail with the authoritative orientation error");
 service.destroy();
 assert.equal(await migrated.delete("stale-delete"), true, "stale ungrouped records must remain deletable");
 
