@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { indexedDB } from "fake-indexeddb";
-import { createIndexedDbPersistenceAdapter } from "../src/index.js";
+import { canonicalJson, createAeroWebContentAuthoringService, createIndexedDbPersistenceAdapter, prefixedSha256 } from "../src/index.js";
 
 const name = `collections-v3-${Date.now()}-${Math.random()}`;
 const hash = `sha256:${"3".repeat(64)}`;
@@ -44,14 +44,47 @@ adapter.destroy();
 await deleteDatabase(name);
 
 const staleName = `collections-v3-stale-${Date.now()}-${Math.random()}`;
-await createVersionThreeStaleDatabase(staleName);
+const legacyPackage = { packageId: "package-inverted-flow", songName: "Legacy ZIP Song", source: { difficulty: "Easy" }, legacyPayload: "retained" };
+const legacyPackageHash = await prefixedSha256(canonicalJson(legacyPackage));
+await createVersionThreeStaleDatabase(staleName, legacyPackage, legacyPackageHash);
 const migrated = createIndexedDbPersistenceAdapter({ indexedDB, databaseName: staleName });
-assert.equal((await migrated.list()).length, 0, "v4 migration must invalidate packages authored with the inverted Flow converter");
-assert.equal((await migrated.listCollections()).length, 0, "v4 migration must invalidate stale downloaded collections");
+const stalePackages = await migrated.list();
+assert.equal(stalePackages.length, 2, "v4 migration must retain legacy package records");
+assert.deepEqual(Object.keys(stalePackages[0]), ["key", "packageId", "packageHash", "songName", "difficulty", "createdAtMs", "assetCount", "sourceCacheCount"], "public package summary keys must remain exact");
+const staleCollections = await migrated.listCollections();
+assert.equal(staleCollections.length, 2, "v4 migration must retain the authored collection and ungrouped management entry");
+assert.deepEqual(Object.keys(staleCollections.find((item) => item.collectionId === "inverted-collection") ?? {}), ["collectionId", "songName", "createdAtMs", "packages"], "public collection summary keys must remain exact");
+await assert.rejects(() => migrated.get("inverted-flow"), hasCode("flow_orientation_reimport_required"));
+const retained = await migrated.getForExport("inverted-flow");
+assert.deepEqual(retained?.sourceCache[0].bytes, new Uint8Array([6, 2, 6]), "local-ZIP source cache bytes must survive migration");
+assert.deepEqual(retained?.assets.map((asset) => [...asset.bytes]), [[7, 7], [...bytes]], "inline and shared downloaded assets must survive migration");
+assert.equal((await migrated.getCollection("inverted-collection"))?.packageKeys[0], "inverted-flow", "legacy collection membership must remain manageable");
+const service = createAeroWebContentAuthoringService({ persistence: migrated });
+const legacyExport = await service.exportPackage("inverted-flow");
+assert.ok(legacyExport.byteLength > 0, "stale package export must remain available for recovery");
+await assert.rejects(() => service.loadPackage("inverted-flow"), hasCode("flow_orientation_reimport_required"));
+service.destroy();
+assert.equal(await migrated.delete("stale-delete"), true, "stale ungrouped records must remain deletable");
+
+await migrated.put({ ...legacyRecord("inverted-flow"), package: legacyPackage, packageHash: legacyPackageHash });
+assert.equal((await migrated.get("inverted-flow"))?.package.legacyPayload, "retained", "corrected put with the stable package key must replace stale state");
+const replacementHash = `sha256:${"4".repeat(64)}`;
+const replacementBytes = new Uint8Array([4, 2]);
+await migrated.putCollection(batch("inverted-collection", [record("inverted-flow", "Easy", replacementHash)], replacementHash, replacementBytes));
+assert.deepEqual((await migrated.get("inverted-flow"))?.assets[0].bytes, replacementBytes, "corrected putCollection with stable keys must load successfully");
+assert.equal((await migrated.getCollection("inverted-collection"))?.flowCellOrientation, "aerobeat_top_left_v1", "replacement collection must be marked current internally");
+const raw = await inspectVersionFourDatabase(staleName);
+assert.equal(raw.packages.length, 1);
+assert.equal(raw.packages[0].flowCellOrientation, "aerobeat_top_left_v1");
+assert.equal(raw.collections[0].flowCellOrientation, "aerobeat_top_left_v1");
+assert.equal(raw.assets.length, 1, "replacement GC must retain only the currently referenced asset");
+assert.deepEqual(raw.assets[0].bytes, replacementBytes);
+assert.equal(await migrated.deleteCollection("inverted-collection"), true);
+assert.equal((await inspectVersionFourDatabase(staleName)).assets.length, 0, "final deletion must safely collect replacement assets");
 assert.equal((await migrated.estimate()).schemaVersion, 4);
 migrated.destroy();
 await deleteDatabase(staleName);
-console.log("IndexedDB collection persistence and v3 stale Flow package invalidation validation passed.");
+console.log("IndexedDB collection persistence and non-destructive v3 stale Flow orientation boundary validation passed.");
 
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} assetBytes */
 function batch(collectionId, records, contentHash, assetBytes) { return { collection: { collectionId, songName: "Song", sourceProvider: "synthetic", sourceId: "song", sourceVersionHash: "version", converterProfileId: "profile", converterProfileHash: "profile-hash", modifierIds: [], packageKeys: records.map((item) => item.key), packages: records.map((item) => ({ packageKey: item.key, packageId: /** @type {string} */ (item.package.packageId), difficultyId: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty), difficultyLabel: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty) })), createdAtMs: 1, schemaVersion: 3, writeToken: "batch" }, packages: records, assets: [{ contentHash, bytes: assetBytes }] }; }
@@ -61,7 +94,9 @@ function record(key, difficulty, contentHash) { return { key, package: { package
 function legacyRecord(key) { return { key, package: { packageId: `package-${key}`, songName: "Legacy", source: { difficulty: "Hard" } }, packageHash: `sha256:${"b".repeat(64)}`, assets: [{ path: "audio.ogg", bytes: new Uint8Array([9]) }], sourceCache: [], createdAtMs: 1, schemaVersion: 2, writeToken: "legacy" }; }
 /** @param {string} code */
 function hasCode(code) { return (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === code); }
+/** @param {string} databaseName @param {Record<string, unknown>} packageValue @param {string} packageHash */
+function createVersionThreeStaleDatabase(databaseName, packageValue, packageHash) { return new Promise((resolve, reject) => { const request = indexedDB.open(databaseName, 3); request.onupgradeneeded = () => { const database = request.result; const packages = database.createObjectStore("packages", { keyPath: "key" }); const assets = database.createObjectStore("assets", { keyPath: "contentHash" }); const collections = database.createObjectStore("collections", { keyPath: "collectionId" }); database.createObjectStore("meta", { keyPath: "key" }); packages.put({ ...record("inverted-flow", "Easy", hash), package: packageValue, packageHash, assets: [{ path: "cover.bin", bytes: new Uint8Array([7, 7]) }], sourceCache: [{ path: "info.dat", bytes: new Uint8Array([6, 2, 6]) }] }); packages.put(legacyRecord("stale-delete")); assets.put({ contentHash: hash, bytes, byteLength: bytes.byteLength }); collections.put(batch("inverted-collection", [record("inverted-flow", "Easy", hash)], hash, bytes).collection); }; request.onerror = () => reject(request.error); request.onsuccess = () => { request.result.close(); resolve(undefined); }; }); }
 /** @param {string} databaseName */
-function createVersionThreeStaleDatabase(databaseName) { return new Promise((resolve, reject) => { const request = indexedDB.open(databaseName, 3); request.onupgradeneeded = () => { const database = request.result; const packages = database.createObjectStore("packages", { keyPath: "key" }); const assets = database.createObjectStore("assets", { keyPath: "contentHash" }); const collections = database.createObjectStore("collections", { keyPath: "collectionId" }); database.createObjectStore("meta", { keyPath: "key" }); packages.put(legacyRecord("inverted-flow")); assets.put({ contentHash: hash, bytes, byteLength: bytes.byteLength }); collections.put(batch("inverted-collection", [record("inverted-flow", "Easy", hash)], hash, bytes).collection); }; request.onerror = () => reject(request.error); request.onsuccess = () => { request.result.close(); resolve(undefined); }; }); }
+function inspectVersionFourDatabase(databaseName) { return new Promise((resolve, reject) => { const request = indexedDB.open(databaseName, 4); request.onerror = () => reject(request.error); request.onsuccess = () => { const database = request.result; const transaction = database.transaction(["packages", "assets", "collections"], "readonly"); const packageRequest = transaction.objectStore("packages").getAll(); const assetRequest = transaction.objectStore("assets").getAll(); const collectionRequest = transaction.objectStore("collections").getAll(); transaction.onerror = () => reject(transaction.error); transaction.oncomplete = () => { const result = { packages: packageRequest.result, assets: assetRequest.result, collections: collectionRequest.result }; database.close(); resolve(result); }; }; }); }
 /** @param {string} databaseName */
 function deleteDatabase(databaseName) { return new Promise((resolve, reject) => { const request = indexedDB.deleteDatabase(databaseName); request.onsuccess = () => resolve(undefined); request.onerror = () => reject(request.error); request.onblocked = () => reject(new Error("database delete blocked")); }); }

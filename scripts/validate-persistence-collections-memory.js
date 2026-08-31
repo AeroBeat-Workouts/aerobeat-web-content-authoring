@@ -16,6 +16,7 @@ assert.deepEqual(listed[0].packages.map((entry) => entry.difficultyLabel), ["Eas
 assert.equal("sourceVersionHash" in listed[0], false);
 assert.equal("packageHash" in listed[0].packages[0], false);
 assert.deepEqual((await adapter.get("easy"))?.assets[0].bytes, audio);
+assert.equal((await adapter.get("easy"))?.flowCellOrientation, "aerobeat_top_left_v1", "memory writes must be marked current internally");
 assert.deepEqual((await adapter.get("expert"))?.assets[0].bytes, audio);
 
 await adapter.putCollection(batch("collection-b", [record("hard", "Hard", hash)], hash, audio));
