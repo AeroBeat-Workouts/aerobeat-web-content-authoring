@@ -3,7 +3,7 @@
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord } from "./canonical.js";
 
 export const authoringDatabaseName = "aerobeat-web-content-authoring";
-export const authoringDatabaseVersion = 3;
+export const authoringDatabaseVersion = 4;
 export const authoringPersistenceNamespace = "aerobeat.authored-packages.v2";
 
 /** @typedef {{key: string, package: Record<string, unknown>, packageHash: string, assets: readonly {path: string, bytes: Uint8Array}[], sourceCache: readonly {path: string, bytes: Uint8Array}[], createdAtMs: number, schemaVersion: number, writeToken: string, assetRefs?: readonly {path: string, contentHash: string}[]}} StoredPackageRecord */
@@ -86,10 +86,13 @@ export function createIndexedDbPersistenceAdapter(options = {}) {
         if (!database.objectStoreNames.contains("collections")) database.createObjectStore("collections", { keyPath: "collectionId" });
         if (!database.objectStoreNames.contains("meta")) database.createObjectStore("meta", { keyPath: "key" });
         if (request.transaction) {
-          request.transaction.objectStore("meta").put({ key: "schema", version: authoringDatabaseVersion });
-          if (event.oldVersion > 0 && event.oldVersion < 2) {
-            const cursorRequest = request.transaction.objectStore("packages").openCursor();
-            cursorRequest.onsuccess = () => { const cursor = cursorRequest.result; if (!cursor) return; const value = cursor.value; cursor.update({ ...value, sourceCache: Array.isArray(value.sourceCache) ? value.sourceCache : [], writeToken: typeof value.writeToken === "string" ? value.writeToken : "", schemaVersion: authoringDatabaseVersion }); cursor.continue(); };
+          const transaction = request.transaction;
+          transaction.objectStore("meta").put({ key: "schema", version: authoringDatabaseVersion });
+          if (event.oldVersion > 0 && event.oldVersion < authoringDatabaseVersion) {
+            transaction.objectStore("packages").clear();
+            transaction.objectStore("assets").clear();
+            transaction.objectStore("collections").clear();
+            transaction.objectStore("meta").put({ key: "flow-orientation-invalidation", invalidatedBeforeVersion: authoringDatabaseVersion });
           }
         }
       };

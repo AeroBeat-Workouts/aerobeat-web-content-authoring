@@ -6,6 +6,8 @@ import { isPlainRecord } from "./canonical.js";
 
 /**
  * Parse and narrow one Beat Saber Standard difficulty document.
+ * Normalized x/y and cell values retain Beat Saber's bottom-left source convention;
+ * canonical top-left AeroBeat cells are derived exactly once by target emitters.
  *
  * @param {Uint8Array | string} input
  * @param {BeatMapFormat} format

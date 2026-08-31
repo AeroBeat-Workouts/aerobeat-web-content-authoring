@@ -27,7 +27,7 @@ The package does not call BeatSaver APIs, inspect ZIP structures, depend on prov
 
 `aerobeat-content-core` remains the durable authored-content authority. Godot authoring commit `59c93de` and content-core commit `476da22` are the final audited algorithm/contract references; browser authoring is an independent implementation.
 
-The browser locks the canonical contract, recipes, rulesets, event IDs, lineage, target grids, timing, reach, spacing optimizer, guard relocation, obstacle checkpoints, modifiers, and conversion traces. JavaScript loses Godot's integer-versus-float Variant distinction, so ordinary sorted JavaScript JSON cannot truthfully reproduce every Godot SHA-256. The package therefore:
+The browser locks the canonical contract, recipes, rulesets, event IDs, lineage, target grids, timing, reach, spacing optimizer, guard relocation, obstacle checkpoints, modifiers, and conversion traces. Normalized Beat Saber `x`, `y`, and `cell` values deliberately remain bottom-left source coordinates. Flow emission converts every note, bomb, arc head/tail, burst/chain head/tail, and obstacle-covered cell exactly once into AeroBeat's top-left row-major cells; Boxing continues to use its existing explicit top-left helpers and is not flipped twice. JavaScript loses Godot's integer-versus-float Variant distinction, so ordinary sorted JavaScript JSON cannot truthfully reproduce every Godot SHA-256. The package therefore:
 
 - preserves and validates browser-local deterministic package/source/content hashes;
 - never labels those hashes as Godot hashes;
@@ -83,7 +83,7 @@ The protocol is version 1 and uses an exact, bounded, job-bound structured-clone
 
 ## Persistence and Export
 
-IndexedDB database `aerobeat-web-content-authoring` is schema version 3 with additive `packages`, `assets`, `collections`, and `meta` stores plus legacy record migration. Existing inline package records and the `aerobeat.authored-packages.v2` handle namespace remain compatible. Both adapters provide atomic `putCollection`, `listCollections`, `getCollection`, and `deleteCollection` operations: packages may reference content-addressed shared assets, reads resolve self-contained package assets, ungrouped legacy packages appear as deterministic singleton collections, quota/cancellation fail before commit, and scan-based garbage collection retains assets while any package references them. Optional source-cache entries remain package-local and disabled unless requested.
+IndexedDB database `aerobeat-web-content-authoring` is schema version 4 with `packages`, `assets`, `collections`, and `meta` stores. Opening a version 1–3 database atomically clears authored packages, collections, and shared assets because those records predate the corrected Flow row convention and cannot be distinguished truthfully from inverted output; users must reimport downloaded songs. The `aerobeat.authored-packages.v2` handle namespace remains unchanged, so an assembly holding an invalidated handle must treat `package_not_found` as stale selection, clear it, refresh the library, and require reimport rather than silently retaining or relabeling it. This selected-handle recovery is assembly-owned; this package tests the IndexedDB invalidation boundary it owns. Both adapters provide atomic `putCollection`, `listCollections`, `getCollection`, and `deleteCollection` operations: packages may reference content-addressed shared assets, reads resolve self-contained package assets, ungrouped current packages appear as deterministic singleton collections, quota/cancellation fail before commit, and scan-based garbage collection retains assets while any package references them. Optional source-cache entries remain package-local and disabled unless requested.
 
 Exports use deterministic `AEROPKG1` framing: magic, bounded canonical metadata length, canonical package/asset table JSON, then normalized unique assets in code-point lexicographic path order. Inspection requires contiguous bounded offsets, exact total length, verified package/asset SHA-256 hashes, and no trailing bytes. Export contains no creation timestamp. IndexedDB deletion and stale-job cleanup use single read/write transactions with write-token protection; quota errors fail with `quota_exceeded`.
 
@@ -99,7 +99,8 @@ npm run test:browser
 Coverage includes:
 
 - strict JavaScript ESM/JSDoc and public import boundaries;
-- v2/v3/v4 normalization and Flow preservation;
+- v2/v3/v4 bottom-left source normalization and exactly-once top-left Flow emission for notes, bombs, arcs, v3/v4 bursts/chains, and supported obstacle coverage;
+- exact sanitized `3C9D` Standard Easy orientation evidence, including beat `21` `(x=3,y=0)` → canonical cell `11`;
 - sanitized Godot semantic golden parity and deterministic reruns;
 - Worker cancellation and no-partial-persistence behavior;
 - memory and IndexedDB list/load/delete/quota paths;

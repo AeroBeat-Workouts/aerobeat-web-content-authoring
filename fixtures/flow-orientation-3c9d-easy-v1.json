@@ -1,0 +1,28 @@
+{
+  "schema": "aerobeat/flow_orientation_evidence",
+  "version": 1,
+  "fixtureId": "flow-orientation-3c9d-easy-v1",
+  "source": {
+    "provider": "beatsaver",
+    "mapId": "3C9D",
+    "versionHash": "5662f64a12c76a3dd11a5f6ee22611608cd06760",
+    "characteristic": "Standard",
+    "difficulty": "Easy",
+    "difficultyPath": "Easy.dat",
+    "coordinateConvention": "beat_saber_bottom_left_row_major"
+  },
+  "notes": [
+    { "sourceIndex": 0, "beat": 21, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 1, "canonicalCell": 11 },
+    { "sourceIndex": 1, "beat": 25, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 1, "canonicalCell": 8 },
+    { "sourceIndex": 2, "beat": 27, "x": 2, "y": 0, "cell": 2, "hand": "right", "direction": 1, "canonicalCell": 10 },
+    { "sourceIndex": 3, "beat": 28.5, "x": 1, "y": 0, "cell": 1, "hand": "left", "direction": 1, "canonicalCell": 9 },
+    { "sourceIndex": 4, "beat": 33, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 3, "canonicalCell": 11 },
+    { "sourceIndex": 5, "beat": 37, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 2, "canonicalCell": 8 },
+    { "sourceIndex": 6, "beat": 39, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 1, "canonicalCell": 11 },
+    { "sourceIndex": 7, "beat": 41, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 1, "canonicalCell": 8 },
+    { "sourceIndex": 8, "beat": 45, "x": 2, "y": 0, "cell": 2, "hand": "right", "direction": 1, "canonicalCell": 10 },
+    { "sourceIndex": 9, "beat": 49, "x": 1, "y": 0, "cell": 1, "hand": "left", "direction": 1, "canonicalCell": 9 },
+    { "sourceIndex": 10, "beat": 53, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 3, "canonicalCell": 11 },
+    { "sourceIndex": 11, "beat": 55, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 2, "canonicalCell": 8 }
+  ]
+}
