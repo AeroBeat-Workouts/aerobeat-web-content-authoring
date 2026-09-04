@@ -19,6 +19,7 @@ const cases = [
     versionHash: "431ffaa53a1e45ffab6c81a895e456f6aad1e038",
     difficulty: "Expert",
     environment: "AEROBEAT_BEATSAVER_4858_ZIP",
+    expectedRejection: "obstacle_duration_invalid",
     paths: [
       "/home/derrick/.dsh/projects/aerobeat/aerobeat-vendor-beatsaver/.testbed/.artifacts/4858/431ffaa53a1e45ffab6c81a895e456f6aad1e038/4858-431ffaa53a1e.zip",
       "/home/derrick/.dsh/projects/aerobeat/aerobeat-web-vendor-beatsaver/.testbed/.artifacts/4858/431ffaa53a1e45ffab6c81a895e456f6aad1e038/4858-431ffaa53a1e.zip"
@@ -29,6 +30,7 @@ const cases = [
     versionHash: "2549825187cfdf7fb2352e33a614ff3ea6d3317d",
     difficulty: "Hard",
     environment: "AEROBEAT_BEATSAVER_3D44B_ZIP",
+    expectedRejection: "obstacle_type_unsupported",
     paths: [
       "/home/derrick/.dsh/projects/aerobeat/aerobeat-vendor-beatsaver/.testbed/.artifacts/3d44b/2549825187cfdf7fb2352e33a614ff3ea6d3317d/3d44b-2549825187cf.zip",
       "/home/derrick/.dsh/projects/aerobeat/aerobeat-web-vendor-beatsaver/.testbed/.artifacts/3d44b/2549825187cfdf7fb2352e33a614ff3ea6d3317d/3d44b-2549825187cf.zip"
@@ -59,6 +61,13 @@ for (const fixture of cases) {
     expectedAudioContentHash,
     expectedDifficultyContentHashes: { [selected.path]: expectedDifficultyContentHash }
   };
+  if (fixture.expectedRejection) {
+    await assert.rejects(() => firstService.convertAndPersist({ providerId: "beatsaver", sourceHash: fixture.versionHash, source }, request), (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === fixture.expectedRejection));
+    assert.equal((await firstService.listPackages()).length, 0, `${fixture.mapId} malformed obstacle rejection must be atomic`);
+    firstService.destroy();
+    console.log(`${fixture.mapId} ${fixture.difficulty}: atomically rejected ${fixture.expectedRejection}`);
+    continue;
+  }
   const first = await firstService.convertAndPersist({ providerId: "beatsaver", sourceHash: fixture.versionHash, source }, request);
   const firstPackage = /** @type {{charts: {mode: string, beats: unknown[]}[],song:{audio:{filePath:string,contentHash:string}}}} */ (first.package);
   assert.equal(firstPackage.charts.length, 5);
@@ -97,9 +106,9 @@ for (const fixture of cases) {
   console.log(`${fixture.mapId} ${fixture.difficulty}: package ${firstHash}, audio ${expectedAudioContentHash}, export ${await prefixedSha256(firstExport.bytes)}`);
 }
 
-console.log("Real BeatSaver 4858 and 3D44B audio-backed persistence/export validation passed; archives and media remain local and uncommitted.");
+console.log("Real BeatSaver 4858/3D44B malformed-obstacle atomic rejection validation passed; archives and media remain local and uncommitted.");
 
-/** @param {{mapId:string,environment:string,paths:string[]}} fixture */
+/** @param {{mapId:string,environment:string,paths:string[],expectedRejection?:string}} fixture */
 async function resolveFixturePath(fixture) {
   const candidates = [process.env[fixture.environment], ...fixture.paths].filter((value) => typeof value === "string" && value.length > 0);
   for (const candidate of candidates) {

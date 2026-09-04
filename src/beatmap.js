@@ -44,18 +44,7 @@ function normalizeV2(map) {
       bombNotes.push({ start: number(entry._time ?? entry.b, 0), x, y, cell: cellFromXY(x, y) });
     }
   }
-  const obstacles = array(map._obstacles ?? map.obstacles).flatMap((entry) => {
-    if (!isPlainRecord(entry)) return [];
-    const legacyType = integer(entry._type ?? entry.type, 0);
-    return [{
-      start: number(entry._time ?? entry.b, 0),
-      duration: number(entry._duration ?? entry.d, 0),
-      x: integer(entry._lineIndex ?? entry.x, 0),
-      y: legacyType === 1 ? 2 : 0,
-      width: Math.max(integer(entry._width ?? entry.w, 1), 1),
-      height: legacyType === 1 ? 1 : 3
-    }];
-  });
+  const obstacles = array(map._obstacles ?? map.obstacles).map((entry, sourceIndex) => normalizeV2Obstacle(entry, sourceIndex));
   const sliders = array(map._sliders ?? map.sliders).flatMap((entry) => isPlainRecord(entry) ? [{
     start: number(entry._headTime ?? entry.b, 0),
     end: number(entry._tailTime ?? entry.tb ?? entry._headTime ?? entry.b, 0),
@@ -79,7 +68,7 @@ function normalizeV3(map) {
     return [noteRecord(sourceIndex, number(entry.b, 0), x, y, color, integer(entry.d, 8), number(entry.a, 0), Object.hasOwn(entry, "a"))];
   });
   const bombNotes = array(map.bombNotes).flatMap((entry) => isPlainRecord(entry) ? [{ start: number(entry.b, 0), x: integer(entry.x, 0), y: integer(entry.y, 0), cell: cellFromXY(integer(entry.x, 0), integer(entry.y, 0)) }] : []);
-  const obstacles = array(map.obstacles).flatMap((entry) => isPlainRecord(entry) ? [{ start: number(entry.b, 0), duration: number(entry.d, 0), x: integer(entry.x, 0), y: integer(entry.y, 0), width: integer(entry.w, 1), height: integer(entry.h, 1) }] : []);
+  const obstacles = array(map.obstacles).map((entry, sourceIndex) => normalizeInlineObstacle(entry, sourceIndex));
   const sliders = array(map.sliders).flatMap((entry) => isPlainRecord(entry) ? [{ start: number(entry.b, 0), end: number(entry.tb ?? entry.b, 0), cell: cellFromXY(integer(entry.x, 0), integer(entry.y, 0)), tailCell: cellFromXY(integer(entry.tx, 0), integer(entry.ty, 0)), hand: handFromColor(integer(entry.c, 0)), direction: integer(entry.d, 8), tailDirection: integer(entry.tc ?? entry.d, 8), headCurveMultiplier: number(entry.mu, 1), tailCurveMultiplier: number(entry.tmu, 1), midAnchorMode: integer(entry.m, 0) }] : []);
   const burstSliders = array(map.burstSliders).flatMap((entry) => {
     if (!isPlainRecord(entry)) return [];
@@ -105,12 +94,8 @@ function normalizeV4(map) {
     const metadata = metadataAt(bombData, integer(entry.i, -1)); const x = intField(entry, metadata, "x", 0); const y = intField(entry, metadata, "y", 0);
     return [{ start: number(entry.b, 0), x, y, cell: cellFromXY(x, y) }];
   });
-  const obstacleData = records(map.obstaclesData);
-  const obstacles = array(map.obstacles).flatMap((entry) => {
-    if (!isPlainRecord(entry)) return [];
-    const metadata = metadataAt(obstacleData, integer(entry.i, -1));
-    return [{ start: number(entry.b, 0), duration: floatField(entry, metadata, "d", 0), x: intField(entry, metadata, "x", 0), y: intField(entry, metadata, "y", 0), width: intField(entry, metadata, "w", 1), height: intField(entry, metadata, "h", 1) }];
-  });
+  const obstacleData = array(map.obstaclesData);
+  const obstacles = array(map.obstacles).map((entry, sourceIndex) => normalizeIndexedObstacle(entry, obstacleData, sourceIndex));
   const arcData = records(map.arcsData);
   const sliders = array(map.arcs).flatMap((entry) => {
     if (!isPlainRecord(entry)) return [];
@@ -126,6 +111,87 @@ function normalizeV4(map) {
     return [result];
   });
   return { colorNotes, bombNotes, obstacles, sliders, burstSliders };
+}
+
+/** @param {unknown} value @param {number} sourceIndex */
+function normalizeV2Obstacle(value, sourceIndex) {
+  if (!isPlainRecord(value)) throw new AuthoringParseError("obstacle_shape_invalid", "v2 obstacle must be a plain record");
+  const type = requiredInteger(value, ["_type", "type"], "obstacle_type_unsupported");
+  if (type !== 0 && type !== 1) throw new AuthoringParseError("obstacle_type_unsupported", "v2 obstacle type must be 0 or 1");
+  return obstacleRecord(
+    requiredFinite(value, ["_time", "b"], "obstacle_time_invalid"),
+    requiredFinite(value, ["_duration", "d"], "obstacle_duration_invalid"),
+    requiredInteger(value, ["_lineIndex", "x"], "obstacle_geometry_invalid"),
+    type === 1 ? 2 : 0,
+    requiredInteger(value, ["_width", "w"], "obstacle_geometry_invalid"),
+    type === 1 ? 3 : 5,
+    sourceIndex
+  );
+}
+
+/** @param {unknown} value @param {number} sourceIndex */
+function normalizeInlineObstacle(value, sourceIndex) {
+  if (!isPlainRecord(value)) throw new AuthoringParseError("obstacle_shape_invalid", "v3 obstacle must be a plain record");
+  rejectObstacleRotation(value);
+  return obstacleRecord(
+    requiredFinite(value, ["b"], "obstacle_time_invalid"),
+    requiredFinite(value, ["d"], "obstacle_duration_invalid"),
+    requiredInteger(value, ["x"], "obstacle_geometry_invalid"),
+    requiredInteger(value, ["y"], "obstacle_geometry_invalid"),
+    requiredInteger(value, ["w"], "obstacle_geometry_invalid"),
+    requiredInteger(value, ["h"], "obstacle_geometry_invalid"),
+    sourceIndex
+  );
+}
+
+/** @param {unknown} value @param {unknown[]} obstacleData @param {number} sourceIndex */
+function normalizeIndexedObstacle(value, obstacleData, sourceIndex) {
+  if (!isPlainRecord(value)) throw new AuthoringParseError("obstacle_shape_invalid", "v4 obstacle must be a plain record");
+  const index = requiredInteger(value, ["i"], "obstacle_index_invalid");
+  if (index < 0 || index >= obstacleData.length || !isPlainRecord(obstacleData[index])) throw new AuthoringParseError("obstacle_index_invalid", "v4 obstacle metadata index is missing or out of range");
+  for (const field of ["d", "x", "y", "w", "h"]) if (Object.hasOwn(value, field)) throw new AuthoringParseError("obstacle_geometry_conflict", "v4 obstacle geometry must come only from obstaclesData");
+  const metadata = /** @type {Record<string, unknown>} */ (obstacleData[index]);
+  rejectObstacleRotation(value);
+  rejectObstacleRotation(metadata);
+  return obstacleRecord(
+    requiredFinite(value, ["b"], "obstacle_time_invalid"),
+    requiredFinite(metadata, ["d"], "obstacle_duration_invalid"),
+    requiredInteger(metadata, ["x"], "obstacle_geometry_invalid"),
+    requiredInteger(metadata, ["y"], "obstacle_geometry_invalid"),
+    requiredInteger(metadata, ["w"], "obstacle_geometry_invalid"),
+    requiredInteger(metadata, ["h"], "obstacle_geometry_invalid"),
+    sourceIndex
+  );
+}
+
+/** @param {Record<string, unknown>} value */
+function rejectObstacleRotation(value) {
+  if (Object.hasOwn(value, "r") && value.r !== 0) throw new AuthoringParseError("obstacle_rotation_unsupported", "Rotated Flow obstacle geometry is unsupported");
+}
+
+/** @param {number} start @param {number} duration @param {number} x @param {number} y @param {number} width @param {number} height @param {number} sourceIndex */
+function obstacleRecord(start, duration, x, y, width, height, sourceIndex) {
+  if (start < 0) throw new AuthoringParseError("obstacle_time_invalid", "Obstacle start must be non-negative");
+  if (!(duration > 0) || !Number.isFinite(start + duration)) throw new AuthoringParseError("obstacle_duration_invalid", "Obstacle duration must be finite and positive");
+  if (x < 0 || x > 3 || y < 0 || y > 2 || width < 1 || width > 4 || height < 1 || height > 5 || x + width > 4 || y + height > 5) throw new AuthoringParseError("obstacle_geometry_invalid", "Obstacle geometry is outside Beat Saber lane/layer bounds");
+  return { start, duration, x, y, width, height, sourceIndex };
+}
+
+/** @param {Record<string, unknown>} value @param {string[]} keys @param {string} code */
+function requiredFinite(value, keys, code) {
+  for (const key of keys) if (Object.hasOwn(value, key)) {
+    const candidate = value[key];
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+    break;
+  }
+  throw new AuthoringParseError(code, `Required finite obstacle field ${keys[0]} is invalid`);
+}
+
+/** @param {Record<string, unknown>} value @param {string[]} keys @param {string} code */
+function requiredInteger(value, keys, code) {
+  const candidate = requiredFinite(value, keys, code);
+  if (!Number.isInteger(candidate)) throw new AuthoringParseError(code, `Required integer obstacle field ${keys[0]} is invalid`);
+  return candidate;
 }
 
 /** @param {number} sourceIndex @param {number} start @param {number} x @param {number} y @param {number} color @param {number} direction @param {number} angleOffset @param {boolean} hasAngleOffset */

@@ -18,7 +18,7 @@ export function semanticParityProjection(packageValue) {
     packageVersion: packageValue.packageVersion,
     packageId: packageValue.packageId,
     songId: packageValue.songId,
-    source: isPlainRecord(packageValue.source) ? pick(packageValue.source, ["provider", "sourceId", "sourceVersionHash", "difficulty", "sourceDifficultyPath", "converterProfile"]) : null,
+    source: isPlainRecord(packageValue.source) ? pick(packageValue.source, ["provider", "sourceId", "sourceVersionHash", "difficulty", "sourceDifficultyPath", "sourceBeatmapVersion", "sourceDifficultyHash", "flowObstacleContract", "converterProfile"]) : null,
     song: isPlainRecord(packageValue.song) ? pick(packageValue.song,["schemaId","schemaVersion","recordVersion","songId","songName","durationSec","audio","timing"]) : null,
     sets: Array.isArray(packageValue.sets) ? packageValue.sets.map((set)=>isPlainRecord(set)?pick(set,["schemaId","schemaVersion","recordVersion","setId","setName","songId","chartId"]):null) : [],
     recipeDefinitions: Array.isArray(packageValue.recipeDefinitions) ? packageValue.recipeDefinitions.map(projectDefinition) : [],
@@ -28,7 +28,7 @@ export function semanticParityProjection(packageValue) {
       if (!isPlainRecord(chart)) return null;
       const prototype = isPlainRecord(chart.prototype) ? chart.prototype : null;
       return {
-        schemaId: chart.schemaId, schemaVersion: chart.schemaVersion, recordVersion: chart.recordVersion, chartId: chart.chartId, chartName: chart.chartName, mode: chart.mode, difficulty: chart.difficulty,
+        schemaId: chart.schemaId, schemaVersion: chart.schemaVersion, recordVersion: chart.recordVersion, chartId: chart.chartId, chartName: chart.chartName, mode: chart.mode, difficulty: chart.difficulty, ...(Object.hasOwn(chart,"rulesetId")?{rulesetId:chart.rulesetId}:{}),
         prototype: prototype ? pick(prototype, ["contractId", "recipeId", "recipeVersion", "rulesetId", "rulesetVersion", "modifiers", "converterProfile", "regenerationRequiredFor"]) : null,
         presentationSuggestion: Object.hasOwn(chart, "presentationSuggestion") ? chart.presentationSuggestion : null,
         beats: Array.isArray(chart.beats) ? chart.beats.map(projectBeat) : []
@@ -47,7 +47,7 @@ function pick(value,keys){const result={};for(const key of keys){const descripto
 /** @param {unknown} beat */
 function projectBeat(beat) {
   if (!isPlainRecord(beat)) return null;
-  return pick(beat, ["start", "end", "type", "eventId", "sourceEventIds", "hand", "placement", "direction", "angleOffset", "requiresDirection", "cells", "startPlacement", "endPlacement", "startDirection", "endDirection", "tailPlacement", "checkpointCount", "modifier", "spatialTarget", "guardTarget", "checkpoint", "blockedCells"]);
+  return pick(beat, ["start", "end", "type", "eventId", "sourceEventIds", "hand", "placement", "direction", "angleOffset", "requiresDirection", "geometry", "gridMask", "startPlacement", "endPlacement", "startDirection", "endDirection", "tailPlacement", "checkpointCount", "modifier", "spatialTarget", "guardTarget", "checkpoint", "blockedCells"]);
 }
 /** @param {unknown} packageValue */
 export async function semanticParityHash(packageValue) { return prefixedSha256(canonicalJson(semanticParityProjection(packageValue))); }

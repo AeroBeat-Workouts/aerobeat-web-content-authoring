@@ -25,7 +25,10 @@ for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
   assert.deepEqual(flow.beats.filter((beat) => beat.type === "note").map((beat) => beat.placement), [8, 4, 0], `${format} note y=0/1/2 must emit bottom/middle/top`);
   assert.deepEqual(flow.beats.filter((beat) => beat.type === "bomb").map((beat) => beat.placement), [9, 5, 1], `${format} bomb y=0/1/2 must emit bottom/middle/top`);
   const expectedObstacleCells = format === "v2" ? [[2, 6, 10], [2]] : [[10], [6], [2]];
-  assert.deepEqual(flow.beats.filter((beat) => beat.type === "obstacle").map((beat) => beat.cells), expectedObstacleCells, `${format} obstacle coverage must emit its supported source rows exactly once`);
+  const flowObstacles = flow.beats.filter((beat) => beat.type === "obstacle");
+  assert.deepEqual(flowObstacles.map((beat) => beat.gridMask), expectedObstacleCells, `${format} obstacle mask must derive bounded source rows exactly once`);
+  assert.equal(flowObstacles.every((beat) => Object.hasOwn(beat, "geometry") && !Object.hasOwn(beat, "cells")), true);
+  if (format === "v2") assert.deepEqual(flowObstacles.map((beat) => { const geometry=/** @type {Record<string,unknown>} */(beat.geometry);return [geometry.y, geometry.height]; }), [[0, 5], [2, 3]], "v2 type 0/1 retain distinct continuous geometry");
   const arc = flow.beats.find((beat) => beat.type === "arc");
   assert.deepEqual([arc?.startPlacement, arc?.endPlacement], [8, 0], `${format} arc head/tail must emit canonical cells exactly once`);
   assert.equal(typeof arc?.startNoteRef, "string", `${format} canonical arc placement must preserve raw-source note linking`);

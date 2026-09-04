@@ -8,17 +8,67 @@
   "songToken": "sanitized-golden",
   "sourceSummary": {
     "colorNotes": [
-      {"start": 1, "cell": 8, "hand": "left", "direction": 1, "sourceIndex": 0},
-      {"start": 2, "cell": 5, "hand": "right", "direction": 0, "sourceIndex": 1},
-      {"start": 3, "cell": 2, "hand": "left", "direction": 2, "sourceIndex": 2},
-      {"start": 4, "cell": 6, "hand": "left", "direction": 8, "sourceIndex": 3},
-      {"start": 4, "cell": 5, "hand": "right", "direction": 8, "sourceIndex": 4},
-      {"start": 5, "cell": 5, "hand": "left", "direction": 8, "sourceIndex": 5},
-      {"start": 6, "cell": 7, "hand": "right", "direction": 1, "sourceIndex": 6}
+      {
+        "start": 1,
+        "cell": 8,
+        "hand": "left",
+        "direction": 1,
+        "sourceIndex": 0
+      },
+      {
+        "start": 2,
+        "cell": 5,
+        "hand": "right",
+        "direction": 0,
+        "sourceIndex": 1
+      },
+      {
+        "start": 3,
+        "cell": 2,
+        "hand": "left",
+        "direction": 2,
+        "sourceIndex": 2
+      },
+      {
+        "start": 4,
+        "cell": 6,
+        "hand": "left",
+        "direction": 8,
+        "sourceIndex": 3
+      },
+      {
+        "start": 4,
+        "cell": 5,
+        "hand": "right",
+        "direction": 8,
+        "sourceIndex": 4
+      },
+      {
+        "start": 5,
+        "cell": 5,
+        "hand": "left",
+        "direction": 8,
+        "sourceIndex": 5
+      },
+      {
+        "start": 6,
+        "cell": 7,
+        "hand": "right",
+        "direction": 1,
+        "sourceIndex": 6
+      }
     ],
     "bombNotes": [],
     "obstacles": [
-      {"start": 6, "duration": 1, "x": 0, "y": 0, "width": 1, "height": 3, "sourceIndex": 0}
+      {
+        "start": 6,
+        "duration": 1,
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 3,
+        "sourceIndex": 0
+      }
     ],
     "sliders": [],
     "burstSliders": []
@@ -31,8 +81,24 @@
       "cut_family_source_height_v1|boxing_semantic_track_v1": "sha256:3fa176d58e9c4b973af5df5e02f68c6b7ee5d531368d60f40a7fa0a81436c1b5",
       "cut_family_source_height_v1|boxing_spatial_grid_v1": "sha256:4ea5852ac7748f3dc7767716fd866a0ce2398f37c553d90465280e75760674bb"
     },
-    "rowTypes": ["uppercut_left", "straight_right", "hook_left", "guard", "straight_left", "straight_right", "weave_right"],
-    "cutTypes": ["straight_left", "uppercut_right", "hook_left", "guard", "straight_left", "straight_right", "weave_right"],
+    "rowTypes": [
+      "uppercut_left",
+      "straight_right",
+      "hook_left",
+      "guard",
+      "straight_left",
+      "straight_right",
+      "weave_right"
+    ],
+    "cutTypes": [
+      "straight_left",
+      "uppercut_right",
+      "hook_left",
+      "guard",
+      "straight_left",
+      "straight_right",
+      "weave_right"
+    ],
     "rowEventIds": [
       "boxing-uppercut-left-902ad35edffe",
       "boxing-straight-right-1895353f05c0",
@@ -43,5 +109,5 @@
       "boxing-weave-right-23a93deff994"
     ]
   },
-  "webSemanticParityHash": "sha256:65959006d080d845d27cea47180b70b11ba6ae0749fb4f248ff84a3643736592"
+  "webSemanticParityHash": "sha256:ad04123bea6d5e84ad7ace10ad267e41b9569fb2db50f8a43251e614a9a40018"
 }

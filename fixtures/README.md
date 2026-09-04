@@ -6,4 +6,4 @@ This folder holds deterministic, provider-neutral browser content-authoring fixt
 
 `flow-orientation-3c9d-easy-v1.json` contains only sanitized scalar evidence from BeatSaver `3C9D`, version `5662f64a12c76a3dd11a5f6ee22611608cd06760`, Standard Easy. It records the first twelve note coordinates and canonical top-left AeroBeat cells, including beat `21` source `(x=3,y=0)` → cell `11`.
 
-Fixtures contain no provider response, ZIP archive, cover, audio, or community map bytes. Real `4858` and `3D44B` archives remain local `.testbed` inputs selected by documented environment overrides or fallback paths.
+`flow-obstacle-3c9d-hard-v1.dat` pins the exact offline raw Standard Hard difficulty bytes for provider version `5662f64a12c76a3dd11a5f6ee22611608cd06760`; its independent JSON oracle hard-codes byte/hash, BPM, source beat interval, millisecond interval, continuous geometry, bounded mask, and renderer dimensions. No ZIP, cover, audio, or provider response is committed. Real `4858` and `3D44B` archives remain local `.testbed` inputs selected by documented environment overrides or fallback paths.

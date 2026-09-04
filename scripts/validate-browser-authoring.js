@@ -37,6 +37,13 @@ const server = createServer((request, response) => {
     response.end(rewritten);
     return;
   }
+  if (pathname === "/src/converter.js" || pathname === "/src/validator.js") {
+    const source = readFileSync(path, "utf8");
+    const rewritten = source.replace('from "@aerobeat/web-contracts/flow-obstacle-contracts"', 'from "/node_modules/@aerobeat/web-contracts/src/flow-obstacle-contracts.js"');
+    if (rewritten === source) { response.writeHead(500).end("Declared Flow obstacle contract import was not found"); return; }
+    response.end(rewritten);
+    return;
+  }
   createReadStream(path).pipe(response);
 });
 await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "0.0.0.0", () => resolve(undefined)); });

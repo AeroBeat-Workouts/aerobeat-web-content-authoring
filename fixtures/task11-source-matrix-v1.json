@@ -2,106 +2,532 @@
   "schema": "aerobeat/task11_source_matrix",
   "version": 1,
   "fixtureId": "task11-source-matrix-v1",
-  "fixtureHash": "sha256:cad4f0a2173cdb9ee1825b7cc9704db8041b9e64318875e3dbd278ffc2b2f06d",
+  "fixtureHash": "sha256:64fbf421005e021e7ffa6ad88bcd23038f02f6686dc2c83ca38f84c5ead45d4a",
   "license": "Synthetic AeroBeat test data; no third-party map or media content.",
   "sourceToken": "task11-matrix",
   "difficulty": "Hard",
   "bpm": 120,
   "requestedModifierSets": [
     [],
-    ["crossed_guard"],
-    ["cross_body"],
-    ["any_punch"],
-    ["no_squats"],
-    ["no_weaves"],
-    ["any_punch", "cross_body", "crossed_guard", "no_squats", "no_weaves"]
+    [
+      "crossed_guard"
+    ],
+    [
+      "cross_body"
+    ],
+    [
+      "any_punch"
+    ],
+    [
+      "no_squats"
+    ],
+    [
+      "no_weaves"
+    ],
+    [
+      "any_punch",
+      "cross_body",
+      "crossed_guard",
+      "no_squats",
+      "no_weaves"
+    ]
   ],
   "converterProfiles": [
-    {"schema": "aerobeat/prototype_profile", "version": 1, "profileId": "aero.converter.canonical", "profileVersion": "1.0.0", "class": "converter_regeneration", "label": "Canonical Converter (Experimental)", "experimental": true, "settings": {"guardRelocationRadius": 1, "reachAllowanceSubcells": 0}, "contentHash": "a43b53a39c13c9e9efe59854aee0fa16efdcd3c6a29bc09f678d94b3fd8f0202"},
-    {"schema": "aerobeat/prototype_profile", "version": 1, "profileId": "aero.converter.prototype-reach", "profileVersion": "1.0.0", "class": "converter_regeneration", "label": "Prototype Reach Converter (Experimental)", "experimental": true, "settings": {"guardRelocationRadius": 2, "reachAllowanceSubcells": 1}, "contentHash": "e37f8b527ed5ce86738ce22007fc963f83bccd737893fb4728d3b83eaa044eea"}
+    {
+      "schema": "aerobeat/prototype_profile",
+      "version": 1,
+      "profileId": "aero.converter.canonical",
+      "profileVersion": "1.0.0",
+      "class": "converter_regeneration",
+      "label": "Canonical Converter (Experimental)",
+      "experimental": true,
+      "settings": {
+        "guardRelocationRadius": 1,
+        "reachAllowanceSubcells": 0
+      },
+      "contentHash": "a43b53a39c13c9e9efe59854aee0fa16efdcd3c6a29bc09f678d94b3fd8f0202"
+    },
+    {
+      "schema": "aerobeat/prototype_profile",
+      "version": 1,
+      "profileId": "aero.converter.prototype-reach",
+      "profileVersion": "1.0.0",
+      "class": "converter_regeneration",
+      "label": "Prototype Reach Converter (Experimental)",
+      "experimental": true,
+      "settings": {
+        "guardRelocationRadius": 2,
+        "reachAllowanceSubcells": 1
+      },
+      "contentHash": "e37f8b527ed5ce86738ce22007fc963f83bccd737893fb4728d3b83eaa044eea"
+    }
   ],
   "formats": {
     "v2": {
       "sourceBeatmapVersion": "2.6.0",
       "sourceVersionHash": "231c0accf1cddb318fa1150672d137340ffde90b",
-      "expectedSemanticHashes": {"aero.converter.canonical": ["sha256:cb3fe14bcc6d47796e699ab6d4d0559b487eb5cebc5e148fb99f519704fcd3f8", "sha256:cb3fe14bcc6d47796e699ab6d4d0559b487eb5cebc5e148fb99f519704fcd3f8", "sha256:67b823951322a1e5fc59d9a9f5ebc023447fde9c763d0053967fad4d824770d2", "sha256:45a33706cd77d0905a1ddd54c29b7fbe835558e94fc4b7a10840d488cf789859", "sha256:08bf9d0b81609f76c2c6b2b5a9603821c0a843e198cc7cfbe517857dd87293e3", "sha256:dcbf954db4b9698a4f240575771bb176845460ec9fc448f8172b0b8d857ee1d9", "sha256:5bd3e276692f4325aa3cecd7cb6c100b8269c4f39b4d1759c4a160aeb8b11133"], "aero.converter.prototype-reach": ["sha256:9947478343bdc1cb14759ab8b9dcca27ddc333b944ffded79cb7a985306a7742", "sha256:9947478343bdc1cb14759ab8b9dcca27ddc333b944ffded79cb7a985306a7742", "sha256:913ff4db9d82bc9d87d7cfa057db1289d898bbaa114a072b09a598eeaa9b78f4", "sha256:7a4d756574cf7271f588e85f33576a24cdc5b4a5d45f887058c316fd69655283", "sha256:17e55875156a12f7ca62867280e49393db9378e1c7ad23f3b9e825f004ca6e49", "sha256:7e31ba1e17ef0118bb489e429e961355aa1a22e4e16dc33d4ef14524cc2bafcc", "sha256:60522b01afd5c66ebcf094c2a1ad1cb028c4de44de63e18b9f706e1d700902a0"]},
+      "expectedSemanticHashes": {
+        "aero.converter.canonical": [
+          "sha256:2f49301157284dddd655bd7251c5e50f1a3b4e5ad73d3f48dfc407ea9c9d79a0",
+          "sha256:2f49301157284dddd655bd7251c5e50f1a3b4e5ad73d3f48dfc407ea9c9d79a0",
+          "sha256:420658cc4a8c5f0c6b99f06fdedbe5ab18bd7adc2b3294661ad7db361e71626f",
+          "sha256:de8fec04f845ca512ac579491641547f25d0b7ec594942488a42309087dbd143",
+          "sha256:99b7a4366da928c161f4f69eca988f7e453fef0a5b8bf417d6b3d24536a02a90",
+          "sha256:2f14f0316d9d524981b02c261d7f0bf838c3e6db68cadca6e74676bf0e5ec9aa",
+          "sha256:6e9b98165cf33fac647be0127978b2fafb8f0e26aba1728053cd37a72e60d439"
+        ],
+        "aero.converter.prototype-reach": [
+          "sha256:8390731f8f84660106d64a01a1758ff1a09ba4d416f97ef8a6b1b3ffd27898f8",
+          "sha256:8390731f8f84660106d64a01a1758ff1a09ba4d416f97ef8a6b1b3ffd27898f8",
+          "sha256:6ed4292ad5f51b0c8c780ebfe581bcf4290cef671ff44b2fb755afbce7b75431",
+          "sha256:c4ece97f8b7bab858e41b79795bd7b0d2838cbf96699d2999e842ec9a9a06fcd",
+          "sha256:b098f87f539f112a46f048184a4bc0e9c2aa0d9e7e72531b025646d6f0725d21",
+          "sha256:0bd28eda3b208c1d5d90a118355cf9c51dca969d41bd7bdc6e212c5a8888b84d",
+          "sha256:80976133af956e9e0acfe5335b152d19ed80275ae4f9feff9d933e314cb77b07"
+        ]
+      },
       "beatmap": {
         "_version": "2.6.0",
         "_notes": [
-          {"_time": 1, "_lineIndex": 1, "_lineLayer": 1, "_type": 0, "_cutDirection": 1},
-          {"_time": 2, "_lineIndex": 2, "_lineLayer": 1, "_type": 1, "_cutDirection": 1},
-          {"_time": 3, "_lineIndex": 1, "_lineLayer": 0, "_type": 0, "_cutDirection": 2},
-          {"_time": 4, "_lineIndex": 2, "_lineLayer": 0, "_type": 1, "_cutDirection": 3},
-          {"_time": 5, "_lineIndex": 1, "_lineLayer": 2, "_type": 0, "_cutDirection": 0},
-          {"_time": 6, "_lineIndex": 2, "_lineLayer": 2, "_type": 1, "_cutDirection": 0},
-          {"_time": 8, "_lineIndex": 1, "_lineLayer": 1, "_type": 0, "_cutDirection": 8},
-          {"_time": 8, "_lineIndex": 2, "_lineLayer": 1, "_type": 1, "_cutDirection": 8},
-          {"_time": 9, "_lineIndex": 2, "_lineLayer": 1, "_type": 0, "_cutDirection": 8},
-          {"_time": 9, "_lineIndex": 1, "_lineLayer": 1, "_type": 1, "_cutDirection": 8},
-          {"_time": 11, "_lineIndex": 3, "_lineLayer": 1, "_type": 3, "_cutDirection": 8}
+          {
+            "_time": 1,
+            "_lineIndex": 1,
+            "_lineLayer": 1,
+            "_type": 0,
+            "_cutDirection": 1
+          },
+          {
+            "_time": 2,
+            "_lineIndex": 2,
+            "_lineLayer": 1,
+            "_type": 1,
+            "_cutDirection": 1
+          },
+          {
+            "_time": 3,
+            "_lineIndex": 1,
+            "_lineLayer": 0,
+            "_type": 0,
+            "_cutDirection": 2
+          },
+          {
+            "_time": 4,
+            "_lineIndex": 2,
+            "_lineLayer": 0,
+            "_type": 1,
+            "_cutDirection": 3
+          },
+          {
+            "_time": 5,
+            "_lineIndex": 1,
+            "_lineLayer": 2,
+            "_type": 0,
+            "_cutDirection": 0
+          },
+          {
+            "_time": 6,
+            "_lineIndex": 2,
+            "_lineLayer": 2,
+            "_type": 1,
+            "_cutDirection": 0
+          },
+          {
+            "_time": 8,
+            "_lineIndex": 1,
+            "_lineLayer": 1,
+            "_type": 0,
+            "_cutDirection": 8
+          },
+          {
+            "_time": 8,
+            "_lineIndex": 2,
+            "_lineLayer": 1,
+            "_type": 1,
+            "_cutDirection": 8
+          },
+          {
+            "_time": 9,
+            "_lineIndex": 2,
+            "_lineLayer": 1,
+            "_type": 0,
+            "_cutDirection": 8
+          },
+          {
+            "_time": 9,
+            "_lineIndex": 1,
+            "_lineLayer": 1,
+            "_type": 1,
+            "_cutDirection": 8
+          },
+          {
+            "_time": 11,
+            "_lineIndex": 3,
+            "_lineLayer": 1,
+            "_type": 3,
+            "_cutDirection": 8
+          }
         ],
         "_obstacles": [
-          {"_time": 10, "_duration": 1, "_lineIndex": 0, "_type": 0, "_width": 2}
+          {
+            "_time": 10,
+            "_duration": 1,
+            "_lineIndex": 0,
+            "_type": 0,
+            "_width": 2
+          }
         ],
         "_sliders": [
-          {"_headTime": 1, "_tailTime": 3, "_headLineIndex": 1, "_headLineLayer": 1, "_tailLineIndex": 1, "_tailLineLayer": 0, "_colorType": 0, "_headCutDirection": 1, "_tailCutDirection": 2, "_headControlPointLengthMultiplier": 1.2, "_tailControlPointLengthMultiplier": 0.8, "_sliderMidAnchorMode": 1}
+          {
+            "_headTime": 1,
+            "_tailTime": 3,
+            "_headLineIndex": 1,
+            "_headLineLayer": 1,
+            "_tailLineIndex": 1,
+            "_tailLineLayer": 0,
+            "_colorType": 0,
+            "_headCutDirection": 1,
+            "_tailCutDirection": 2,
+            "_headControlPointLengthMultiplier": 1.2,
+            "_tailControlPointLengthMultiplier": 0.8,
+            "_sliderMidAnchorMode": 1
+          }
         ]
       }
     },
     "v3": {
       "sourceBeatmapVersion": "3.3.0",
       "sourceVersionHash": "316c72ebf0ebdb3e5fbb412a775c930dbcb4e7b6",
-      "expectedSemanticHashes": {"aero.converter.canonical": ["sha256:17827cd476e5f09a525000407fc8fe906389375df372fe0a8e78841f1791d702", "sha256:17827cd476e5f09a525000407fc8fe906389375df372fe0a8e78841f1791d702", "sha256:b85815530a5cab116fbd1796a6dee3ae0e3f48fc21fea65a3a5bca615e4e9961", "sha256:2d67fc6a96273679633e2e462e879e82a6e97636dcfce07572cf78a864b4336b", "sha256:9b1a985d45e8695172ac0c230c4a165e7bfd69f4cbabb5b14aa33722acec2715", "sha256:9c774027297b15235d70742b5216bd9d3cd0f66bf1b3eef636849693cd319b37", "sha256:f95a262ad8dcd24c86f1a550365b91d3eadfd8f9176fbd39021a5b839d9a7a3b"], "aero.converter.prototype-reach": ["sha256:03b9b00f79e53c67acc339972dcb5baf8a01bf5a272fd9a3e0bd88172a455bba", "sha256:03b9b00f79e53c67acc339972dcb5baf8a01bf5a272fd9a3e0bd88172a455bba", "sha256:71de1b95b3c49d05b4c34cea7fb227a01d48ca7732c3bb511dcad4bc57654b07", "sha256:a4446ff1b7902b82a31fa992393e72c0b25bf43cfbb91659ecf328131e9ea8ef", "sha256:d3e82aab91a7d9f10c61f5b616604c7743e07bba7ae595d0c1c9a194528d53fb", "sha256:21eba17d4666ff535cad9573dda7c839ce28cbfe9fa0ad4e0fa32e3f57d20ef9", "sha256:38b3198537e8eff44e569651447d805cc3a77c380a045d6e780ea3eaff4f241d"]},
+      "expectedSemanticHashes": {
+        "aero.converter.canonical": [
+          "sha256:a450a69cd3a428839882d5a82df5e6a5d215f9bdca9a8c5d4abad2e98cc922ef",
+          "sha256:a450a69cd3a428839882d5a82df5e6a5d215f9bdca9a8c5d4abad2e98cc922ef",
+          "sha256:1f7027ff933c9cf8e6f1da22e8b3b3f118ca9a753694b6303feb72facb958831",
+          "sha256:87a1b683157734b639aefaf8bf8dda45dd8ca2ee3b4208694f09965ef5d6f75a",
+          "sha256:397b3f8b17daf05ff5593971c8dda4ac049d6ecb5dd2b68acb1ad3a82db5a082",
+          "sha256:e1e6e1492919baade6fe2a2f238167f4c98dffb7b790d963c0d37fe38b498ed1",
+          "sha256:e60e3df54cc68b0e7e4ce4cf9efef11dcba38b02324af99dbafca20bab84584a"
+        ],
+        "aero.converter.prototype-reach": [
+          "sha256:be2b2c178e6f10335b497651b6651081ab236edd14d12bb35f475fe6860e5e43",
+          "sha256:be2b2c178e6f10335b497651b6651081ab236edd14d12bb35f475fe6860e5e43",
+          "sha256:7eb6cd77f032d2d3b326cea63dc49e9db244ba7046c01de966e248090e70d8fb",
+          "sha256:dc97fbf92808cd2d5ab94401f0594046dc1deee073693d5d3d110b18f67bcd48",
+          "sha256:dfc1123f960594f0994e78b8322f77d8eaf0ea1b41b9974fb30279b33e0b90a1",
+          "sha256:2a1215cc945a5635a094fff4d89f2a877c9486efddb45777c726d61c6fd221a7",
+          "sha256:28482118e6656c306270c6fcf3a9624965af3fc3bbe09226a3a5bb5ac77b4ee5"
+        ]
+      },
       "beatmap": {
         "version": "3.3.0",
         "colorNotes": [
-          {"b": 1, "x": 1, "y": 1, "c": 0, "d": 1},
-          {"b": 2, "x": 2, "y": 1, "c": 1, "d": 1},
-          {"b": 3, "x": 1, "y": 0, "c": 0, "d": 2},
-          {"b": 4, "x": 2, "y": 0, "c": 1, "d": 3},
-          {"b": 5, "x": 1, "y": 2, "c": 0, "d": 0},
-          {"b": 6, "x": 2, "y": 2, "c": 1, "d": 0},
-          {"b": 8, "x": 1, "y": 1, "c": 0, "d": 8},
-          {"b": 8, "x": 2, "y": 1, "c": 1, "d": 8},
-          {"b": 9, "x": 2, "y": 1, "c": 0, "d": 8},
-          {"b": 9, "x": 1, "y": 1, "c": 1, "d": 8}
+          {
+            "b": 1,
+            "x": 1,
+            "y": 1,
+            "c": 0,
+            "d": 1
+          },
+          {
+            "b": 2,
+            "x": 2,
+            "y": 1,
+            "c": 1,
+            "d": 1
+          },
+          {
+            "b": 3,
+            "x": 1,
+            "y": 0,
+            "c": 0,
+            "d": 2
+          },
+          {
+            "b": 4,
+            "x": 2,
+            "y": 0,
+            "c": 1,
+            "d": 3
+          },
+          {
+            "b": 5,
+            "x": 1,
+            "y": 2,
+            "c": 0,
+            "d": 0
+          },
+          {
+            "b": 6,
+            "x": 2,
+            "y": 2,
+            "c": 1,
+            "d": 0
+          },
+          {
+            "b": 8,
+            "x": 1,
+            "y": 1,
+            "c": 0,
+            "d": 8
+          },
+          {
+            "b": 8,
+            "x": 2,
+            "y": 1,
+            "c": 1,
+            "d": 8
+          },
+          {
+            "b": 9,
+            "x": 2,
+            "y": 1,
+            "c": 0,
+            "d": 8
+          },
+          {
+            "b": 9,
+            "x": 1,
+            "y": 1,
+            "c": 1,
+            "d": 8
+          }
         ],
-        "bombNotes": [{"b": 11, "x": 3, "y": 1}],
-        "obstacles": [{"b": 10, "d": 1, "x": 0, "y": 0, "w": 2, "h": 3}],
-        "sliders": [{"b": 1, "tb": 3, "x": 1, "y": 1, "tx": 1, "ty": 0, "c": 0, "d": 1, "tc": 2, "mu": 1.2, "tmu": 0.8, "m": 1}],
-        "burstSliders": [{"b": 4, "tb": 4.5, "x": 2, "y": 0, "tx": 3, "ty": 1, "c": 1, "d": 3, "sc": 3, "s": 0.5}]
+        "bombNotes": [
+          {
+            "b": 11,
+            "x": 3,
+            "y": 1
+          }
+        ],
+        "obstacles": [
+          {
+            "b": 10,
+            "d": 1,
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 3
+          }
+        ],
+        "sliders": [
+          {
+            "b": 1,
+            "tb": 3,
+            "x": 1,
+            "y": 1,
+            "tx": 1,
+            "ty": 0,
+            "c": 0,
+            "d": 1,
+            "tc": 2,
+            "mu": 1.2,
+            "tmu": 0.8,
+            "m": 1
+          }
+        ],
+        "burstSliders": [
+          {
+            "b": 4,
+            "tb": 4.5,
+            "x": 2,
+            "y": 0,
+            "tx": 3,
+            "ty": 1,
+            "c": 1,
+            "d": 3,
+            "sc": 3,
+            "s": 0.5
+          }
+        ]
       }
     },
     "v4": {
       "sourceBeatmapVersion": "4.0.0",
       "sourceVersionHash": "bc9c727d25aaeeb8ef33f5c244b91384dede9a38",
-      "expectedSemanticHashes": {"aero.converter.canonical": ["sha256:8c91c441f55c3589233868627716eff63642d5297780be794f21809b6d263861", "sha256:8c91c441f55c3589233868627716eff63642d5297780be794f21809b6d263861", "sha256:dcbe606d3f70a1f15264cc7d2f91c9368a3b69ea236c62424d286f5351ce4fe2", "sha256:66ca5910eac8df7ebdf44a2982618ab87fc8c5d16d9b9273c71ae9d06e476220", "sha256:31a7752d171dd99f6998271610f74517e36e4aef10b50d4245dafef78a4fca68", "sha256:b7c535e9237cc97079881a7b9d2716c6b7adec208df46b2e4327c1ef5443dee6", "sha256:d8cbbf4698b8af573e031fedf10d303181919f8ce6bc01b968bcc245a6116381"], "aero.converter.prototype-reach": ["sha256:ab2a563924ce9c2ac2c6ab4e54fc5b28dc9798dab5d48810902172aa99c59835", "sha256:ab2a563924ce9c2ac2c6ab4e54fc5b28dc9798dab5d48810902172aa99c59835", "sha256:c53ad892450abb238f916e2c6c62cf251ade5d49f8988e713703d55ac0584fea", "sha256:711fa68d86e28443437d5d2895f3de4f6bae126517dbca77c724d32ba0f5af4a", "sha256:fa4e76be72b8e2b179fa51c301f53bd1c9656c6c6415352fc2c18293d8beda3b", "sha256:ebe8baf4a8b964ed77cee12dc368a820bf35102f03c0767d7b2e38606f2e1118", "sha256:ff59bb5a2a5fd58a66ca22fa9d430a94a0e7f145f38d4aedadf1b1a85000d2a2"]},
+      "expectedSemanticHashes": {
+        "aero.converter.canonical": [
+          "sha256:b5b78a6b9207e134a2e852e4d76c02795203ab360d842bf967a87a06157190f6",
+          "sha256:b5b78a6b9207e134a2e852e4d76c02795203ab360d842bf967a87a06157190f6",
+          "sha256:0d337d84ae3360f9554f9ab29eefb9a6ed735a9d41e4ff15a1a9b1164c4d94ae",
+          "sha256:e90cd4e1bdb594c3207c8d087e06c6e236c31c2657539f24787b4ff9b7b333bc",
+          "sha256:f6ef930f9bdb30e2e4714723bacfe61d5dc3cb244c08dcc65cf57d0cedbb0742",
+          "sha256:9637534639ecaa30edbf121c7e118c35d5d851f02cd7170de58f41c5d3fe7922",
+          "sha256:824fc0a51d837db31866e89b8e3aabf467dbc155c53ad202d025f36be2e50ebb"
+        ],
+        "aero.converter.prototype-reach": [
+          "sha256:d591af9d133b43cfee69a2dd5ec50e96038a8c67142a7adc8be3a0c5fb2deb1b",
+          "sha256:d591af9d133b43cfee69a2dd5ec50e96038a8c67142a7adc8be3a0c5fb2deb1b",
+          "sha256:d210c6de65c9f8234fc270c6a2ca525caf1eb822c55ef42725766d01cdb075f3",
+          "sha256:8df8c249b5639abbc0ec38ba4914a60b2ec22450766099daf65a8eceb1fe2277",
+          "sha256:1a9fad117b2b823e21298db1cb981033dcc88a36f0de1553fc6e4e3b188ff366",
+          "sha256:2071034253ffeed016fa900857a5c008ab8d75635cf9fad38157dc868102569a",
+          "sha256:0f1f9f71ab2efb986786ed200c82b7fa7e001b9abcd38096e5b0bae5a297a220"
+        ]
+      },
       "beatmap": {
         "version": "4.0.0",
         "colorNotesData": [
-          {"x": 1, "y": 1, "c": 0, "d": 1},
-          {"x": 2, "y": 1, "c": 1, "d": 1},
-          {"x": 1, "y": 0, "c": 0, "d": 2},
-          {"x": 2, "y": 0, "c": 1, "d": 3},
-          {"x": 1, "y": 2, "c": 0, "d": 0},
-          {"x": 2, "y": 2, "c": 1, "d": 0},
-          {"x": 1, "y": 1, "c": 0, "d": 8},
-          {"x": 2, "y": 1, "c": 1, "d": 8},
-          {"x": 2, "y": 1, "c": 0, "d": 8},
-          {"x": 1, "y": 1, "c": 1, "d": 8}
+          {
+            "x": 1,
+            "y": 1,
+            "c": 0,
+            "d": 1
+          },
+          {
+            "x": 2,
+            "y": 1,
+            "c": 1,
+            "d": 1
+          },
+          {
+            "x": 1,
+            "y": 0,
+            "c": 0,
+            "d": 2
+          },
+          {
+            "x": 2,
+            "y": 0,
+            "c": 1,
+            "d": 3
+          },
+          {
+            "x": 1,
+            "y": 2,
+            "c": 0,
+            "d": 0
+          },
+          {
+            "x": 2,
+            "y": 2,
+            "c": 1,
+            "d": 0
+          },
+          {
+            "x": 1,
+            "y": 1,
+            "c": 0,
+            "d": 8
+          },
+          {
+            "x": 2,
+            "y": 1,
+            "c": 1,
+            "d": 8
+          },
+          {
+            "x": 2,
+            "y": 1,
+            "c": 0,
+            "d": 8
+          },
+          {
+            "x": 1,
+            "y": 1,
+            "c": 1,
+            "d": 8
+          }
         ],
         "colorNotes": [
-          {"b": 1, "i": 0}, {"b": 2, "i": 1}, {"b": 3, "i": 2}, {"b": 4, "i": 3}, {"b": 5, "i": 4}, {"b": 6, "i": 5},
-          {"b": 8, "i": 6}, {"b": 8, "i": 7}, {"b": 9, "i": 8}, {"b": 9, "i": 9}
+          {
+            "b": 1,
+            "i": 0
+          },
+          {
+            "b": 2,
+            "i": 1
+          },
+          {
+            "b": 3,
+            "i": 2
+          },
+          {
+            "b": 4,
+            "i": 3
+          },
+          {
+            "b": 5,
+            "i": 4
+          },
+          {
+            "b": 6,
+            "i": 5
+          },
+          {
+            "b": 8,
+            "i": 6
+          },
+          {
+            "b": 8,
+            "i": 7
+          },
+          {
+            "b": 9,
+            "i": 8
+          },
+          {
+            "b": 9,
+            "i": 9
+          }
         ],
-        "bombNotesData": [{"x": 3, "y": 1}],
-        "bombNotes": [{"b": 11, "i": 0}],
-        "obstaclesData": [{"d": 1, "x": 0, "y": 0, "w": 2, "h": 3}],
-        "obstacles": [{"b": 10, "i": 0}],
-        "arcsData": [{"m": 1.2, "tm": 0.8, "a": 1}],
-        "arcs": [{"hb": 1, "tb": 3, "hi": 0, "ti": 2, "ai": 0}],
-        "chainsData": [{"tx": 3, "ty": 1, "c": 3, "s": 0.5}],
-        "chains": [{"hb": 4, "tb": 4.5, "i": 3, "ci": 0}]
+        "bombNotesData": [
+          {
+            "x": 3,
+            "y": 1
+          }
+        ],
+        "bombNotes": [
+          {
+            "b": 11,
+            "i": 0
+          }
+        ],
+        "obstaclesData": [
+          {
+            "d": 1,
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 3
+          }
+        ],
+        "obstacles": [
+          {
+            "b": 10,
+            "i": 0
+          }
+        ],
+        "arcsData": [
+          {
+            "m": 1.2,
+            "tm": 0.8,
+            "a": 1
+          }
+        ],
+        "arcs": [
+          {
+            "hb": 1,
+            "tb": 3,
+            "hi": 0,
+            "ti": 2,
+            "ai": 0
+          }
+        ],
+        "chainsData": [
+          {
+            "tx": 3,
+            "ty": 1,
+            "c": 3,
+            "s": 0.5
+          }
+        ],
+        "chains": [
+          {
+            "hb": 4,
+            "tb": 4.5,
+            "i": 3,
+            "ci": 0
+          }
+        ]
       }
     }
   }
