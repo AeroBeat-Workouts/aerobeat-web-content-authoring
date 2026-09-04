@@ -106,6 +106,7 @@ try {
     assert.equal(result.loadedPackageId, result.exportPackageId);
     assert.equal(result.exportAssetCount, 1);
     assert.equal(result.remaining, 0);
+    assert.deepEqual(result.malformed, ["v2", "v3", "v4"].map((format) => ({ format, code: "obstacle_container_invalid", state: "failed", snapshotCode: "obstacle_container_invalid", packageCount: 0, collectionCount: 0 })), "real module Worker + IndexedDB service must reject malformed obstacle containers without a package or collection commit");
     assert.equal(result.snapshotHasRawBytes, false);
     assert.ok(result.states.includes("converting"));
     assert.ok(result.states.includes("persisting"));

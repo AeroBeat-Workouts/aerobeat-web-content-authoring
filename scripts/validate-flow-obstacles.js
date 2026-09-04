@@ -70,6 +70,20 @@ for (const [format, document] of [
   const parsed = parseBeatMapDifficulty(JSON.stringify(document), /** @type {"v2"|"v3"|"v4"} */ (format));
   assert.deepEqual(parsed.obstacles[0], { start: 1, duration: 1, x: 1, y: 0, width: 1, height: 5, sourceIndex: 0 });
 }
+for (const [format, field] of [
+  ["v2", "_obstacles"],
+  ["v3", "obstacles"],
+  ["v4", "obstacles"]
+]) {
+  const absent = parseBeatMapDifficulty("{}", /** @type {"v2"|"v3"|"v4"} */ (format));
+  assert.deepEqual(absent.obstacles, [], `${format} must support an absent optional obstacle array`);
+  for (const malformed of [{}, null, "invalid", 0]) {
+    const document = { [field]: malformed, ...(format === "v4" ? { obstaclesData: [] } : {}) };
+    assert.throws(() => parseBeatMapDifficulty(JSON.stringify(document), /** @type {"v2"|"v3"|"v4"} */ (format)), (error) => error instanceof Error && /** @type {Error & {code?: string}} */ (error).code === "obstacle_container_invalid", `${format} present non-array obstacle container must reject with a stable bounded code`);
+  }
+}
+assert.throws(() => parseBeatMapDifficulty(JSON.stringify({ _obstacles: null, obstacles: [] }), "v2"), (error) => error instanceof Error && /** @type {Error & {code?: string}} */ (error).code === "obstacle_container_invalid", "present malformed v2 _obstacles must not fall through to its legacy fallback");
+
 for (const [format, document, code] of [
   ["v2", { _obstacles: [{ _time: 1, _lineIndex: 1, _type: 2, _duration: 1, _width: 1 }] }, "obstacle_type_unsupported"],
   ["v2", { _obstacles: [{ _time: 1, _lineIndex: 1, _type: 0, _duration: 0, _width: 1 }] }, "obstacle_duration_invalid"],

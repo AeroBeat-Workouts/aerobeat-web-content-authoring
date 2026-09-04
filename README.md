@@ -99,7 +99,7 @@ npm run test:browser
 Coverage includes:
 
 - strict JavaScript ESM/JSDoc and public import boundaries;
-- strict v2 type-0/type-1, v3 inline, and v4 indexed obstacle normalization; exact continuous geometry plus derived-mask truth; and exactly-once top-left Flow emission for notes, bombs, arcs, and v3/v4 bursts/chains;
+- strict v2 type-0/type-1, v3 inline, and v4 indexed obstacle normalization, including stable rejection of present non-array obstacle containers; exact continuous geometry plus derived-mask truth; and exactly-once top-left Flow emission for notes, bombs, arcs, and v3/v4 bursts/chains;
 - exact sanitized `3C9D` Standard Easy orientation evidence, including beat `21` `(x=3,y=0)` → canonical cell `11`;
 - sanitized Godot semantic golden parity and deterministic reruns;
 - Worker cancellation and no-partial-persistence behavior;

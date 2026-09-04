@@ -86,7 +86,22 @@ await assert.rejects(pending);
 assert.equal((await cancellation.listPackages()).length, 0, "cancelled work must never persist a partial package");
 cancellation.destroy();
 
-console.log("Deterministic Worker conversion, Godot semantic parity, persistence, export and cancellation validation passed.");
+for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
+  const malformedPersistence = createMemoryPersistenceAdapter();
+  const malformedService = createAeroWebContentAuthoringService({ persistence: malformedPersistence });
+  await assert.rejects(
+    () => malformedService.convertAndPersist({ source: malformedSourceBundle(format) }, { difficulty: "Hard", sourceId: `malformed-${format}`, sourceVersionHash: "invalid-container", includeAudio: false }),
+    (error) => error instanceof Error && /** @type {Error & {code?: string}} */ (error).code === "obstacle_container_invalid",
+    `${format} malformed obstacle container must reject through the service`
+  );
+  assert.equal(malformedService.getSnapshot().state, "failed");
+  assert.equal(malformedService.getSnapshot().errorCode, "obstacle_container_invalid");
+  assert.deepEqual(await malformedService.listPackages(), [], `${format} malformed source must create no memory package commit`);
+  assert.deepEqual(await malformedService.listCollections(), [], `${format} malformed source must create no memory collection commit`);
+  malformedService.destroy();
+}
+
+console.log("Deterministic Worker conversion, Godot semantic parity, persistence, export, cancellation and malformed-source atomicity validation passed.");
 
 /** @param {"v2" | "v3" | "v4"} format */
 function syntheticDifficulty(format) {
@@ -97,8 +112,18 @@ function syntheticDifficulty(format) {
 }
 
 /** @param {"v2" | "v3" | "v4"} format */
-function syntheticSourceBundle(format) {
-  const path = "Hard.dat"; const info = new TextEncoder().encode("{}"); const map = new TextEncoder().encode(JSON.stringify(syntheticDifficulty(format))); const audio = new Uint8Array([1, 2, 3, 4]); const entries = new Map([["info.dat", info], [path.toLowerCase(), map], ["song.ogg", audio]]);
+function malformedSourceBundle(format) {
+  const field = format === "v2" ? "_obstacles" : "obstacles";
+  const document = { [field]: { malformed: true }, ...(format === "v4" ? { obstaclesData: [] } : {}) };
+  return sourceBundleForDocument(format, document);
+}
+
+/** @param {"v2" | "v3" | "v4"} format */
+function syntheticSourceBundle(format) { return sourceBundleForDocument(format, syntheticDifficulty(format)); }
+
+/** @param {"v2" | "v3" | "v4"} format @param {Record<string, unknown>} document */
+function sourceBundleForDocument(format, document) {
+  const path = "Hard.dat"; const info = new TextEncoder().encode("{}"); const map = new TextEncoder().encode(JSON.stringify(document)); const audio = new Uint8Array([1, 2, 3, 4]); const entries = new Map([["info.dat", info], [path.toLowerCase(), map], ["song.ogg", audio]]);
   return Object.freeze({
     manifest: Object.freeze({ schemaId: "aerobeat.beatsaver-source-manifest.v1", sourceFormatMajor: Number(format.slice(1)), infoPath: "Info.dat", songName: "Synthetic Golden", songAuthorName: "AeroBeat", levelAuthorName: "AeroBeat", audioPath: "song.ogg", bpm: 120, difficulties: Object.freeze([{ characteristic: "Standard", difficulty: "Hard", path }]), entries: Object.freeze([]) }),
     listEntryPaths() { return Object.freeze(["Info.dat", path, "song.ogg"]); },

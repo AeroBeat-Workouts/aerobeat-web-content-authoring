@@ -44,7 +44,7 @@ function normalizeV2(map) {
       bombNotes.push({ start: number(entry._time ?? entry.b, 0), x, y, cell: cellFromXY(x, y) });
     }
   }
-  const obstacles = array(map._obstacles ?? map.obstacles).map((entry, sourceIndex) => normalizeV2Obstacle(entry, sourceIndex));
+  const obstacles = obstacleArray(map, "_obstacles", "obstacles").map((entry, sourceIndex) => normalizeV2Obstacle(entry, sourceIndex));
   const sliders = array(map._sliders ?? map.sliders).flatMap((entry) => isPlainRecord(entry) ? [{
     start: number(entry._headTime ?? entry.b, 0),
     end: number(entry._tailTime ?? entry.tb ?? entry._headTime ?? entry.b, 0),
@@ -68,7 +68,7 @@ function normalizeV3(map) {
     return [noteRecord(sourceIndex, number(entry.b, 0), x, y, color, integer(entry.d, 8), number(entry.a, 0), Object.hasOwn(entry, "a"))];
   });
   const bombNotes = array(map.bombNotes).flatMap((entry) => isPlainRecord(entry) ? [{ start: number(entry.b, 0), x: integer(entry.x, 0), y: integer(entry.y, 0), cell: cellFromXY(integer(entry.x, 0), integer(entry.y, 0)) }] : []);
-  const obstacles = array(map.obstacles).map((entry, sourceIndex) => normalizeInlineObstacle(entry, sourceIndex));
+  const obstacles = obstacleArray(map, "obstacles").map((entry, sourceIndex) => normalizeInlineObstacle(entry, sourceIndex));
   const sliders = array(map.sliders).flatMap((entry) => isPlainRecord(entry) ? [{ start: number(entry.b, 0), end: number(entry.tb ?? entry.b, 0), cell: cellFromXY(integer(entry.x, 0), integer(entry.y, 0)), tailCell: cellFromXY(integer(entry.tx, 0), integer(entry.ty, 0)), hand: handFromColor(integer(entry.c, 0)), direction: integer(entry.d, 8), tailDirection: integer(entry.tc ?? entry.d, 8), headCurveMultiplier: number(entry.mu, 1), tailCurveMultiplier: number(entry.tmu, 1), midAnchorMode: integer(entry.m, 0) }] : []);
   const burstSliders = array(map.burstSliders).flatMap((entry) => {
     if (!isPlainRecord(entry)) return [];
@@ -95,7 +95,7 @@ function normalizeV4(map) {
     return [{ start: number(entry.b, 0), x, y, cell: cellFromXY(x, y) }];
   });
   const obstacleData = array(map.obstaclesData);
-  const obstacles = array(map.obstacles).map((entry, sourceIndex) => normalizeIndexedObstacle(entry, obstacleData, sourceIndex));
+  const obstacles = obstacleArray(map, "obstacles").map((entry, sourceIndex) => normalizeIndexedObstacle(entry, obstacleData, sourceIndex));
   const arcData = records(map.arcsData);
   const sliders = array(map.arcs).flatMap((entry) => {
     if (!isPlainRecord(entry)) return [];
@@ -200,6 +200,14 @@ function noteRecord(sourceIndex, start, x, y, color, direction, angleOffset, has
 function cellFromXY(x, y) { return clampInt(y, 0, 2) * 4 + clampInt(x, 0, 3); }
 /** @param {number} color */
 function handFromColor(color) { return color === 0 ? "left" : "right"; }
+/** @param {Record<string, unknown>} map @param {string} field @param {string} [fallbackField] @returns {unknown[]} */
+function obstacleArray(map, field, fallbackField) {
+  const selectedField = Object.hasOwn(map, field) ? field : fallbackField && Object.hasOwn(map, fallbackField) ? fallbackField : "";
+  if (!selectedField) return [];
+  const value = map[selectedField];
+  if (!Array.isArray(value)) throw new AuthoringParseError("obstacle_container_invalid", `${selectedField} must be an array when present`);
+  return value;
+}
 /** @param {unknown} value */
 function array(value) { return Array.isArray(value) ? value : []; }
 /** @param {unknown} value */
