@@ -27,7 +27,7 @@ The package does not call BeatSaver APIs, inspect ZIP structures, depend on prov
 
 `aerobeat-content-core` remains the durable authored-content authority. Godot authoring commit `59c93de` and content-core commit `476da22` are the final audited algorithm/contract references; browser authoring is an independent implementation.
 
-The browser locks the canonical contract, recipes, rulesets, event IDs, lineage, target grids, timing, reach, spacing optimizer, guard relocation, obstacle checkpoints, modifiers, and conversion traces. Normalized Beat Saber `x`, `y`, and `cell` values deliberately remain bottom-left source coordinates. Flow emission converts every note, bomb, arc head/tail, burst/chain head/tail, and obstacle-covered cell exactly once into AeroBeat's top-left row-major cells; Boxing continues to use its existing explicit top-left helpers and is not flipped twice. JavaScript loses Godot's integer-versus-float Variant distinction, so ordinary sorted JavaScript JSON cannot truthfully reproduce every Godot SHA-256. The package therefore:
+The browser locks the canonical contract, recipes, rulesets, event IDs, lineage, target grids, timing, reach, spacing optimizer, guard relocation, obstacle checkpoints, modifiers, and conversion traces. Every SHA-256 identity in the main Window and conversion Worker routes through the shared `@aerobeat/web-hash` owner in production `auto` mode, preserving native WebCrypto where available and deterministic bundled fallback elsewhere. Normalized Beat Saber `x`, `y`, and `cell` values deliberately remain bottom-left source coordinates. Flow emission converts every note, bomb, arc head/tail, burst/chain head/tail, and obstacle-covered cell exactly once into AeroBeat's top-left row-major cells; Boxing continues to use its existing explicit top-left helpers and is not flipped twice. JavaScript loses Godot's integer-versus-float Variant distinction, so ordinary sorted JavaScript JSON cannot truthfully reproduce every Godot SHA-256. The package therefore:
 
 - preserves and validates browser-local deterministic package/source/content hashes;
 - never labels those hashes as Godot hashes;
@@ -105,7 +105,7 @@ Coverage includes:
 - Worker cancellation and no-partial-persistence behavior;
 - memory and IndexedDB list/load/delete/quota paths;
 - deterministic package export;
-- Chromium module Worker + IndexedDB + zero warning/error console policy;
+- Chromium secure-localhost and genuine non-loopback Tailscale-style HTTP Window + module Worker hashing, conversion, IndexedDB persistence/reload, deterministic export, exact native/fallback identity parity, and zero warning/error console policy;
 - content-hashed synthetic Task 11 v2/v3/v4 source-matrix conversion through the public service, including exact chart IDs, lineage, modifier unions and stable semantic hashes;
 - real uncommitted BeatSaver fixtures `4858` Standard Expert and `3D44B` Standard Hard with copied audio hash/path, persistence reload, deterministic `AEROPKG1` inspection and atomic deletion;
 - optional exact Catalyst proof (`npm run test:catalyst`) for BeatSaver `1AE3A` version `1348bac90dd94d7299bda388bd101a2b967e28b3`: Standard Expert and ExpertPlus become two unchanged v1 packages, ten charts, one atomic collection and one shared audio asset while public collection state remains media-free.

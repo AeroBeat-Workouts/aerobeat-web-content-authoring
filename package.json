@@ -40,5 +40,8 @@
     "fake-indexeddb": "^6.2.2",
     "playwright": "^1.46.1",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@aerobeat/web-hash": "file:../aerobeat-web-hash"
   }
 }

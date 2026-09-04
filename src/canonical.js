@@ -1,5 +1,7 @@
 // @ts-check
 
+import { sha256Hex as sharedSha256Hex } from "@aerobeat/web-hash";
+
 /**
  * Deterministically serialize JSON-compatible data with lexically sorted object keys.
  * Undefined, functions, symbols, accessors, cycles and non-finite numbers are rejected.
@@ -79,11 +81,7 @@ export function isPlainRecord(value) {
  * @returns {Promise<string>}
  */
 export async function sha256Hex(value) {
-  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : Uint8Array.from(value);
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) throw new Error("SHA-256 is unavailable in this browser context");
-  const digest = await subtle.digest("SHA-256", bytes.buffer);
-  return [...new Uint8Array(digest)].map((entry) => entry.toString(16).padStart(2, "0")).join("");
+  return sharedSha256Hex(value);
 }
 
 /**

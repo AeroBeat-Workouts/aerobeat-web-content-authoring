@@ -10,7 +10,7 @@ function show(value) { if (status) status.textContent = value; }
 const harnessWindow = /** @type {Window & typeof globalThis & {runAuthoringHarness: () => Promise<Record<string, unknown>>}} */ (/** @type {unknown} */ (window));
 
 harnessWindow.runAuthoringHarness = async () => {
-  const databaseName = `aerobeat-authoring-browser-${Date.now()}`;
+  const databaseName = "aerobeat-authoring-browser-hash-parity-v1";
   const service = createAeroWebContentAuthoringService({ useBrowserWorker: true, useIndexedDb: true });
   const source = syntheticSource();
   const snapshots = [];
@@ -27,7 +27,7 @@ harnessWindow.runAuthoringHarness = async () => {
   service.destroy();
   const authoredPackage = /** @type {{charts: unknown[]}} */ (authored.package);
   const loadedPackage = /** @type {{packageId: string}} */ (loaded.package);
-  return { chartCount: authoredPackage.charts.length, listCount: list.length, loadedPackageId: loadedPackage.packageId, audioBytes: [...audio], exportPackageId: inspected.packageId, exportAssetCount: inspected.assets.length, remaining: remaining.length, states: snapshots, snapshotHasRawBytes: containsByteArray(snapshot) };
+  return { chartCount: authoredPackage.charts.length, listCount: list.length, loadedPackageId: loadedPackage.packageId, packageHash: inspected.packageHash, audioBytes: [...audio], audioSha256: inspected.assets[0]?.sha256, exportPackageId: inspected.packageId, exportAssetCount: inspected.assets.length, remaining: remaining.length, states: snapshots, snapshotHasRawBytes: containsByteArray(snapshot) };
 };
 
 /** @param {unknown} value */
