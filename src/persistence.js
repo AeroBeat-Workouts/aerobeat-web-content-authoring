@@ -1,5 +1,6 @@
 // @ts-check
 
+import { isFlowObstacleGeometry, isFlowObstacleGridMask, maximumFlowObstaclesPerChart } from "@aerobeat/web-contracts/flow-obstacle-contracts";
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord } from "./canonical.js";
 
 export const authoringDatabaseName = "aerobeat-web-content-authoring";
@@ -31,7 +32,7 @@ export function createMemoryPersistenceAdapter(options = {}) {
     kind: "memory",
     schemaVersion: authoringDatabaseVersion,
     /** @param {StoredPackageRecord} record */
-    async put(record) { assertOpen(); const copy = copyRecord(record, correctedFlowCellOrientation, true, sourceFlowObstacleContract, true); const staged = new Map(records); staged.set(copy.key, copy); assertQuota(staged, sharedAssets, collections); records.set(copy.key, copy); },
+    async put(record) { assertOpen(); const inspected = copyRecord(record); const copy = copyRecord(record, correctedFlowCellOrientation, true, obstacleContractForPackage(inspected.package), true); const staged = new Map(records); staged.set(copy.key, copy); assertQuota(staged, sharedAssets, collections); records.set(copy.key, copy); },
     /** @param {string} key */
     async get(key) { assertOpen(); const value = records.get(key); return value ? resolveRecordAssets(value, sharedAssets, false) : null; },
     /** @param {string} key */
@@ -117,7 +118,7 @@ export function createIndexedDbPersistenceAdapter(options = {}) {
     kind: "indexeddb",
     schemaVersion: authoringDatabaseVersion,
     /** @param {StoredPackageRecord} record */
-    async put(record) { await putIndexedDbPackage(await open(),copyRecord(record, correctedFlowCellOrientation, true, sourceFlowObstacleContract, true)); },
+    async put(record) { const inspected=copyRecord(record);await putIndexedDbPackage(await open(),copyRecord(record, correctedFlowCellOrientation, true, obstacleContractForPackage(inspected.package), true)); },
     /** @param {string} key */
     async get(key) { return getIndexedDbPackage(await open(), key, false); },
     /** @param {string} key */
@@ -203,7 +204,21 @@ function copyCollection(value,assumedOrientation=legacyFlowCellOrientation,force
 /** @param {unknown} value @param {number} maximum */
 function copyStringArray(value,maximum){if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>maximum)throw storageError("storage_record_invalid","Stored string array is invalid");const result=[];for(let index=0;index<value.length;index+=1){const descriptor=Object.getOwnPropertyDescriptor(value,String(index));if(!descriptor||!("value" in descriptor)||typeof descriptor.value!=="string"||!descriptor.value||descriptor.value.length>1024)throw storageError("storage_record_invalid","Stored string array value is invalid");result.push(descriptor.value);}return result;}
 /** @param {unknown} batch */
-function copyCollectionBatch(batch){if(!exactRecord(batch,["collection","packages","assets"]))throw storageError("storage_record_invalid","Collection batch shape is invalid");const collection=copyCollection(valueFor(batch,"collection"),correctedFlowCellOrientation,true,sourceFlowObstacleContract,true),assets=copySharedAssets(valueFor(batch,"assets")),packageValue=valueFor(batch,"packages");if(!Array.isArray(packageValue)||Object.getPrototypeOf(packageValue)!==Array.prototype||packageValue.length!==collection.packageKeys.length)throw storageError("storage_record_invalid","Collection batch packages are invalid");const packages=packageValue.map((record)=>copyRecord(record,correctedFlowCellOrientation,true,sourceFlowObstacleContract,true));const hashes=new Set(assets.map((asset)=>asset.contentHash));for(let index=0;index<packages.length;index+=1){if(packages[index].key!==collection.packageKeys[index]||!packages[index].assetRefs?.length||packages[index].assetRefs.some((ref)=>!hashes.has(ref.contentHash)))throw storageError("storage_record_invalid","Collection batch references are invalid");}return {collection,packages,assets};}
+function copyCollectionBatch(batch){if(!exactRecord(batch,["collection","packages","assets"]))throw storageError("storage_record_invalid","Collection batch shape is invalid");const packageEntries=denseDataArray(valueFor(batch,"packages"),8);if(!packageEntries)throw storageError("storage_record_invalid","Collection batch packages are invalid");const inspectedPackages=packageEntries.map((record)=>copyRecord(/** @type {StoredPackageRecord} */(record)));const collectionContract=inspectedPackages.length>0&&inspectedPackages.every((record)=>obstacleContractForPackage(record.package)===sourceFlowObstacleContract)?sourceFlowObstacleContract:legacyFlowObstacleContract;const collection=copyCollection(valueFor(batch,"collection"),correctedFlowCellOrientation,true,collectionContract,true),assets=copySharedAssets(valueFor(batch,"assets"));if(packageEntries.length!==collection.packageKeys.length)throw storageError("storage_record_invalid","Collection batch packages are invalid");const packages=packageEntries.map((record,index)=>copyRecord(/** @type {StoredPackageRecord} */(record),correctedFlowCellOrientation,true,obstacleContractForPackage(inspectedPackages[index].package),true));const hashes=new Set(assets.map((asset)=>asset.contentHash));for(let index=0;index<packages.length;index+=1){if(packages[index].key!==collection.packageKeys[index]||!packages[index].assetRefs?.length||packages[index].assetRefs.some((ref)=>!hashes.has(ref.contentHash)))throw storageError("storage_record_invalid","Collection batch references are invalid");}return {collection,packages,assets};}
+/** Derive persistence provenance from package truth; a source stamp alone is never authority. @param {Record<string, unknown>} packageValue @returns {FlowObstacleContract} */
+function obstacleContractForPackage(packageValue){
+  if(valueFor(packageValue,"schemaId")!=="aerobeat.song-package.v2"||valueFor(packageValue,"schemaVersion")!==2||valueFor(packageValue,"packageVersion")!=="2.0.0")return legacyFlowObstacleContract;
+  const source=valueFor(packageValue,"source");if(!isPlainRecord(source)||valueFor(source,"flowObstacleContract")!==sourceFlowObstacleContract)return legacyFlowObstacleContract;
+  const charts=denseDataArray(valueFor(packageValue,"charts"),64);if(!charts)return legacyFlowObstacleContract;
+  const flowCharts=charts.filter((chart)=>isPlainRecord(chart)&&valueFor(chart,"mode")==="flow");if(flowCharts.length!==1)return legacyFlowObstacleContract;
+  const flow=flowCharts[0];if(valueFor(flow,"schemaId")!=="aerobeat.chart.flow.v2"||valueFor(flow,"schemaVersion")!==2||valueFor(flow,"rulesetId")!=="flow_grid_v2")return legacyFlowObstacleContract;
+  const beats=denseDataArray(valueFor(flow,"beats"),500000);if(!beats)return legacyFlowObstacleContract;
+  let obstacleCount=0;
+  for(const beat of beats){if(!isPlainRecord(beat)||valueFor(beat,"type")!=="obstacle")continue;obstacleCount+=1;if(obstacleCount>maximumFlowObstaclesPerChart)return legacyFlowObstacleContract;const keys=["start","end","type","geometry","gridMask"];if(Reflect.ownKeys(beat).length!==keys.length||!keys.every((key)=>Object.hasOwn(beat,key)))return legacyFlowObstacleContract;const start=valueFor(beat,"start"),end=valueFor(beat,"end"),geometry=valueFor(beat,"geometry"),gridMask=valueFor(beat,"gridMask");if(typeof start!=="number"||!Number.isFinite(start)||start<0||typeof end!=="number"||!Number.isFinite(end)||end<=start||end>144000||!isFlowObstacleGeometry(geometry)||!isFlowObstacleGridMask(gridMask,geometry))return legacyFlowObstacleContract;}
+  return sourceFlowObstacleContract;
+}
+/** Descriptor-safe dense own-data array. @param {unknown} value @param {number} maximum @returns {unknown[] | null} */
+function denseDataArray(value,maximum){if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>maximum||Reflect.ownKeys(value).length!==value.length+1)return null;const result=[];for(let index=0;index<value.length;index+=1){const descriptor=Object.getOwnPropertyDescriptor(value,String(index));if(!descriptor||!("value" in descriptor)||!descriptor.enumerable)return null;result.push(descriptor.value);}return result;}
 /** @param {AbortSignal | undefined} signal */
 function assertNotAborted(signal){if(signal?.aborted)throw storageError("operation_aborted","Persistence operation was cancelled");}
 /** @param {StoredPackageRecord} record @param {Map<string, SharedAssetRecord>} assets @param {boolean} allowStale */

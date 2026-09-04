@@ -23,6 +23,9 @@ assert.equal(await adapter.deleteCollection("two"), true);
 assert.equal(await adapter.get("hard"), null);
 
 await adapter.put(legacyRecord("old"));
+await assert.rejects(()=>adapter.get("old"),hasCode("flow_obstacle_reimport_required"),"legacy public IndexedDB put must remain management-only");
+assert.equal((await adapter.getForExport("old"))?.flowObstacleContract,"bounded_mask_v1");
+const forged=legacyRecord("forged");forged.package.source.flowObstacleContract="source_geometry_v1";await adapter.put(forged);await assert.rejects(()=>adapter.get("forged"),hasCode("flow_obstacle_reimport_required"),"a source stamp without a Flow v2 geometry chart must not upgrade IndexedDB content");assert.equal(await adapter.delete("forged"),true);
 const legacy = await adapter.listCollections();
 assert.equal(legacy.length, 1);
 assert.equal(legacy[0].collectionId, "legacy:old");
@@ -78,8 +81,9 @@ await assert.rejects(() => service.readAsset("inverted-flow", "media/audio/song.
 service.destroy();
 assert.equal(await migrated.delete("stale-delete"), true, "stale ungrouped records must remain deletable");
 
-await migrated.put({ ...legacyRecord("inverted-flow"), package: legacyPackage, packageHash: legacyPackageHash });
-assert.equal((await migrated.get("inverted-flow"))?.package.legacyPayload, "retained", "corrected put with the stable package key must replace stale state");
+const correctedPackage=sourceGeometryPackage("inverted-flow","Easy");
+await migrated.put({ ...legacyRecord("inverted-flow"), package: correctedPackage, packageHash: legacyPackageHash });
+assert.equal((await migrated.get("inverted-flow"))?.package.schemaId, "aerobeat.song-package.v2", "proven Flow v2 put with the stable package key must replace stale state");
 const replacementHash = `sha256:${"4".repeat(64)}`;
 const replacementBytes = new Uint8Array([4, 2]);
 await migrated.putCollection(batch("inverted-collection", [record("inverted-flow", "Easy", replacementHash)], replacementHash, replacementBytes));
@@ -103,7 +107,9 @@ console.log("IndexedDB collection persistence and non-destructive DB4→5 Flow o
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} assetBytes */
 function batch(collectionId, records, contentHash, assetBytes) { return { collection: { collectionId, songName: "Song", sourceProvider: "synthetic", sourceId: "song", sourceVersionHash: "version", converterProfileId: "profile", converterProfileHash: "profile-hash", modifierIds: [], packageKeys: records.map((item) => item.key), packages: records.map((item) => ({ packageKey: item.key, packageId: /** @type {string} */ (item.package.packageId), difficultyId: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty), difficultyLabel: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty) })), createdAtMs: 1, schemaVersion: 3, writeToken: "batch" }, packages: records, assets: [{ contentHash, bytes: assetBytes }] }; }
 /** @param {string} key @param {string} difficulty @param {string} contentHash */
-function record(key, difficulty, contentHash) { return { key, package: { packageId: `package-${key}`, songName: "Song", source: { difficulty } }, packageHash: `sha256:${"a".repeat(64)}`, assets: [], sourceCache: [], createdAtMs: 1, schemaVersion: 3, writeToken: "batch", assetRefs: [{ path: "media/audio/song.ogg", contentHash }] }; }
+function record(key, difficulty, contentHash) { return { key, package: sourceGeometryPackage(key,difficulty), packageHash: `sha256:${"a".repeat(64)}`, assets: [], sourceCache: [], createdAtMs: 1, schemaVersion: 3, writeToken: "batch", assetRefs: [{ path: "media/audio/song.ogg", contentHash }] }; }
+/** @param {string} key @param {string} difficulty */
+function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v2",schemaVersion:2,packageVersion:"2.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,flowObstacleContract:"source_geometry_v1"},charts:[{schemaId:"aerobeat.chart.flow.v2",schemaVersion:2,mode:"flow",rulesetId:"flow_grid_v2",beats:[{start:1,end:2,type:"obstacle",geometry:{schema:"aerobeat/flow_obstacle_geometry",version:1,coordinateSpace:"beatsaber_lane_layer",x:1,y:2,width:1,height:3},gridMask:[1]}]}]};}
 /** @param {string} key */
 function legacyRecord(key) { return { key, package: { packageId: `package-${key}`, songName: "Legacy", source: { difficulty: "Hard" } }, packageHash: `sha256:${"b".repeat(64)}`, assets: [{ path: "audio.ogg", bytes: new Uint8Array([9]) }], sourceCache: [], createdAtMs: 1, schemaVersion: 2, writeToken: "legacy" }; }
 /** @param {string} code */
