@@ -18,7 +18,7 @@ export function semanticParityProjection(packageValue) {
     packageVersion: packageValue.packageVersion,
     packageId: packageValue.packageId,
     songId: packageValue.songId,
-    source: isPlainRecord(packageValue.source) ? pick(packageValue.source, ["provider", "sourceId", "sourceVersionHash", "difficulty", "sourceDifficultyPath", "sourceBeatmapVersion", "sourceDifficultyHash", "flowObstacleContract", "converterProfile"]) : null,
+    source: isPlainRecord(packageValue.source) ? pick(packageValue.source, ["provider", "sourceId", "sourceVersionHash", "difficulty", "sourceDifficultyPath", "sourceBeatmapVersion", "sourceDifficultyHash", "obstacleContract", "converterProfile"]) : null,
     song: isPlainRecord(packageValue.song) ? pick(packageValue.song,["schemaId","schemaVersion","recordVersion","songId","songName","durationSec","audio","timing"]) : null,
     sets: Array.isArray(packageValue.sets) ? packageValue.sets.map((set)=>isPlainRecord(set)?pick(set,["schemaId","schemaVersion","recordVersion","setId","setName","songId","chartId"]):null) : [],
     recipeDefinitions: Array.isArray(packageValue.recipeDefinitions) ? packageValue.recipeDefinitions.map(projectDefinition) : [],
@@ -47,7 +47,7 @@ function pick(value,keys){const result={};for(const key of keys){const descripto
 /** @param {unknown} beat */
 function projectBeat(beat) {
   if (!isPlainRecord(beat)) return null;
-  return pick(beat, ["start", "end", "type", "eventId", "sourceEventIds", "hand", "placement", "direction", "angleOffset", "requiresDirection", "geometry", "gridMask", "startPlacement", "endPlacement", "startDirection", "endDirection", "tailPlacement", "checkpointCount", "modifier", "spatialTarget", "guardTarget", "checkpoint", "blockedCells"]);
+  return pick(beat, ["start", "end", "type", "eventId", "sourceEventIds", "hand", "placement", "direction", "angleOffset", "requiresDirection", "sourceGeometry", "gameplayGeometry", "gridMask", "startPlacement", "endPlacement", "startDirection", "endDirection", "tailPlacement", "checkpointCount", "modifier", "spatialTarget", "guardTarget", "checkpoint", "blockedCells"]);
 }
 /** @param {unknown} packageValue */
 export async function semanticParityHash(packageValue) { return prefixedSha256(canonicalJson(semanticParityProjection(packageValue))); }

@@ -63,10 +63,16 @@
       {
         "start": 6,
         "duration": 1,
-        "x": 0,
-        "y": 0,
-        "width": 1,
-        "height": 3,
+        "sourceGeometry": {
+          "schema": "aerobeat/obstacle_source_geometry", "version": 1,
+          "coordinateSpace": "beatsaber_v3_obstacle_rect", "kind": "v3_rect",
+          "x": 0, "y": 0, "width": 1, "height": 3
+        },
+        "gameplayGeometry": {
+          "schema": "aerobeat/obstacle_gameplay_geometry", "version": 1,
+          "coordinateSpace": "aerobeat_top_left_grid",
+          "x": 0, "y": 0, "width": 1, "height": 3
+        },
         "sourceIndex": 0
       }
     ],
@@ -109,5 +115,5 @@
       "boxing-weave-right-23a93deff994"
     ]
   },
-  "webSemanticParityHash": "sha256:ad04123bea6d5e84ad7ace10ad267e41b9569fb2db50f8a43251e614a9a40018"
+  "webSemanticParityHash": "sha256:624b6a88c12576226920b9d3770b6e3df2c3e7d2dce0f01143ad96ab2616a3c7"
 }

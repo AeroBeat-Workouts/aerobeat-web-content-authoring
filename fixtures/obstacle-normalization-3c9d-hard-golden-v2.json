@@ -1,0 +1,24 @@
+{
+  "schema": "aerobeat/obstacle_normalization_source_golden",
+  "version": 2,
+  "source": {
+    "provider": "beatsaver", "mapId": "3c9d", "versionHash": "5662f64a12c76a3dd11a5f6ee22611608cd06760",
+    "format": "2.0.0", "characteristic": "Standard", "difficulty": "Hard", "path": "Hard.dat",
+    "byteLength": 89424, "sha256": "4db5b3393a389c7bcaba6d7a02aec57c10801bcfd74de91523b8e9cdad859b55", "bpm": 150
+  },
+  "rawObstacle": { "_time": 92.5999984741211, "_lineIndex": 1, "_type": 1, "_duration": 0.0625, "_width": 1 },
+  "expected": {
+    "startBeat": 92.5999984741211, "endBeat": 92.6624984741211, "durationBeat": 0.0625,
+    "startTimestampMs": 37039.99938964844, "endTimestampMs": 37064.99938964844, "durationMs": 25,
+    "sourceGeometry": {
+      "schema": "aerobeat/obstacle_source_geometry", "version": 1,
+      "coordinateSpace": "beatsaber_v2_legacy_obstacle", "kind": "v2_type_1", "x": 1, "y": 2, "width": 1, "height": 3
+    },
+    "gameplayGeometry": {
+      "schema": "aerobeat/obstacle_gameplay_geometry", "version": 1,
+      "coordinateSpace": "aerobeat_top_left_grid", "x": 1, "y": 0, "width": 1, "height": 3
+    },
+    "gridMask": [1, 5, 9],
+    "renderer": { "centerX": -0.5, "centerY": 1, "visualWidth": 0.94, "visualHeight": 2.94, "worldUnitsPerMs": 0.006, "depth": 0.15 }
+  }
+}

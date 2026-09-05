@@ -1,6 +1,6 @@
 // @ts-check
 
-import { deriveFlowObstacleGridMask, isFlowObstacleGeometry, maximumFlowObstaclesPerChart } from "@aerobeat/web-contracts/flow-obstacle-contracts";
+import { deriveObstacleGridMask, isObstacleGameplayGeometry, isObstacleSourceGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
 import { canonicalJson, cloneData, deepFreeze, prefixedSha256 } from "./canonical.js";
 import { normalizeConverterProfile } from "./converter-profile.js";
 import {
@@ -77,9 +77,9 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const sets = charts.map((chart) => ({ schemaId: "aerobeat.set.v1", schemaVersion: 1, recordVersion: 1, setId: `ab-set-${String(chart.chartId).replace(/^ab-chart-/u, "")}`, setName: `${titleize(songToken)} ${difficulty} ${titleize(String(chart.mode))}`, songId, chartId: chart.chartId }));
   const durationSec = estimateDuration(charts, bpm);
   const packageRecord = {
-    schemaId: "aerobeat.song-package.v2",
-    schemaVersion: 2,
-    packageVersion: "2.0.0",
+    schemaId: "aerobeat.song-package.v3",
+    schemaVersion: 3,
+    packageVersion: "3.0.0",
     packageId,
     songId,
     songName: options.songName || titleize(songToken),
@@ -92,7 +92,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
       sourceBeatmapVersion: options.sourceBeatmapVersion,
       sourceDifficultyHash,
       sourceHash,
-      flowObstacleContract: "source_geometry_v1",
+      obstacleContract: "normalized_obstacle_v2",
       ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {})
     },
     song: {
@@ -244,7 +244,7 @@ function sequenceBetter(left, right) {
 /** @typedef {{startBeat:number,endBeat:number,startMs:number,endMs:number,blockedCells:number[],sourceIndex:number}} ObstacleWindow */
 /** @param {readonly Readonly<Record<string, unknown>>[]} obstacles @param {number} bpm @returns {ObstacleWindow[]} */
 function obstaclesFor(obstacles, bpm) {
-  if (obstacles.length > maximumFlowObstaclesPerChart) throw new Error("flow_obstacle_limit_exceeded");
+  if (obstacles.length > maximumObstaclesPerChart) throw new Error("flow_obstacle_limit_exceeded");
   return obstacles.map((entry, index) => {
     const start = Number(entry.start);
     const duration = Number(entry.duration);
@@ -255,13 +255,17 @@ function obstaclesFor(obstacles, bpm) {
   });
 }
 /** @param {Readonly<Record<string, unknown>>} obstacle */
-function geometryForObstacle(obstacle) {
-  const geometry = { schema: "aerobeat/flow_obstacle_geometry", version: 1, coordinateSpace: "beatsaber_lane_layer", x: Number(obstacle.x), y: Number(obstacle.y), width: Number(obstacle.width), height: Number(obstacle.height) };
-  if (!isFlowObstacleGeometry(geometry)) throw new Error("flow_obstacle_geometry_invalid");
-  return geometry;
+function normalizedGeometryForObstacle(obstacle) {
+  const sourceGeometry = obstacle.sourceGeometry;
+  const gameplayGeometry = obstacle.gameplayGeometry;
+  if (!isObstacleSourceGeometry(sourceGeometry) || !isObstacleGameplayGeometry(gameplayGeometry)) throw new Error("obstacle_geometry_invalid");
+  return { sourceGeometry: cloneData(sourceGeometry), gameplayGeometry: cloneData(gameplayGeometry) };
 }
 /** @param {Readonly<Record<string, unknown>>} obstacle */
-function gridMaskForObstacle(obstacle) { return deriveFlowObstacleGridMask(geometryForObstacle(obstacle)); }
+function gridMaskForObstacle(obstacle) {
+  const { gameplayGeometry } = normalizedGeometryForObstacle(obstacle);
+  return deriveObstacleGridMask(/** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */ (gameplayGeometry));
+}
 /** @param {number} timeMs @param {ObstacleWindow[]} windows */
 function blockedSubcellsAt(timeMs, windows) { const blocked = new Set(); for (const window of windows) if (timeMs >= window.startMs && timeMs <= window.endMs) for (const cell of window.blockedCells) for (const subcell of acceptedSubcells(cell, "cell", "left")) blocked.add(subcell); return blocked; }
 /** @param {number[]} cells */
@@ -288,7 +292,7 @@ function acceptedSubcells(cell,family,hand){const row=Math.floor(cell/4),column=
 function reachable(start,target,deltaBeats,rate,blocked){if(target<0||target>=48||blocked.has(target))return false;const distances=Array(48).fill(Infinity),visited=new Set();distances[clamp(start,0,47)]=0;for(let step=0;step<48;step+=1){let current=-1,currentDistance=Infinity;for(let candidate=0;candidate<48;candidate+=1)if(!visited.has(candidate)&&distances[candidate]<currentDistance){current=candidate;currentDistance=distances[candidate];}if(current<0||current===target)break;visited.add(current);const x=current%8,y=Math.floor(current/8);for(let dy=-1;dy<=1;dy+=1)for(let dx=-1;dx<=1;dx+=1){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx<0||nx>=8||ny<0||ny>=6)continue;const next=ny*8+nx;if(blocked.has(next))continue;distances[next]=Math.min(distances[next],currentDistance+(dx&&dy?Math.SQRT2:1));}}return distances[target]<=Math.max(deltaBeats*rate,0)+0.0001;}
 
 /** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} summary @param {Difficulty} difficulty @param {string} songToken */
-function convertFlowChart(summary,difficulty,songToken){const beats=[];const events=[];const lookup=buildFlowNoteLookup(summary.colorNotes??[]);for(const note of summary.colorNotes??[]){const emitted=emitFlowNote(note);beats.push(emitted);events.push({start:Number(note.start??0),sourceFamily:"note",result:{action:"emit",beat:cloneData(emitted),noteRef:flowNoteRef(note)},note:cloneData(note)});}for(const bomb of summary.bombNotes??[]){const emitted={start:Number(bomb.start??0),type:"bomb",placement:topLeftCell(Number(bomb.cell??0))};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"bomb",result:{action:"emit",beat:cloneData(emitted)},bomb:cloneData(bomb)});}for(const obstacle of summary.obstacles??[]){const emitted={start:Number(obstacle.start??0),end:Number(obstacle.start??0)+Number(obstacle.duration??0),type:"obstacle",geometry:geometryForObstacle(obstacle),gridMask:gridMaskForObstacle(obstacle)};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"obstacle",result:{action:"emit",beat:cloneData(emitted)},obstacle:cloneData(obstacle)});}for(const slider of summary.sliders??[]){const emitted=emitFlowArc(slider,lookup);beats.push(emitted);events.push({start:Number(slider.start??0),sourceFamily:"slider",result:{action:"emit",beat:cloneData(emitted)},slider:cloneData(slider)});}for(const burst of summary.burstSliders??[]){const emitted={start:Number(burst.start??0),end:Number(burst.end??burst.start??0),type:"burst",hand:String(burst.hand??"left"),placement:topLeftCell(Number(burst.cell??0)),direction:Number(burst.direction??8),tailPlacement:topLeftCell(Number(burst.tailCell??burst.cell??0)),checkpointCount:Math.max(Number(burst.sliceCount??1),1)};if(Object.hasOwn(burst,"spacingBias"))Object.assign(emitted,{spacingBias:Number(burst.spacingBias)});beats.push(emitted);events.push({start:emitted.start,sourceFamily:"burstSlider",result:{action:"emit",beat:cloneData(emitted)},source:cloneData(burst)});}const order={note:0,bomb:1,obstacle:2,arc:3,burst:4};beats.sort((a,b)=>Number(a.start)-Number(b.start)||(order[/** @type {keyof typeof order} */(a.type)]??99)-(order[/** @type {keyof typeof order} */(b.type)]??99)||JSON.stringify(a).localeCompare(JSON.stringify(b)));return{chart:{schemaId:"aerobeat.chart.flow.v2",schemaVersion:2,recordVersion:1,rulesetId:"flow_grid_v2",chartId:`ab-chart-${songToken}-flow-${difficulty.toLowerCase()}`,chartName:`${titleize(songToken)} ${difficulty} Flow`,mode:"flow",difficulty,beats},trace:{difficulty,flowObstacleContract:"source_geometry_v1",events}};}
+function convertFlowChart(summary,difficulty,songToken){const beats=[];const events=[];const lookup=buildFlowNoteLookup(summary.colorNotes??[]);for(const note of summary.colorNotes??[]){const emitted=emitFlowNote(note);beats.push(emitted);events.push({start:Number(note.start??0),sourceFamily:"note",result:{action:"emit",beat:cloneData(emitted),noteRef:flowNoteRef(note)},note:cloneData(note)});}for(const bomb of summary.bombNotes??[]){const emitted={start:Number(bomb.start??0),type:"bomb",placement:topLeftCell(Number(bomb.cell??0))};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"bomb",result:{action:"emit",beat:cloneData(emitted)},bomb:cloneData(bomb)});}for(const obstacle of summary.obstacles??[]){const emitted={start:Number(obstacle.start??0),end:Number(obstacle.start??0)+Number(obstacle.duration??0),type:"obstacle",...normalizedGeometryForObstacle(obstacle),gridMask:gridMaskForObstacle(obstacle)};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"obstacle",result:{action:"emit",beat:cloneData(emitted)},obstacle:cloneData(obstacle)});}for(const slider of summary.sliders??[]){const emitted=emitFlowArc(slider,lookup);beats.push(emitted);events.push({start:Number(slider.start??0),sourceFamily:"slider",result:{action:"emit",beat:cloneData(emitted)},slider:cloneData(slider)});}for(const burst of summary.burstSliders??[]){const emitted={start:Number(burst.start??0),end:Number(burst.end??burst.start??0),type:"burst",hand:String(burst.hand??"left"),placement:topLeftCell(Number(burst.cell??0)),direction:Number(burst.direction??8),tailPlacement:topLeftCell(Number(burst.tailCell??burst.cell??0)),checkpointCount:Math.max(Number(burst.sliceCount??1),1)};if(Object.hasOwn(burst,"spacingBias"))Object.assign(emitted,{spacingBias:Number(burst.spacingBias)});beats.push(emitted);events.push({start:emitted.start,sourceFamily:"burstSlider",result:{action:"emit",beat:cloneData(emitted)},source:cloneData(burst)});}const order={note:0,bomb:1,obstacle:2,arc:3,burst:4};beats.sort((a,b)=>Number(a.start)-Number(b.start)||(order[/** @type {keyof typeof order} */(a.type)]??99)-(order[/** @type {keyof typeof order} */(b.type)]??99)||JSON.stringify(a).localeCompare(JSON.stringify(b)));return{chart:{schemaId:"aerobeat.chart.flow.v3",schemaVersion:3,recordVersion:2,rulesetId:"flow_grid_v2",chartId:`ab-chart-${songToken}-flow-${difficulty.toLowerCase()}`,chartName:`${titleize(songToken)} ${difficulty} Flow`,mode:"flow",difficulty,beats},trace:{difficulty,obstacleContract:"normalized_obstacle_v2",events}};}
 /** @param {Readonly<Record<string, unknown>>} note */
 function emitFlowNote(note){const direction=Number(note.direction??8);const beat={start:Number(note.start??0),type:"note",hand:String(note.hand??"left"),placement:topLeftCell(Number(note.cell??0)),requiresDirection:direction!==8,angleOffset:Number(note.angleOffset??0)};if(direction!==8)Object.assign(beat,{direction});return beat;}
 /** @param {Readonly<Record<string, unknown>>} slider @param {Map<string,string>} lookup */

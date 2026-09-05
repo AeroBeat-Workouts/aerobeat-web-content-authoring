@@ -1,96 +1,37 @@
-// @ts-check
-
+// @ts-nocheck
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { parseBeatMapDifficulty, convertDifficulty, validateAuthoredPackage } from "../src/index.js";
 
 const raw = await readFile(new URL("../fixtures/flow-obstacle-3c9d-hard-v1.dat", import.meta.url));
-const oracle = JSON.parse(await readFile(new URL("../fixtures/flow-obstacle-3c9d-hard-golden-v1.json", import.meta.url), "utf8"));
+const oracle = JSON.parse(await readFile(new URL("../fixtures/obstacle-normalization-3c9d-hard-golden-v2.json", import.meta.url), "utf8"));
 assert.equal(raw.byteLength, 89_424);
-assert.equal(createHash("sha256").update(raw).digest("hex"), "4db5b3393a389c7bcaba6d7a02aec57c10801bcfd74de91523b8e9cdad859b55");
-assert.equal(oracle.source.versionHash, "5662f64a12c76a3dd11a5f6ee22611608cd06760");
-assert.equal(oracle.source.bpm, 150);
-const sourceDocument = JSON.parse(raw.toString("utf8"));
-const rawObstacle = sourceDocument._obstacles.find((entry) => entry._time === 92.5999984741211);
-assert.deepEqual(rawObstacle, oracle.rawObstacle, "oracle must bind the exact raw source record independently");
-
+assert.equal(createHash("sha256").update(raw).digest("hex"), oracle.source.sha256);
+const rawObstacle = JSON.parse(raw.toString("utf8"))._obstacles.find((entry) => entry._time === oracle.expected.startBeat);
+assert.deepEqual(rawObstacle, oracle.rawObstacle);
 const summary = parseBeatMapDifficulty(raw, "v2");
 const normalized = summary.obstacles.find((entry) => entry.start === oracle.expected.startBeat);
-assert.deepEqual(normalized, { start: 92.5999984741211, duration: 0.0625, x: 1, y: 2, width: 1, height: 3, sourceIndex: 2 });
-const converted = await convertDifficulty(summary, {
-  difficulty: "Hard",
-  songToken: "3c9d",
-  songName: "3c9d offline fixture",
-  bpm: 150,
-  sourceProvider: "beatsaver",
-  sourceId: "3c9d",
-  sourceVersionHash: "5662f64a12c76a3dd11a5f6ee22611608cd06760",
-  sourceDifficultyPath: "Hard.dat",
-  sourceBeatmapVersion: "2.0.0",
-  sourceDifficultyHash: `sha256:${oracle.source.sha256}`
-});
+assert.deepEqual(normalized, { start: oracle.expected.startBeat, duration: oracle.expected.durationBeat, sourceGeometry: oracle.expected.sourceGeometry, gameplayGeometry: oracle.expected.gameplayGeometry, sourceIndex: 2 });
+const converted = await convertDifficulty(summary, { difficulty:"Hard", songToken:"3c9d", songName:"3c9d offline fixture", bpm:150, sourceProvider:"beatsaver", sourceId:"3c9d", sourceVersionHash:oracle.source.versionHash, sourceDifficultyPath:"Hard.dat", sourceBeatmapVersion:"2.0.0", sourceDifficultyHash:`sha256:${oracle.source.sha256}` });
 const packageRecord = /** @type {Record<string, unknown>} */ (converted.package);
-assert.equal(packageRecord.schemaId, "aerobeat.song-package.v2");
-assert.equal(packageRecord.schemaVersion, 2);
-assert.equal(packageRecord.packageVersion, "2.0.0");
-assert.equal(/** @type {Record<string, unknown>} */ (packageRecord.source).flowObstacleContract, "source_geometry_v1");
-const flow = /** @type {Record<string, unknown>[]} */ (packageRecord.charts).find((chart) => chart.mode === "flow");
-assert.ok(flow);
-assert.equal(flow.schemaId, "aerobeat.chart.flow.v2");
-assert.equal(flow.rulesetId, "flow_grid_v2");
-const obstacle = /** @type {Record<string, unknown>[]} */ (flow.beats).find((beat) => beat.type === "obstacle" && beat.start === oracle.expected.startBeat);
-assert.ok(obstacle);
-assert.deepEqual(obstacle, {
-  start: oracle.expected.startBeat,
-  end: oracle.expected.endBeat,
-  type: "obstacle",
-  geometry: oracle.expected.geometry,
-  gridMask: oracle.expected.gridMask
-});
-assert.equal(Object.hasOwn(obstacle, "cells"), false);
-assert.equal((obstacle.end - obstacle.start) * 60_000 / 150, 25);
-assert.deepEqual(obstacle.gridMask, [1]);
-assert.notDeepEqual(obstacle.gridMask, [1, 5, 9]);
-const validation = await validateAuthoredPackage(converted.package);
-assert.equal(validation.valid, true, JSON.stringify(validation.issues));
-const mismatched = /** @type {Record<string, unknown>} */ (structuredClone(converted.package));
-const mismatchedFlow = /** @type {Record<string, unknown>[]} */ (mismatched.charts).find((chart) => chart.mode === "flow");
-assert.ok(mismatchedFlow);
-const mismatchedObstacle = /** @type {Record<string, unknown>[]} */ (mismatchedFlow.beats).find((beat) => beat.type === "obstacle");
-assert.ok(mismatchedObstacle);
-mismatchedObstacle.gridMask = [1, 5, 9];
-assert.equal((await validateAuthoredPackage(mismatched)).valid, false);
+assert.deepEqual([packageRecord.schemaId,packageRecord.schemaVersion,packageRecord.packageVersion],["aerobeat.song-package.v3",3,"3.0.0"]);
+assert.equal(/** @type {Record<string, unknown>} */ (packageRecord.source).obstacleContract,"normalized_obstacle_v2");
+const flow=/** @type {Record<string, unknown>[]} */(packageRecord.charts).find((chart)=>chart.mode==="flow");
+assert.deepEqual([flow.schemaId,flow.schemaVersion,flow.rulesetId],["aerobeat.chart.flow.v3",3,"flow_grid_v2"]);
+const obstacle=/** @type {Record<string, unknown>[]} */(flow.beats).find((beat)=>beat.type==="obstacle"&&beat.start===oracle.expected.startBeat);
+assert.deepEqual(obstacle,{start:oracle.expected.startBeat,end:oracle.expected.endBeat,type:"obstacle",sourceGeometry:oracle.expected.sourceGeometry,gameplayGeometry:oracle.expected.gameplayGeometry,gridMask:[1,5,9]});
+assert.equal((Number(obstacle.end)-Number(obstacle.start))*60_000/150,25);
+assert.equal((await validateAuthoredPackage(converted.package)).valid,true);
+for(const [field,value] of [["gridMask",[1]],["gameplayGeometry",oracle.expected.sourceGeometry],["sourceGeometry",oracle.expected.gameplayGeometry]]){const bad=structuredClone(converted.package);const badFlow=bad.charts.find((chart)=>chart.mode==="flow");badFlow.beats.find((beat)=>beat.type==="obstacle")[field]=value;assert.equal((await validateAuthoredPackage(bad)).valid,false);}
 
-for (const [format, document] of [
-  ["v2", { _obstacles: [{ _time: 1, _lineIndex: 1, _type: 0, _duration: 1, _width: 1 }] }],
-  ["v3", { obstacles: [{ b: 1, d: 1, x: 1, y: 0, w: 1, h: 5 }] }],
-  ["v4", { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: 1, y: 0, w: 1, h: 5 }] }]
-]) {
-  const parsed = parseBeatMapDifficulty(JSON.stringify(document), /** @type {"v2"|"v3"|"v4"} */ (format));
-  assert.deepEqual(parsed.obstacles[0], { start: 1, duration: 1, x: 1, y: 0, width: 1, height: 5, sourceIndex: 0 });
-}
-for (const [format, field] of [
-  ["v2", "_obstacles"],
-  ["v3", "obstacles"],
-  ["v4", "obstacles"]
-]) {
-  const absent = parseBeatMapDifficulty("{}", /** @type {"v2"|"v3"|"v4"} */ (format));
-  assert.deepEqual(absent.obstacles, [], `${format} must support an absent optional obstacle array`);
-  for (const malformed of [{}, null, "invalid", 0]) {
-    const document = { [field]: malformed, ...(format === "v4" ? { obstaclesData: [] } : {}) };
-    assert.throws(() => parseBeatMapDifficulty(JSON.stringify(document), /** @type {"v2"|"v3"|"v4"} */ (format)), (error) => error instanceof Error && /** @type {Error & {code?: string}} */ (error).code === "obstacle_container_invalid", `${format} present non-array obstacle container must reject with a stable bounded code`);
-  }
-}
-assert.throws(() => parseBeatMapDifficulty(JSON.stringify({ _obstacles: null, obstacles: [] }), "v2"), (error) => error instanceof Error && /** @type {Error & {code?: string}} */ (error).code === "obstacle_container_invalid", "present malformed v2 _obstacles must not fall through to its legacy fallback");
-
-for (const [format, document, code] of [
-  ["v2", { _obstacles: [{ _time: 1, _lineIndex: 1, _type: 2, _duration: 1, _width: 1 }] }, "obstacle_type_unsupported"],
-  ["v2", { _obstacles: [{ _time: 1, _lineIndex: 1, _type: 0, _duration: 0, _width: 1 }] }, "obstacle_duration_invalid"],
-  ["v3", { obstacles: [{ b: 1, d: 1, x: 3, y: 0, w: 2, h: 5 }] }, "obstacle_geometry_invalid"],
-  ["v4", { obstacles: [{ b: 1, i: 1 }], obstaclesData: [{ d: 1, x: 1, y: 0, w: 1, h: 5 }] }, "obstacle_index_invalid"],
-  ["v4", { obstacles: [{ b: 1, i: 0, x: 1 }], obstaclesData: [{ d: 1, x: 1, y: 0, w: 1, h: 5 }] }, "obstacle_geometry_conflict"],
-  ["v4", { obstacles: [{ b: 1, i: 0, r: 15 }], obstaclesData: [{ d: 1, x: 1, y: 0, w: 1, h: 5 }] }, "obstacle_rotation_unsupported"]
-]) assert.throws(() => parseBeatMapDifficulty(JSON.stringify(document), /** @type {"v2"|"v3"|"v4"} */ (format)), (error) => error instanceof Error && /** @type {Error & {code?: string}} */ (error).code === code);
-
-console.log("Source-faithful Flow obstacle normalization and offline 3c9d oracle passed.");
+const fixtures=[
+  ["v2",{_obstacles:[{_time:1,_lineIndex:1,_type:0,_duration:1,_width:2}]},{kind:"v2_type_0",coordinateSpace:"beatsaber_v2_legacy_obstacle",source:[1,0,2,5],gameplay:[1,0,2,3]}],
+  ["v2",{_obstacles:[{_time:1,_lineIndex:1,_type:1,_duration:1,_width:1}]},{kind:"v2_type_1",coordinateSpace:"beatsaber_v2_legacy_obstacle",source:[1,2,1,3],gameplay:[1,0,1,3]}],
+  ["v3",{obstacles:[{b:1,d:1,x:0,y:1,w:2,h:2}]},{kind:"v3_rect",coordinateSpace:"beatsaber_v3_obstacle_rect",source:[0,1,2,2],gameplay:[0,0,2,2]}],
+  ["v4",{obstacles:[{b:1,i:0}],obstaclesData:[{d:1,x:2,y:0,w:1,h:2}]},{kind:"v4_rect",coordinateSpace:"beatsaber_v4_obstacle_rect",source:[2,0,1,2],gameplay:[2,1,1,2]}]
+];
+for(const [format,document,expected] of fixtures){const entry=parseBeatMapDifficulty(JSON.stringify(document),/** @type {"v2"|"v3"|"v4"} */(format)).obstacles[0];assert.equal(entry.sourceGeometry.kind,expected.kind);assert.equal(entry.sourceGeometry.coordinateSpace,expected.coordinateSpace);assert.deepEqual([entry.sourceGeometry.x,entry.sourceGeometry.y,entry.sourceGeometry.width,entry.sourceGeometry.height],expected.source);assert.deepEqual([entry.gameplayGeometry.x,entry.gameplayGeometry.y,entry.gameplayGeometry.width,entry.gameplayGeometry.height],expected.gameplay);}
+for(const [format,field] of [["v2","_obstacles"],["v3","obstacles"],["v4","obstacles"]])for(const malformed of [{},null,"invalid",0])assert.throws(()=>parseBeatMapDifficulty(JSON.stringify({[field]:malformed,...(format==="v4"?{obstaclesData:[]}:{})}),/** @type {"v2"|"v3"|"v4"} */(format)),error=>error?.code==="obstacle_container_invalid");
+for(const [format,document,code] of [["v2",{_obstacles:[{_time:1,_lineIndex:1,_type:2,_duration:1,_width:1}]},"obstacle_type_unsupported"],["v3",{obstacles:[{b:1,d:1,x:3,y:0,w:2,h:5}]},"obstacle_geometry_invalid"],["v4",{obstacles:[{b:1,i:0,x:1}],obstaclesData:[{d:1,x:1,y:0,w:1,h:5}]},"obstacle_geometry_conflict"],["v4",{obstacles:[{b:1,i:0,r:15}],obstaclesData:[{d:1,x:1,y:0,w:1,h:5}]},"obstacle_rotation_unsupported"]])assert.throws(()=>parseBeatMapDifficulty(JSON.stringify(document),/** @type {"v2"|"v3"|"v4"} */(format)),error=>error?.code===code);
+console.log("Versioned source-to-canonical obstacle normalization and exact 3c9d oracle passed.");

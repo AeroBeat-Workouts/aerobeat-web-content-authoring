@@ -17,7 +17,7 @@ assert.equal("sourceVersionHash" in listed[0], false);
 assert.equal("packageHash" in listed[0].packages[0], false);
 assert.deepEqual((await adapter.get("easy"))?.assets[0].bytes, audio);
 assert.equal((await adapter.get("easy"))?.flowCellOrientation, "aerobeat_top_left_v1", "memory writes must be marked current internally");
-assert.equal((await adapter.get("easy"))?.flowObstacleContract, "source_geometry_v1", "proven Flow v2 geometry writes must be marked current internally");
+assert.equal((await adapter.get("easy"))?.obstacleContract, "normalized_obstacle_v2", "proven Flow v2 geometry writes must be marked current internally");
 assert.deepEqual((await adapter.get("expert"))?.assets[0].bytes, audio);
 
 await adapter.putCollection(batch("collection-b", [record("hard", "Hard", hash)], hash, audio));
@@ -33,10 +33,10 @@ assert.equal(legacyList.length, 1);
 assert.equal(legacyList[0].collectionId, "legacy:old");
 assert.equal((await legacy.getCollection("legacy:old"))?.packageKeys[0], "old");
 await assert.rejects(()=>legacy.get("old"),hasCode("flow_obstacle_reimport_required"),"legacy public put must remain management-only");
-const forged=legacyRecord("forged");forged.package.source.flowObstacleContract="source_geometry_v1";await legacy.put(forged);await assert.rejects(()=>legacy.get("forged"),hasCode("flow_obstacle_reimport_required"),"a source stamp without a Flow v2 geometry chart must not upgrade legacy content");
-assert.equal((await legacy.getForExport("forged"))?.flowObstacleContract,"bounded_mask_v1");
+const forged=legacyRecord("forged");forged.package.source.obstacleContract="normalized_obstacle_v2";await legacy.put(forged);await assert.rejects(()=>legacy.get("forged"),hasCode("flow_obstacle_reimport_required"),"a source stamp without a Flow v2 geometry chart must not upgrade legacy content");
+assert.equal((await legacy.getForExport("forged"))?.obstacleContract,"prior_obstacle_contract");
 assert.equal(await legacy.delete("forged"),true);
-const malformed={...legacyRecord("malformed"),package:sourceGeometryPackage("malformed","Hard")};malformed.package.charts[0].beats[0].gridMask=[1,5,9];await legacy.put(malformed);await assert.rejects(()=>legacy.get("malformed"),hasCode("flow_obstacle_reimport_required"),"invalid geometry/mask truth must not receive current provenance");assert.equal((await legacy.getForExport("malformed"))?.flowObstacleContract,"bounded_mask_v1");assert.equal(await legacy.delete("malformed"),true);
+const malformed={...legacyRecord("malformed"),package:sourceGeometryPackage("malformed","Hard")};malformed.package.charts[0].beats[0].gridMask=[1];await legacy.put(malformed);await assert.rejects(()=>legacy.get("malformed"),hasCode("flow_obstacle_reimport_required"),"invalid geometry/mask truth must not receive current provenance");assert.equal((await legacy.getForExport("malformed"))?.obstacleContract,"prior_obstacle_contract");assert.equal(await legacy.delete("malformed"),true);
 assert.equal(await legacy.deleteCollection("legacy:old"), true);
 assert.equal((await legacy.list()).length, 0);
 
@@ -58,7 +58,7 @@ Object.defineProperty(hostile, "collection", { enumerable: true, get() { getterC
 await assert.rejects(() => adapter.putCollection(/** @type {never} */ (hostile)), hasCode("storage_record_invalid"));
 assert.equal(getterCalls, 0);
 
-assert.equal(authoringDatabaseVersion, 5);
+assert.equal(authoringDatabaseVersion, 6);
 console.log("Memory collection persistence validation passed.");
 
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} bytes */
@@ -104,7 +104,7 @@ function record(key, difficulty, contentHash) {
 }
 
 /** @param {string} key @param {string} difficulty */
-function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v2",schemaVersion:2,packageVersion:"2.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,flowObstacleContract:"source_geometry_v1"},charts:[{schemaId:"aerobeat.chart.flow.v2",schemaVersion:2,mode:"flow",rulesetId:"flow_grid_v2",beats:[{start:1,end:2,type:"obstacle",geometry:{schema:"aerobeat/flow_obstacle_geometry",version:1,coordinateSpace:"beatsaber_lane_layer",x:1,y:2,width:1,height:3},gridMask:[1]}]}]};}
+function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v3",schemaVersion:3,packageVersion:"3.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,obstacleContract:"normalized_obstacle_v2"},charts:[{schemaId:"aerobeat.chart.flow.v3",schemaVersion:3,mode:"flow",rulesetId:"flow_grid_v2",beats:[{start:1,end:2,type:"obstacle",sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v2_legacy_obstacle",kind:"v2_type_1",x:1,y:2,width:1,height:3},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:1,y:0,width:1,height:3},gridMask:[1,5,9]}]}]};}
 /** @param {string} key */
 function legacyRecord(key) {
   return { key, package: { packageId: `package-${key}`, songName: "Legacy", source: { difficulty: "Hard" } }, packageHash: `sha256:${"b".repeat(64)}`, assets: [{ path: "audio.ogg", bytes: new Uint8Array([9]) }], sourceCache: [], createdAtMs: 1, schemaVersion: 2, writeToken: "legacy" };

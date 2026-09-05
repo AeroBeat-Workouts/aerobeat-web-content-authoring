@@ -125,7 +125,8 @@ function normalizeV2Obstacle(value, sourceIndex) {
     type === 1 ? 2 : 0,
     requiredInteger(value, ["_width", "w"], "obstacle_geometry_invalid"),
     type === 1 ? 3 : 5,
-    sourceIndex
+    sourceIndex,
+    type === 1 ? "v2_type_1" : "v2_type_0"
   );
 }
 
@@ -140,7 +141,8 @@ function normalizeInlineObstacle(value, sourceIndex) {
     requiredInteger(value, ["y"], "obstacle_geometry_invalid"),
     requiredInteger(value, ["w"], "obstacle_geometry_invalid"),
     requiredInteger(value, ["h"], "obstacle_geometry_invalid"),
-    sourceIndex
+    sourceIndex,
+    "v3_rect"
   );
 }
 
@@ -160,7 +162,8 @@ function normalizeIndexedObstacle(value, obstacleData, sourceIndex) {
     requiredInteger(metadata, ["y"], "obstacle_geometry_invalid"),
     requiredInteger(metadata, ["w"], "obstacle_geometry_invalid"),
     requiredInteger(metadata, ["h"], "obstacle_geometry_invalid"),
-    sourceIndex
+    sourceIndex,
+    "v4_rect"
   );
 }
 
@@ -169,12 +172,26 @@ function rejectObstacleRotation(value) {
   if (Object.hasOwn(value, "r") && value.r !== 0) throw new AuthoringParseError("obstacle_rotation_unsupported", "Rotated Flow obstacle geometry is unsupported");
 }
 
-/** @param {number} start @param {number} duration @param {number} x @param {number} y @param {number} width @param {number} height @param {number} sourceIndex */
-function obstacleRecord(start, duration, x, y, width, height, sourceIndex) {
+/** @param {number} start @param {number} duration @param {number} x @param {number} y @param {number} width @param {number} height @param {number} sourceIndex @param {"v2_type_0"|"v2_type_1"|"v3_rect"|"v4_rect"} kind */
+function obstacleRecord(start, duration, x, y, width, height, sourceIndex, kind) {
   if (start < 0) throw new AuthoringParseError("obstacle_time_invalid", "Obstacle start must be non-negative");
   if (!(duration > 0) || !Number.isFinite(start + duration)) throw new AuthoringParseError("obstacle_duration_invalid", "Obstacle duration must be finite and positive");
   if (x < 0 || x > 3 || y < 0 || y > 2 || width < 1 || width > 4 || height < 1 || height > 5 || x + width > 4 || y + height > 5) throw new AuthoringParseError("obstacle_geometry_invalid", "Obstacle geometry is outside Beat Saber lane/layer bounds");
-  return { start, duration, x, y, width, height, sourceIndex };
+  const coordinateSpace = kind.startsWith("v2_") ? "beatsaber_v2_legacy_obstacle" : kind === "v3_rect" ? "beatsaber_v3_obstacle_rect" : "beatsaber_v4_obstacle_rect";
+  const sourceGeometry = { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace, kind, x, y, width, height };
+  let gameplayY; let gameplayHeight;
+  if (kind === "v2_type_0" || kind === "v2_type_1") {
+    // Legacy type conversion is fixture-defined, not inferred from its intermediate Y/H rectangle.
+    gameplayY = 0; gameplayHeight = 3;
+  } else {
+    // V3 and V4 rectangles explicitly intersect source layers 0..2, then map that footprint once to top-left rows.
+    const sourceTopExclusive = Math.min(y + height, 3);
+    gameplayY = 3 - sourceTopExclusive;
+    gameplayHeight = sourceTopExclusive - y;
+  }
+  if (gameplayHeight < 1) throw new AuthoringParseError("obstacle_geometry_invalid", "Obstacle does not occupy the canonical gameplay grid");
+  const gameplayGeometry = { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x, y: gameplayY, width, height: gameplayHeight };
+  return { start, duration, sourceGeometry, gameplayGeometry, sourceIndex };
 }
 
 /** @param {Record<string, unknown>} value @param {string[]} keys @param {string} code */
