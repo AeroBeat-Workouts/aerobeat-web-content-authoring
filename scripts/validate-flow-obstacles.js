@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { parseBeatMapDifficulty, convertDifficulty, validateAuthoredPackage } from "../src/index.js";
+import { parseBeatMapDifficulty, convertDifficulty, semanticParityHash, validateAuthoredPackage } from "../src/index.js";
 
 const raw = await readFile(new URL("../fixtures/flow-obstacle-3c9d-hard-v1.dat", import.meta.url));
 const oracle = JSON.parse(await readFile(new URL("../fixtures/obstacle-normalization-3c9d-hard-golden-v2.json", import.meta.url), "utf8"));
@@ -23,7 +23,10 @@ const obstacle=/** @type {Record<string, unknown>[]} */(flow.beats).find((beat)=
 assert.deepEqual(obstacle,{start:oracle.expected.startBeat,end:oracle.expected.endBeat,type:"obstacle",sourceGeometry:oracle.expected.sourceGeometry,gameplayGeometry:oracle.expected.gameplayGeometry,gridMask:[1,5,9]});
 assert.equal((Number(obstacle.end)-Number(obstacle.start))*60_000/150,25);
 assert.equal((await validateAuthoredPackage(converted.package)).valid,true);
-for(const [field,value] of [["gridMask",[1]],["gameplayGeometry",oracle.expected.sourceGeometry],["sourceGeometry",oracle.expected.gameplayGeometry]]){const bad=structuredClone(converted.package);const badFlow=bad.charts.find((chart)=>chart.mode==="flow");badFlow.beats.find((beat)=>beat.type==="obstacle")[field]=value;assert.equal((await validateAuthoredPackage(bad)).valid,false);}
+assert.equal(await semanticParityHash(converted.package),oracle.expected.boxing.semanticParityHash);
+const boxingCharts=packageRecord.charts.filter((chart)=>chart.mode==="boxing");assert.equal(boxingCharts.length,4);
+for(const chart of boxingCharts){const key=`${chart.prototype.recipeId}|${chart.prototype.rulesetId}`,expected=oracle.expected.boxing.charts[key],boxingObstacle=chart.beats.find((beat)=>beat.sourceEventIds?.includes("obstacle-002")),boxingTrace=packageRecord.conversionTrace.boxing.find((trace)=>trace.chartId===chart.chartId).events.find((entry)=>entry.sourceEventIds?.includes("obstacle-002"));assert.ok(expected&&boxingObstacle&&boxingTrace,`missing exact Boxing obstacle oracle for ${key}`);assert.equal(chart.prototype.contentHash,expected.contentHash);assert.deepEqual(boxingObstacle,{start:oracle.expected.startBeat,end:oracle.expected.endBeat,type:oracle.expected.boxing.type,eventId:expected.eventId,sourceEventIds:oracle.expected.boxing.sourceEventIds,sourceGeometry:oracle.expected.sourceGeometry,gameplayGeometry:oracle.expected.gameplayGeometry,gridMask:oracle.expected.gridMask,checkpoint:{kind:"instantaneous",freshnessMs:150,timingWindowMs:180,noseSafeCells:oracle.expected.boxing.noseSafeCells},blockedCells:oracle.expected.gridMask});assert.deepEqual(boxingTrace,{sourceEventIds:oracle.expected.boxing.sourceEventIds,start:oracle.expected.startBeat,end:oracle.expected.endBeat,action:"emit",kind:"obstacle_checkpoint",type:oracle.expected.boxing.type,sourceGeometry:oracle.expected.sourceGeometry,gameplayGeometry:oracle.expected.gameplayGeometry,gridMask:oracle.expected.gridMask,blockedCells:oracle.expected.gridMask,noseSafeCells:oracle.expected.boxing.noseSafeCells});}
+for(const [mode,field,value] of [["flow","gridMask",[1]],["flow","gameplayGeometry",oracle.expected.sourceGeometry],["flow","sourceGeometry",oracle.expected.gameplayGeometry],["boxing","gridMask",[1]],["boxing","blockedCells",[1]],["boxing","checkpoint",{kind:"instantaneous",freshnessMs:150,timingWindowMs:180,noseSafeCells:[0]}],["boxing","end",oracle.expected.startBeat]]){const bad=structuredClone(converted.package);const badChart=bad.charts.find((chart)=>chart.mode===mode);const badObstacle=badChart.beats.find((beat)=>mode==="flow"?beat.type==="obstacle":beat.sourceEventIds?.includes("obstacle-002"));badObstacle[field]=value;assert.equal((await validateAuthoredPackage(bad)).valid,false,`${mode} ${field} disagreement must fail atomically`);}
 
 const fixtures=[
   ["v2",{_obstacles:[{_time:1,_lineIndex:1,_type:0,_duration:1,_width:2}]},{kind:"v2_type_0",coordinateSpace:"beatsaber_v2_legacy_obstacle",source:[1,0,2,5],gameplay:[1,0,2,3]}],

@@ -199,8 +199,8 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     const blockedCells = [...window.blockedCells]; const type = obstacleType(blockedCells); const sourceId = `obstacle-${String(window.sourceIndex).padStart(3, "0")}`;
     if ((type === "squat" && modifiers.includes("no_squats")) || (type.startsWith("weave_") && modifiers.includes("no_weaves"))) { trace.push({ sourceEventIds: [sourceId], start: window.startBeat, action: "drop", reason: "disabled_by_modifier", type }); continue; }
     const safeCells = Array.from({ length: 12 }, (_, index) => index).filter((cell) => !blockedCells.includes(cell));
-    const emitted = { start: window.startBeat, type, eventId: await eventId(String(recipe.recipeId), sourceId, type), sourceEventIds: [sourceId], checkpoint: { kind: "instantaneous", freshnessMs, timingWindowMs, noseSafeCells: safeCells }, blockedCells };
-    beats.push(emitted); trace.push({ sourceEventIds: [sourceId], start: window.startBeat, action: "emit", kind: "obstacle_checkpoint", type, blockedCells, noseSafeCells: safeCells });
+    const emitted = { start: window.startBeat, end: window.endBeat, type, eventId: await eventId(String(recipe.recipeId), sourceId, type), sourceEventIds: [sourceId], sourceGeometry: cloneData(window.sourceGeometry), gameplayGeometry: cloneData(window.gameplayGeometry), gridMask: [...window.gridMask], checkpoint: { kind: "instantaneous", freshnessMs, timingWindowMs, noseSafeCells: safeCells }, blockedCells };
+    beats.push(emitted); trace.push({ sourceEventIds: [sourceId], start: window.startBeat, end: window.endBeat, action: "emit", kind: "obstacle_checkpoint", type, sourceGeometry: cloneData(window.sourceGeometry), gameplayGeometry: cloneData(window.gameplayGeometry), gridMask: [...window.gridMask], blockedCells, noseSafeCells: safeCells });
   }
   beats.sort((left, right) => Number(left.start) - Number(right.start) || String(left.eventId).localeCompare(String(right.eventId)));
   return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
@@ -241,7 +241,7 @@ function sequenceBetter(left, right) {
   return false;
 }
 
-/** @typedef {{startBeat:number,endBeat:number,startMs:number,endMs:number,blockedCells:number[],sourceIndex:number}} ObstacleWindow */
+/** @typedef {{startBeat:number,endBeat:number,startMs:number,endMs:number,sourceGeometry:import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleSourceGeometry,gameplayGeometry:import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry,gridMask:number[],blockedCells:number[],sourceIndex:number}} ObstacleWindow */
 /** @param {readonly Readonly<Record<string, unknown>>[]} obstacles @param {number} bpm @returns {ObstacleWindow[]} */
 function obstaclesFor(obstacles, bpm) {
   if (obstacles.length > maximumObstaclesPerChart) throw new Error("flow_obstacle_limit_exceeded");
@@ -251,15 +251,17 @@ function obstaclesFor(obstacles, bpm) {
     const endBeat = start + duration;
     const resolvedEndMs = beatToMs(endBeat, bpm);
     if (!Number.isFinite(start) || start < 0 || !Number.isFinite(duration) || duration <= 0 || !Number.isFinite(endBeat) || resolvedEndMs > 86_400_000) throw new Error("flow_obstacle_interval_invalid");
-    return { startBeat: start, endBeat, startMs: beatToMs(start, bpm) - timingWindowMs, endMs: resolvedEndMs + timingWindowMs, blockedCells: [...gridMaskForObstacle(entry)], sourceIndex: Number(entry.sourceIndex ?? index) };
+    const geometry = normalizedGeometryForObstacle(entry);
+    const gridMask = deriveObstacleGridMask(geometry.gameplayGeometry);
+    return { startBeat: start, endBeat, startMs: beatToMs(start, bpm) - timingWindowMs, endMs: resolvedEndMs + timingWindowMs, sourceGeometry: geometry.sourceGeometry, gameplayGeometry: geometry.gameplayGeometry, gridMask: [...gridMask], blockedCells: [...gridMask], sourceIndex: Number(entry.sourceIndex ?? index) };
   });
 }
-/** @param {Readonly<Record<string, unknown>>} obstacle */
+/** @param {Readonly<Record<string, unknown>>} obstacle @returns {{sourceGeometry:import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleSourceGeometry,gameplayGeometry:import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry}} */
 function normalizedGeometryForObstacle(obstacle) {
   const sourceGeometry = obstacle.sourceGeometry;
   const gameplayGeometry = obstacle.gameplayGeometry;
   if (!isObstacleSourceGeometry(sourceGeometry) || !isObstacleGameplayGeometry(gameplayGeometry)) throw new Error("obstacle_geometry_invalid");
-  return { sourceGeometry: cloneData(sourceGeometry), gameplayGeometry: cloneData(gameplayGeometry) };
+  return { sourceGeometry: /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleSourceGeometry} */ (cloneData(sourceGeometry)), gameplayGeometry: /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */ (cloneData(gameplayGeometry)) };
 }
 /** @param {Readonly<Record<string, unknown>>} obstacle */
 function gridMaskForObstacle(obstacle) {

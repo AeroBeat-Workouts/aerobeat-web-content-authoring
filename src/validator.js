@@ -83,8 +83,12 @@ function validateBeat(beat, path, issue) {
     if (!isPlainRecord(beat.spatialTarget) || !integerRange(beat.spatialTarget.targetCell, 0, 11) || !Array.isArray(beat.spatialTarget.acceptedSubcells) || beat.spatialTarget.acceptedSubcells.some((entry) => !integerRange(entry, 0, 47))) issue("spatial_target_invalid", `${path}.spatialTarget`, "Punch spatial target must use athlete grid/subgrid IDs");
   }
   if (/^(squat|weave_)/u.test(String(beat.type))) {
-    if (!Array.isArray(beat.blockedCells) || beat.blockedCells.some((entry) => !integerRange(entry, 0, 11))) issue("blocked_cells_invalid", `${path}.blockedCells`, "Obstacle cells must use athlete 0..11 IDs");
-    if (!isPlainRecord(beat.checkpoint) || beat.checkpoint.kind !== "instantaneous" || beat.checkpoint.timingWindowMs !== timingWindowMs || beat.checkpoint.freshnessMs !== freshnessMs || !Array.isArray(beat.checkpoint.noseSafeCells)) issue("obstacle_checkpoint_invalid", `${path}.checkpoint`, "Avoidance checkpoint requires frozen timing and nose safe cells");
+    const geometryValid = Number.isFinite(beat.end) && Number(beat.end) > Number(beat.start) && Number(beat.end) <= 144000 && isObstacleSourceGeometry(beat.sourceGeometry) && isObstacleGameplayGeometry(beat.gameplayGeometry) && isObstacleGridMask(beat.gridMask, /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */ (beat.gameplayGeometry));
+    if (!geometryValid) issue("boxing_obstacle_geometry_invalid", path, "Boxing obstacle source/gameplay geometry, interval, and derived grid mask must match exactly");
+    const blockedCells = Array.isArray(beat.blockedCells) ? beat.blockedCells : [];
+    if (!geometryValid || canonicalJson(blockedCells) !== canonicalJson(beat.gridMask) || obstacleActionForCells(blockedCells) !== String(beat.type)) issue("blocked_cells_invalid", `${path}.blockedCells`, "Obstacle action and blocked cells must exactly match the normalized derived grid mask");
+    const expectedSafeCells = Array.from({ length: 12 }, (_, index) => index).filter((cell) => !blockedCells.includes(cell));
+    if (!isPlainRecord(beat.checkpoint) || beat.checkpoint.kind !== "instantaneous" || beat.checkpoint.timingWindowMs !== timingWindowMs || beat.checkpoint.freshnessMs !== freshnessMs || canonicalJson(beat.checkpoint.noseSafeCells) !== canonicalJson(expectedSafeCells)) issue("obstacle_checkpoint_invalid", `${path}.checkpoint`, "Avoidance checkpoint requires frozen timing and the exact normalized safe-cell complement");
   }
 }
 /** @param {unknown} beat @param {string} path @param {(code: string, path: string, message: string) => void} issue */
@@ -98,6 +102,8 @@ function validateFlowBeat(beat,path,issue){
   if(String(beat.type)==="arc"&&(!Number.isFinite(beat.end)||!integerRange(beat.startPlacement,0,11)||!integerRange(beat.endPlacement,0,11)||!Number.isInteger(beat.startDirection)||!Number.isInteger(beat.endDirection)))issue("flow_arc_invalid",path,"Flow arc is invalid");
   if(String(beat.type)==="burst"&&(!Number.isFinite(beat.end)||!integerRange(beat.placement,0,11)||!integerRange(beat.tailPlacement,0,11)||!Number.isInteger(beat.checkpointCount)||Number(beat.checkpointCount)<1))issue("flow_burst_invalid",path,"Flow burst is invalid");
 }
+/** @param {readonly number[]} cells */
+function obstacleActionForCells(cells) { let left=0,right=0; for(const cell of cells) cell%4<=1?left+=1:right+=1; return left>right?"weave_right":right>left?"weave_left":"squat"; }
 /** @param {unknown} value */
 function nonEmpty(value) { return typeof value === "string" && value.trim().length > 0; }
 /** @param {unknown} value */

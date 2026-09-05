@@ -2,7 +2,7 @@
   "schema": "aerobeat/task11_source_matrix",
   "version": 1,
   "fixtureId": "task11-source-matrix-v1",
-  "fixtureHash": "sha256:b627a1046bf16707bf2faa15ab044d4f1ba17d9a6f9b7a1e74e0adaccbb3b870",
+  "fixtureHash": "sha256:ca7e6a61b5737d9e55c036295dbc01e4ae5fd0634f09ef6df930addbb199f9f0",
   "license": "Synthetic AeroBeat test data; no third-party map or media content.",
   "sourceToken": "task11-matrix",
   "difficulty": "Hard",
@@ -68,20 +68,20 @@
       "sourceVersionHash": "231c0accf1cddb318fa1150672d137340ffde90b",
       "expectedSemanticHashes": {
         "aero.converter.canonical": [
-          "sha256:d5e0380d7654fde0998776ab4387754a687c912846196c53ab61ff825b14c89c",
-          "sha256:d5e0380d7654fde0998776ab4387754a687c912846196c53ab61ff825b14c89c",
-          "sha256:e23f0c68418845b12cfa67b734a12c840935682a3b50188953c634aee72a876f",
-          "sha256:36af5c674fb91a61b119316456e390e7a474c60992c7292510d0a46ce3048343",
-          "sha256:6be8d3abd1c4cc0946c9edceba0019183b42c7835b7e82a112a5662d476a4ba0",
+          "sha256:91d01d2a137d9f6fabb7f8dddf2c48c5f1de7dae847c3ee8049d0534bf3d650e",
+          "sha256:91d01d2a137d9f6fabb7f8dddf2c48c5f1de7dae847c3ee8049d0534bf3d650e",
+          "sha256:9e88b3463cec875843d172d31b411f2c2792782d48707fa1c55d6b636cdde2d9",
+          "sha256:73dc6bd0050ad26f22dfc13effdf47dffc72e8bf5ce9710c0dafc59dc08564ce",
+          "sha256:76f7c305fc87bc72056516b8b52c54033771508abc5fba241bbbd1da471e4ce6",
           "sha256:adfef884a4dbd2b7e16faedc508c928b431390e7b908079194dbee8e308f69ad",
           "sha256:6f4e7512826e4e8bc68d595a42d875055c6bd405f54ed1bc570e84b86f70e472"
         ],
         "aero.converter.prototype-reach": [
-          "sha256:de164e0d8beb9595cb0bbe4241e90f3b43916b5a253f2476e6c033716f6d7c48",
-          "sha256:de164e0d8beb9595cb0bbe4241e90f3b43916b5a253f2476e6c033716f6d7c48",
-          "sha256:d74431a33ac41c3c6fb0a62a972d3cff5aad6d0c388106e5237f6b8f76e3bcea",
-          "sha256:63ec00f239060f4e1fc329e9debc2bd26c48a5a3197e32fc7f365a3759fa363f",
-          "sha256:4048c972da694b1b4c88cf589faae581f4266506d3bcd53598a1d80d95e22f0a",
+          "sha256:c7c6afdd646b4dccb88333b5c7f0b32777a6f7653942c851d771cf23552305bc",
+          "sha256:c7c6afdd646b4dccb88333b5c7f0b32777a6f7653942c851d771cf23552305bc",
+          "sha256:d653d918b88aa93c4fcce240e614c9807f9b1ac24b7ab212bd975096deb0d315",
+          "sha256:d0f79888ba25127c408ff6695cb4cebd90df0310e4a3f0d102b2b8abf7e3cc28",
+          "sha256:79582b4afbb37b783c818a0b42251ba25e6d68ec726d780e249b1f08e4c621b5",
           "sha256:857381a2c3f54c69e879c45aa05dede1f4d7d707922c443b2eaefc412c2f76c1",
           "sha256:21389c69728dc2623e6d350d1f7a655d707845d7a746a2390929b8271f67eada"
         ]
@@ -199,20 +199,20 @@
       "sourceVersionHash": "316c72ebf0ebdb3e5fbb412a775c930dbcb4e7b6",
       "expectedSemanticHashes": {
         "aero.converter.canonical": [
-          "sha256:203eacf5c335fb63215a675eabb57e62acae983dd14472198408991e9ce90d70",
-          "sha256:203eacf5c335fb63215a675eabb57e62acae983dd14472198408991e9ce90d70",
-          "sha256:653fac2f86c86685a0cf58b89add6d05cd2c83470f6c94e703672a859fe44aa9",
-          "sha256:73326ef7730e9d3a29e150f08f1f5b6ed9055a1a0e313ca989efa3f4d167f77a",
-          "sha256:6f7916caa4446862748dbd0cceb1def007357a7e2a9dcb744537edc8d587d1cb",
+          "sha256:1ce276ada7afe875c13bfcfc870f8a5775d0dafbf2626646b3575c3312413c65",
+          "sha256:1ce276ada7afe875c13bfcfc870f8a5775d0dafbf2626646b3575c3312413c65",
+          "sha256:d8978dbf661b1eb6d949d01b967b6af36b09e33a20a0697f25c3fa138f2362c1",
+          "sha256:05a9dccb933024cd523b8a775f2aa73dac263be3981e90a0b83a8a2b38f4e09d",
+          "sha256:75db85cffe015a3c1bdc26e8b394d7de5f1ac5076c5c5978f0fe9ec0d4c0007b",
           "sha256:923ce7434800c9294cffb7e5054fc5ea565354b920ca3be355f2e02b7b740285",
           "sha256:f1913745b7192295b1a27c60fa2456111d2d2c7ee8281c0e2fdb41ad5906fecb"
         ],
         "aero.converter.prototype-reach": [
-          "sha256:44525087984abdf806feecfcf99577954a6e2bf1a713f3a7ab0e025099305b8d",
-          "sha256:44525087984abdf806feecfcf99577954a6e2bf1a713f3a7ab0e025099305b8d",
-          "sha256:157b532d14762363c3c7ea5c1fbb63c9463cddc02bcb4097d905970753cffd0a",
-          "sha256:baef38ae27ab69dde8e0a0be686447eed7f01e09b672baa67c37fc8d6af935c2",
-          "sha256:a832b4d97d0578959ad7a1dee68a29dceba0840f6b6ca7ed5db1594b0adb4231",
+          "sha256:50cabcfcc157344a57b61ce159b623f6d7ee3a3d9abb07c302b46742a64fe666",
+          "sha256:50cabcfcc157344a57b61ce159b623f6d7ee3a3d9abb07c302b46742a64fe666",
+          "sha256:021252f747a1f24a926079049753e6aaf8aff3484b2b8bc7799c015ee79a6dfd",
+          "sha256:7cddeea7f2a610609b17fa891040298040a1f037278268c905eb10798cbebf5e",
+          "sha256:540daefdc34de9c71037c208c7c28e30f0dc2e3f77790109084cb6357f165566",
           "sha256:1e3131ea261d07e43010918fcf52afb8b657d5dd750493e07066d3373087d108",
           "sha256:8a0b47423e7158f743df1ff2fffd3a0a2240e26124e7d726a7bfa4ad22eb9708"
         ]
@@ -345,20 +345,20 @@
       "sourceVersionHash": "bc9c727d25aaeeb8ef33f5c244b91384dede9a38",
       "expectedSemanticHashes": {
         "aero.converter.canonical": [
-          "sha256:b1b9fbe68f486a83542306c3c6a0bb2e3563e4b97d7b475928941516385a9758",
-          "sha256:b1b9fbe68f486a83542306c3c6a0bb2e3563e4b97d7b475928941516385a9758",
-          "sha256:64d0aaa3e81c814892bdaf217d53c6feea9d4bf86a31e116ab3377fd99f36084",
-          "sha256:293e8d47bc87416f0649f6a971574665d79d7f3df4e2affb9c96e713708a9927",
-          "sha256:b0f9073a52eb2b124921e788602096a40d9dbdfcba580951fe39fb903d192fbe",
+          "sha256:b3e5020005572e169684fe21aaa53b1c5dc0c82ddab6b366fe00fb3ac13b122f",
+          "sha256:b3e5020005572e169684fe21aaa53b1c5dc0c82ddab6b366fe00fb3ac13b122f",
+          "sha256:cba1bf987c8a1d1199c60aa1b5b6161941477267232cc6ac3f32522bdda251fe",
+          "sha256:f7a337e2404f04d5c95e349e7ff6ec805ba20d673ad7218df58a995fe1d14d7b",
+          "sha256:e72099f7440be8f5df82f1f5b4898dd448a5803471cb503acea386fd62693f58",
           "sha256:bc59103b14ca36beab224e0f3e422fa24753fff3a4a2978c3b29dcd9c0b384d8",
           "sha256:6423fe61bf4e518c9c8fa291236c00787738c907fffce9a0dd749c4db7fdebba"
         ],
         "aero.converter.prototype-reach": [
-          "sha256:224cbe4028bc728d2f734659b9e58b5284928d294f6dca6245de04ec749ee02d",
-          "sha256:224cbe4028bc728d2f734659b9e58b5284928d294f6dca6245de04ec749ee02d",
-          "sha256:88b33739d6c01000a5d4635fbd96181d9c0cae513ba85fa0c9ac77285dedd57a",
-          "sha256:8ae3cfea656d631a96a060d59704a7c23728cf4c6823e0bfc90d236bb25bc39e",
-          "sha256:32719ffb39eee045899e5a165704611ec1e0460b62f4659a20d51bc7f4d115db",
+          "sha256:aacba0d5df60578449049de2e3fd79f05b756feeb9426ef8e635e6ac06ea0687",
+          "sha256:aacba0d5df60578449049de2e3fd79f05b756feeb9426ef8e635e6ac06ea0687",
+          "sha256:4f6a349b32a90ca6bb331d0ae43f6d89a6b9087dc69f5b2cad4df7c62d199b31",
+          "sha256:5681b7b44f0dd9c8f0d12f292075fcbc82c0e25a4ee0eccd674e1b7d7566bc77",
+          "sha256:ad7064ecb14e8b271776ab8a863a4f064d41b0629ca1da6a2be95bf974e34f51",
           "sha256:bcb3e14f881c521d6fffcca9e2699909373bca9602232e3e51c45ac336dfc3c9",
           "sha256:252abd69aa5959db745f8606af20b4438287171c36a88381db31c945d646ab97"
         ]
