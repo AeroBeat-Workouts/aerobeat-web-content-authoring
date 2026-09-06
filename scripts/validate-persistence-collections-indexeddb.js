@@ -54,14 +54,14 @@ const migrated = createIndexedDbPersistenceAdapter({ indexedDB, databaseName: st
 const stalePackages = await migrated.list();
 assert.equal(stalePackages.length, 2, "v4 migration must retain legacy package records");
 const migratedRaw = await inspectVersionFourDatabase(staleName);
-assert.equal(migratedRaw.packages.length, 2, "DB4→6 migration must retain every legacy package row");
+assert.equal(migratedRaw.packages.length, 2, "DB4→7 migration must retain every legacy package row");
 const exactMigrated = migratedRaw.packages.find((row) => row.key === "inverted-flow");
-assert.deepEqual(exactMigrated.package, legacyPackage, "DB4→6 migration must not rewrite legacy package bytes/data");
-assert.equal(exactMigrated.packageHash, legacyPackageHash, "DB4→6 migration must not rewrite legacy package hash");
+assert.deepEqual(exactMigrated.package, legacyPackage, "DB4→7 migration must not rewrite legacy package bytes/data");
+assert.equal(exactMigrated.packageHash, legacyPackageHash, "DB4→7 migration must not rewrite legacy package hash");
 assert.ok(migratedRaw.packages.every((row) => row.flowCellOrientation === "aerobeat_top_left_v1"), "v4 migration must mark every legacy package stale internally");
-assert.equal(migratedRaw.collections[0].flowCellOrientation, "aerobeat_top_left_v1", "DB4→6 migration must retain corrected orientation truth");
-assert.ok(migratedRaw.packages.every((row) => row.obstacleContract === "prior_obstacle_contract"), "DB6 migration must label legacy package obstacle contracts without rewriting package bytes/hashes");
-assert.equal(migratedRaw.collections[0].obstacleContract, "prior_obstacle_contract", "DB6 migration must label the legacy collection obstacle contract");
+assert.equal(migratedRaw.collections[0].flowCellOrientation, "aerobeat_top_left_v1", "DB4→7 migration must retain corrected orientation truth");
+assert.ok(migratedRaw.packages.every((row) => row.obstacleContract === "prior_obstacle_contract"), "DB7 migration must label legacy package obstacle contracts without rewriting package bytes/hashes");
+assert.equal(migratedRaw.collections[0].obstacleContract, "prior_obstacle_contract", "DB7 migration must label the legacy collection obstacle contract");
 assert.equal(migratedRaw.assets.length, 1, "v4 migration must retain shared asset rows");
 assert.deepEqual(migratedRaw.assets[0].bytes, bytes, "v4 migration must retain shared asset bytes exactly");
 assert.deepEqual(Object.keys(stalePackages[0]), ["key", "packageId", "packageHash", "songName", "difficulty", "createdAtMs", "assetCount", "sourceCacheCount"], "public package summary keys must remain exact");
@@ -99,10 +99,51 @@ assert.equal(raw.assets.length, 1, "replacement GC must retain only the currentl
 assert.deepEqual(raw.assets[0].bytes, replacementBytes);
 assert.equal(await migrated.deleteCollection("inverted-collection"), true);
 assert.equal((await inspectVersionFourDatabase(staleName)).assets.length, 0, "final deletion must safely collect replacement assets");
-assert.equal((await migrated.estimate()).schemaVersion, 6);
+assert.equal((await migrated.estimate()).schemaVersion, 7);
 migrated.destroy();
 await deleteDatabase(staleName);
-console.log("IndexedDB collection persistence and non-destructive DB4→6 Flow obstacle-contract migration validation passed.");
+
+const v5Name=`collections-v5-raw-0039-${Date.now()}-${Math.random()}`;
+const historicalPackage={...legacyRecord("historical"),assets:[{path:"cover.bin",bytes:new Uint8Array([8,6,7])}],sourceCache:[{path:"Info.dat",bytes:new Uint8Array([5,3,0,9])}],assetRefs:[{path:"media/audio/song.ogg",contentHash:hash}],createdAtMs:1700000000123,schemaVersion:5,writeToken:"raw-0.0.39-token",flowCellOrientation:"aerobeat_top_left_v1",flowObstacleContract:"source_geometry_v1"};
+const historicalCollection={...batch("historical-collection",[record("historical","Hard",hash)],hash,bytes).collection,packageKeys:["historical"],packages:[{packageKey:"historical",packageId:"package-historical",difficultyId:"Hard",difficultyLabel:"Hard"}],createdAtMs:1700000000456,schemaVersion:5,writeToken:"raw-0.0.39-collection-token",flowCellOrientation:"aerobeat_top_left_v1",flowObstacleContract:"source_geometry_v1"};
+await seedDatabase(v5Name,5,[historicalPackage],[{contentHash:hash,bytes,byteLength:bytes.byteLength}],[historicalCollection]);
+const v5Adapter=createIndexedDbPersistenceAdapter({indexedDB,databaseName:v5Name});
+assert.equal((await v5Adapter.list()).length,1,"true raw-0.0.39 DB5 package must remain listed");
+assert.equal((await v5Adapter.listCollections()).length,1,"true raw-0.0.39 DB5 collection must remain listed");
+await assert.rejects(()=>v5Adapter.get("historical"),hasCode("flow_obstacle_reimport_required"));
+const v5Export=await v5Adapter.getForExport("historical");
+assert.deepEqual(v5Export?.assets.map((entry)=>[entry.path,[...entry.bytes]]),[["cover.bin",[8,6,7]],["media/audio/song.ogg",[...bytes]]]);
+assert.deepEqual(v5Export?.sourceCache[0].bytes,new Uint8Array([5,3,0,9]));
+const v5Raw=await inspectDatabase(v5Name);
+assert.equal(v5Raw.version,7);assert.equal(v5Raw.packages[0].flowObstacleContract,undefined);assert.equal(v5Raw.packages[0].obstacleContract,"prior_obstacle_contract");
+assert.equal(v5Raw.collections[0].flowObstacleContract,undefined);assert.equal(v5Raw.collections[0].obstacleContract,"prior_obstacle_contract");
+for(const key of ["key","packageHash","createdAtMs","writeToken","flowCellOrientation"])assert.deepEqual(v5Raw.packages[0][key],historicalPackage[key],`DB5 package ${key} must be preserved exactly`);
+assert.deepEqual(v5Raw.packages[0].package,historicalPackage.package);assert.deepEqual(v5Raw.packages[0].assets,historicalPackage.assets);assert.deepEqual(v5Raw.packages[0].sourceCache,historicalPackage.sourceCache);assert.deepEqual(v5Raw.packages[0].assetRefs,historicalPackage.assetRefs);assert.deepEqual(v5Raw.assets[0].bytes,bytes);
+assert.equal(await v5Adapter.deleteCollection("historical-collection"),true);assert.equal((await v5Adapter.list()).length,0);v5Adapter.destroy();await deleteDatabase(v5Name);
+
+const v6Name=`collections-v6-poisoned-${Date.now()}-${Math.random()}`;
+const poisonedPackage={...historicalPackage,key:"poisoned",package:{...historicalPackage.package,packageId:"package-poisoned"},schemaVersion:6,obstacleContract:"prior_obstacle_contract"};
+const poisonedCollection={...historicalCollection,collectionId:"poisoned-collection",packageKeys:["poisoned"],packages:[{packageKey:"poisoned",packageId:"package-poisoned",difficultyId:"Hard",difficultyLabel:"Hard"}],schemaVersion:6,obstacleContract:"prior_obstacle_contract"};
+const cleanPackage={...record("clean","Easy",hash),schemaVersion:6,flowCellOrientation:"aerobeat_top_left_v1",obstacleContract:"normalized_obstacle_v2"};
+await seedDatabase(v6Name,6,[poisonedPackage,cleanPackage],[{contentHash:hash,bytes,byteLength:bytes.byteLength}],[poisonedCollection]);
+const v6Adapter=createIndexedDbPersistenceAdapter({indexedDB,databaseName:v6Name});
+assert.equal((await v6Adapter.list()).length,2);assert.equal((await v6Adapter.listCollections()).length,2,"poisoned collection plus package-only clean row must remain manageable");
+await assert.rejects(()=>v6Adapter.get("poisoned"),hasCode("flow_obstacle_reimport_required"));assert.equal((await v6Adapter.get("clean"))?.obstacleContract,"normalized_obstacle_v2");
+const v6Raw=await inspectDatabase(v6Name);const repaired=v6Raw.packages.find((row)=>row.key==="poisoned"),clean=v6Raw.packages.find((row)=>row.key==="clean");
+assert.equal(repaired.flowObstacleContract,undefined);assert.equal(repaired.obstacleContract,"prior_obstacle_contract");assert.equal(clean.flowObstacleContract,undefined);assert.equal(clean.obstacleContract,"normalized_obstacle_v2");assert.deepEqual(v6Raw.assets[0].bytes,bytes);
+await v6Adapter.put({...record("poisoned","Hard",hash),assets:[{path:"audio.ogg",bytes:new Uint8Array([4,4])}],assetRefs:[]});
+assert.equal((await v6Adapter.get("poisoned"))?.obstacleContract,"normalized_obstacle_v2","stable-key reimport must replace repaired stale package");
+assert.equal(await v6Adapter.delete("poisoned"),true);assert.equal(await v6Adapter.delete("clean"),true);v6Adapter.destroy();await deleteDatabase(v6Name);
+
+const hostileName=`collections-v6-hostile-${Date.now()}-${Math.random()}`;
+const validBefore={...cleanPackage,key:"valid-before",package:{...cleanPackage.package,packageId:"package-valid-before"}};
+const hostile={...poisonedPackage,key:"hostile",package:{...poisonedPackage.package,packageId:"package-hostile"},unknownHostileField:true};
+await seedDatabase(hostileName,6,[validBefore,hostile],[{contentHash:hash,bytes,byteLength:bytes.byteLength}],[]);
+const hostileAdapter=createIndexedDbPersistenceAdapter({indexedDB,databaseName:hostileName});
+await assert.rejects(()=>hostileAdapter.list(),hasCode("storage_migration_invalid"),"unknown DB6 shape must fail with one bounded migration error");hostileAdapter.destroy();
+const hostileRaw=await inspectDatabase(hostileName);assert.equal(hostileRaw.version,6,"hostile migration must abort the complete versionchange transaction");assert.equal(hostileRaw.packages.find((row)=>row.key==="valid-before").schemaVersion,6);assert.equal(hostileRaw.packages.find((row)=>row.key==="hostile").unknownHostileField,true);await deleteDatabase(hostileName);
+
+console.log("IndexedDB collection persistence and atomic non-destructive DB4/DB5/DB6→7 obstacle-contract migration validation passed.");
 
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} assetBytes */
 function batch(collectionId, records, contentHash, assetBytes) { return { collection: { collectionId, songName: "Song", sourceProvider: "synthetic", sourceId: "song", sourceVersionHash: "version", converterProfileId: "profile", converterProfileHash: "profile-hash", modifierIds: [], packageKeys: records.map((item) => item.key), packages: records.map((item) => ({ packageKey: item.key, packageId: /** @type {string} */ (item.package.packageId), difficultyId: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty), difficultyLabel: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty) })), createdAtMs: 1, schemaVersion: 3, writeToken: "batch" }, packages: records, assets: [{ contentHash, bytes: assetBytes }] }; }
@@ -117,6 +158,10 @@ function hasCode(code) { return (error) => Boolean(error && typeof error === "ob
 /** @param {string} databaseName @param {Record<string, unknown>} packageValue @param {string} packageHash */
 function createVersionFourStaleDatabase(databaseName, packageValue, packageHash) { return new Promise((resolve, reject) => { const request = indexedDB.open(databaseName, 4); request.onupgradeneeded = () => { const database = request.result; const packages = database.createObjectStore("packages", { keyPath: "key" }); const assets = database.createObjectStore("assets", { keyPath: "contentHash" }); const collections = database.createObjectStore("collections", { keyPath: "collectionId" }); database.createObjectStore("meta", { keyPath: "key" }); packages.put({ ...record("inverted-flow", "Easy", hash), flowCellOrientation: "aerobeat_top_left_v1", package: packageValue, packageHash, assets: [{ path: "cover.bin", bytes: new Uint8Array([7, 7]) }], sourceCache: [{ path: "info.dat", bytes: new Uint8Array([6, 2, 6]) }] }); packages.put({ ...legacyRecord("stale-delete"), flowCellOrientation: "aerobeat_top_left_v1" }); assets.put({ contentHash: hash, bytes, byteLength: bytes.byteLength }); collections.put({ ...batch("inverted-collection", [record("inverted-flow", "Easy", hash)], hash, bytes).collection, flowCellOrientation: "aerobeat_top_left_v1" }); }; request.onerror = () => reject(request.error); request.onsuccess = () => { request.result.close(); resolve(undefined); }; }); }
 /** @param {string} databaseName */
-function inspectVersionFourDatabase(databaseName) { return new Promise((resolve, reject) => { const request = indexedDB.open(databaseName, 6); request.onerror = () => reject(request.error); request.onsuccess = () => { const database = request.result; const transaction = database.transaction(["packages", "assets", "collections"], "readonly"); const packageRequest = transaction.objectStore("packages").getAll(); const assetRequest = transaction.objectStore("assets").getAll(); const collectionRequest = transaction.objectStore("collections").getAll(); transaction.onerror = () => reject(transaction.error); transaction.oncomplete = () => { const result = { packages: packageRequest.result, assets: assetRequest.result, collections: collectionRequest.result }; database.close(); resolve(result); }; }; }); }
+function inspectVersionFourDatabase(databaseName) { return inspectDatabase(databaseName).then(({packages,assets,collections})=>({packages,assets,collections})); }
+/** @param {string} databaseName @param {number} version @param {Record<string,unknown>[]} packages @param {Record<string,unknown>[]} assets @param {Record<string,unknown>[]} collections */
+function seedDatabase(databaseName,version,packages,assets,collections){return new Promise((resolve,reject)=>{const request=indexedDB.open(databaseName,version);request.onupgradeneeded=()=>{const database=request.result;const packageStore=database.createObjectStore("packages",{keyPath:"key"}),assetStore=database.createObjectStore("assets",{keyPath:"contentHash"}),collectionStore=database.createObjectStore("collections",{keyPath:"collectionId"});database.createObjectStore("meta",{keyPath:"key"});for(const row of packages)packageStore.put(row);for(const row of assets)assetStore.put(row);for(const row of collections)collectionStore.put(row);};request.onerror=()=>reject(request.error);request.onsuccess=()=>{request.result.close();resolve(undefined);};});}
+/** @param {string} databaseName @returns {Promise<{version:number,packages:any[],assets:any[],collections:any[]}>} */
+function inspectDatabase(databaseName){return new Promise((resolve,reject)=>{const request=indexedDB.open(databaseName);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const database=request.result,transaction=database.transaction(["packages","assets","collections"],"readonly"),packageRequest=transaction.objectStore("packages").getAll(),assetRequest=transaction.objectStore("assets").getAll(),collectionRequest=transaction.objectStore("collections").getAll();transaction.onerror=()=>reject(transaction.error);transaction.oncomplete=()=>{resolve({version:database.version,packages:packageRequest.result,assets:assetRequest.result,collections:collectionRequest.result});database.close();};};});}
 /** @param {string} databaseName */
 function deleteDatabase(databaseName) { return new Promise((resolve, reject) => { const request = indexedDB.deleteDatabase(databaseName); request.onsuccess = () => resolve(undefined); request.onerror = () => reject(request.error); request.onblocked = () => reject(new Error("database delete blocked")); }); }

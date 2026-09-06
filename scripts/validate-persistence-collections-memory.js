@@ -58,7 +58,7 @@ Object.defineProperty(hostile, "collection", { enumerable: true, get() { getterC
 await assert.rejects(() => adapter.putCollection(/** @type {never} */ (hostile)), hasCode("storage_record_invalid"));
 assert.equal(getterCalls, 0);
 
-assert.equal(authoringDatabaseVersion, 6);
+assert.equal(authoringDatabaseVersion, 7);
 console.log("Memory collection persistence validation passed.");
 
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} bytes */

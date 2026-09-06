@@ -4,7 +4,7 @@ import { isObstacleGameplayGeometry, isObstacleGridMask, isObstacleSourceGeometr
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord } from "./canonical.js";
 
 export const authoringDatabaseName = "aerobeat-web-content-authoring";
-export const authoringDatabaseVersion = 6;
+export const authoringDatabaseVersion = 7;
 export const authoringPersistenceNamespace = "aerobeat.authored-packages.v2";
 const correctedFlowCellOrientation = "aerobeat_top_left_v1";
 const legacyFlowCellOrientation = "beatsaber_bottom_left_legacy";
@@ -89,6 +89,7 @@ export function createIndexedDbPersistenceAdapter(options = {}) {
     if (closed) return Promise.reject(storageError("storage_destroyed", "Persistence adapter is destroyed"));
     if (!databasePromise) databasePromise = new Promise((resolve, reject) => {
       const request = factory.open(databaseName, authoringDatabaseVersion);
+      let upgradeError = null;
       request.onupgradeneeded = (event) => {
         const database = request.result;
         if (!database.objectStoreNames.contains("packages")) database.createObjectStore("packages", { keyPath: "key" });
@@ -99,16 +100,19 @@ export function createIndexedDbPersistenceAdapter(options = {}) {
           const transaction = request.transaction;
           transaction.objectStore("meta").put({ key: "schema", version: authoringDatabaseVersion });
           if (event.oldVersion > 0 && event.oldVersion < authoringDatabaseVersion) {
+            const failUpgrade = (error) => { upgradeError=boundedStorageError(error,"storage_migration_failed","Stored authoring data could not be migrated");try{transaction.abort();}catch{} };
             const packageCursor = transaction.objectStore("packages").openCursor();
-            packageCursor.onsuccess = () => { const cursor=packageCursor.result;if(!cursor)return;const value=cursor.value;cursor.update({...value,sourceCache:Array.isArray(value.sourceCache)?value.sourceCache:[],writeToken:typeof value.writeToken==="string"?value.writeToken:"",schemaVersion:authoringDatabaseVersion,flowCellOrientation:event.oldVersion<4?legacyFlowCellOrientation:(value.flowCellOrientation??correctedFlowCellOrientation),obstacleContract:legacyObstacleContract});cursor.continue(); };
+            packageCursor.onsuccess = () => { try { const cursor=packageCursor.result;if(!cursor)return;cursor.update(migratePackageRecord(cursor.value,event.oldVersion));cursor.continue(); } catch(error) { failUpgrade(error); } };
             const collectionCursor = transaction.objectStore("collections").openCursor();
-            collectionCursor.onsuccess = () => { const cursor=collectionCursor.result;if(!cursor)return;const value=cursor.value;cursor.update({...value,schemaVersion:authoringDatabaseVersion,flowCellOrientation:event.oldVersion<4?legacyFlowCellOrientation:(value.flowCellOrientation??correctedFlowCellOrientation),obstacleContract:legacyObstacleContract});cursor.continue(); };
+            collectionCursor.onsuccess = () => { try { const cursor=collectionCursor.result;if(!cursor)return;cursor.update(migrateCollectionRecord(cursor.value,event.oldVersion));cursor.continue(); } catch(error) { failUpgrade(error); } };
+            const assetCursor = transaction.objectStore("assets").openCursor();
+            assetCursor.onsuccess = () => { try { const cursor=assetCursor.result;if(!cursor)return;copySharedAssetRecord(cursor.value);cursor.continue(); } catch(error) { failUpgrade(error); } };
             transaction.objectStore("meta").put({ key: "flow-orientation-invalidation", invalidatedBeforeVersion: Math.min(authoringDatabaseVersion,4), mode: "preserved-reimport-required" });
             transaction.objectStore("meta").put({ key: "flow-obstacle-contract-invalidation", invalidatedBeforeVersion: authoringDatabaseVersion, mode: "preserved-reimport-required" });
           }
         }
       };
-      request.onerror = () => reject(storageError("indexeddb_open_failed", request.error?.message ?? "IndexedDB could not open"));
+      request.onerror = () => reject(upgradeError ?? storageError("indexeddb_open_failed", request.error?.message ?? "IndexedDB could not open"));
       request.onblocked = () => reject(storageError("indexeddb_blocked", "IndexedDB migration is blocked by another page"));
       request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
     });
@@ -144,17 +148,17 @@ export function createIndexedDbPersistenceAdapter(options = {}) {
 /** @param {IDBDatabase} database @param {StoredPackageRecord} record */
 function putIndexedDbPackage(database,record){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","assets","collections"],"readwrite");tx.objectStore("packages").put(record);garbageCollectIndexedDbAssets(tx);tx.oncomplete=()=>resolve(undefined);tx.onerror=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_failed","IndexedDB package transaction failed"));tx.onabort=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_aborted","IndexedDB package transaction aborted"));});}
 /** @param {IDBDatabase} database @param {string} key @param {boolean} allowStale */
-function getIndexedDbPackage(database,key,allowStale){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","assets"],"readonly"),request=tx.objectStore("packages").get(key);let result=null;request.onsuccess=()=>{if(!request.result)return;const record=copyRecord(request.result);if(!record.assetRefs?.length){try{result=resolveRecordAssets(record,new Map(),allowStale);}catch(error){reject(error);}return;}const resolved=new Map();for(const ref of record.assetRefs){const assetRequest=tx.objectStore("assets").get(ref.contentHash);assetRequest.onsuccess=()=>{if(assetRequest.result)resolved.set(ref.contentHash,copySharedAssetRecord(assetRequest.result));};}tx.oncomplete=()=>{try{result=resolveRecordAssets(record,resolved,allowStale);resolve(result);}catch(error){reject(error);}};};request.onerror=()=>reject(idbStorageError(request.error,"indexeddb_request_failed","IndexedDB package lookup failed"));tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_failed","IndexedDB package transaction failed"));tx.onabort=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_aborted","IndexedDB package transaction aborted"));});}
+function getIndexedDbPackage(database,key,allowStale){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","assets"],"readonly"),request=tx.objectStore("packages").get(key);let result=null;request.onsuccess=guardedIdbCallback(tx,()=>{if(!request.result)return;const record=copyRecord(request.result);if(!record.assetRefs?.length){result=resolveRecordAssets(record,new Map(),allowStale);return;}const resolved=new Map();for(const ref of record.assetRefs){const assetRequest=tx.objectStore("assets").get(ref.contentHash);assetRequest.onsuccess=guardedIdbCallback(tx,()=>{if(assetRequest.result)resolved.set(ref.contentHash,copySharedAssetRecord(assetRequest.result));});}tx.oncomplete=()=>{try{result=resolveRecordAssets(record,resolved,allowStale);resolve(result);}catch(error){reject(boundedStorageError(error,"storage_record_invalid","Stored package could not be read"));}};});request.onerror=()=>reject(idbStorageError(request.error,"indexeddb_request_failed","IndexedDB package lookup failed"));tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(transactionStorageError(tx,"indexeddb_transaction_failed","IndexedDB package transaction failed"));tx.onabort=()=>reject(transactionStorageError(tx,"indexeddb_transaction_aborted","IndexedDB package transaction aborted"));});}
 /** @param {IDBDatabase} database @param {{collection:StoredCollectionRecord,packages:StoredPackageRecord[],assets:SharedAssetRecord[]}} batch @param {AbortSignal | undefined} signal */
 function putIndexedDbCollection(database,batch,signal){return new Promise((resolve,reject)=>{const tx=database.transaction(["assets","packages","collections"],"readwrite"),abort=()=>tx.abort();signal?.addEventListener("abort",abort,{once:true});for(const asset of batch.assets)tx.objectStore("assets").put(asset);for(const record of batch.packages)tx.objectStore("packages").put(record);tx.objectStore("collections").put(batch.collection);garbageCollectIndexedDbAssets(tx);tx.oncomplete=()=>{signal?.removeEventListener("abort",abort);resolve(undefined);};tx.onerror=()=>{signal?.removeEventListener("abort",abort);reject(idbStorageError(tx.error,"indexeddb_transaction_failed","IndexedDB collection transaction failed"));};tx.onabort=()=>{signal?.removeEventListener("abort",abort);reject(signal?.aborted?storageError("operation_aborted","Persistence operation was cancelled"):idbStorageError(tx.error,"indexeddb_transaction_aborted","IndexedDB collection transaction aborted"));};});}
 /** @param {IDBDatabase} database */
-function listIndexedDbCollections(database){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","collections"],"readonly"),packageRequest=tx.objectStore("packages").getAll(),collectionRequest=tx.objectStore("collections").getAll();let records=[],stored=[];packageRequest.onsuccess=()=>{records=packageRequest.result.map((value)=>copyRecord(value));};collectionRequest.onsuccess=()=>{stored=collectionRequest.result.map((value)=>copyCollection(value));};tx.oncomplete=()=>resolve(collectionSummaries(new Map(records.map((record)=>[record.key,record])),new Map(stored.map((collection)=>[collection.collectionId,collection]))));tx.onerror=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_failed","IndexedDB collection list failed"));tx.onabort=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_aborted","IndexedDB collection list aborted"));});}
+function listIndexedDbCollections(database){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","collections"],"readonly"),packageRequest=tx.objectStore("packages").getAll(),collectionRequest=tx.objectStore("collections").getAll();let records=[],stored=[];packageRequest.onsuccess=guardedIdbCallback(tx,()=>{records=packageRequest.result.map((value)=>copyRecord(value));});collectionRequest.onsuccess=guardedIdbCallback(tx,()=>{stored=collectionRequest.result.map((value)=>copyCollection(value));});tx.oncomplete=()=>resolve(collectionSummaries(new Map(records.map((record)=>[record.key,record])),new Map(stored.map((collection)=>[collection.collectionId,collection]))));tx.onerror=()=>reject(transactionStorageError(tx,"indexeddb_transaction_failed","IndexedDB collection list failed"));tx.onabort=()=>reject(transactionStorageError(tx,"indexeddb_transaction_aborted","IndexedDB collection list aborted"));});}
 /** @param {IDBDatabase} database @param {string} collectionId */
-function getIndexedDbCollection(database,collectionId){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","collections"],"readonly"),collectionRequest=tx.objectStore("collections").get(collectionId);let result=null;collectionRequest.onsuccess=()=>{if(collectionRequest.result){result=copyCollection(collectionRequest.result);return;}if(!collectionId.startsWith("legacy:"))return;const packageRequest=tx.objectStore("packages").get(collectionId.slice(7));packageRequest.onsuccess=()=>{if(packageRequest.result)result=legacyCollection(copyRecord(packageRequest.result));};};tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_failed","IndexedDB collection lookup failed"));tx.onabort=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_aborted","IndexedDB collection lookup aborted"));});}
+function getIndexedDbCollection(database,collectionId){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","collections"],"readonly"),collectionRequest=tx.objectStore("collections").get(collectionId);let result=null;collectionRequest.onsuccess=guardedIdbCallback(tx,()=>{if(collectionRequest.result){result=copyCollection(collectionRequest.result);return;}if(!collectionId.startsWith("legacy:"))return;const packageRequest=tx.objectStore("packages").get(collectionId.slice(7));packageRequest.onsuccess=guardedIdbCallback(tx,()=>{if(packageRequest.result)result=legacyCollection(copyRecord(packageRequest.result));});});tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(transactionStorageError(tx,"indexeddb_transaction_failed","IndexedDB collection lookup failed"));tx.onabort=()=>reject(transactionStorageError(tx,"indexeddb_transaction_aborted","IndexedDB collection lookup aborted"));});}
 /** @param {IDBDatabase} database @param {string} collectionId */
 function deleteIndexedDbCollection(database,collectionId){return new Promise((resolve,reject)=>{const tx=database.transaction(["packages","assets","collections"],"readwrite"),packages=tx.objectStore("packages"),collections=tx.objectStore("collections"),request=collections.get(collectionId);let deleted=false;request.onsuccess=()=>{if(request.result){const collection=copyCollection(request.result);for(const key of collection.packageKeys)packages.delete(key);collections.delete(collectionId);deleted=true;garbageCollectIndexedDbAssets(tx);return;}if(collectionId.startsWith("legacy:")){const key=collectionId.slice(7),legacyRequest=packages.getKey(key);legacyRequest.onsuccess=()=>{if(legacyRequest.result!==undefined){packages.delete(key);deleted=true;garbageCollectIndexedDbAssets(tx);}};}};tx.oncomplete=()=>resolve(deleted);tx.onerror=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_failed","IndexedDB collection delete failed"));tx.onabort=()=>reject(idbStorageError(tx.error,"indexeddb_transaction_aborted","IndexedDB collection delete aborted"));});}
 /** @param {IDBTransaction} tx */
-function garbageCollectIndexedDbAssets(tx){const packageRequest=tx.objectStore("packages").getAll();packageRequest.onsuccess=()=>{const used=new Set();for(const value of packageRequest.result){const record=copyRecord(value);for(const ref of record.assetRefs??[])used.add(ref.contentHash);}const cursorRequest=tx.objectStore("assets").openCursor();cursorRequest.onsuccess=()=>{const cursor=cursorRequest.result;if(!cursor)return;if(typeof cursor.key==="string"&&!used.has(cursor.key))cursor.delete();cursor.continue();};};}
+function garbageCollectIndexedDbAssets(tx){const packageRequest=tx.objectStore("packages").getAll();packageRequest.onsuccess=guardedIdbCallback(tx,()=>{const used=new Set();for(const value of packageRequest.result){const record=copyRecord(value);for(const ref of record.assetRefs??[])used.add(ref.contentHash);}const cursorRequest=tx.objectStore("assets").openCursor();cursorRequest.onsuccess=guardedIdbCallback(tx,()=>{const cursor=cursorRequest.result;if(!cursor)return;if(typeof cursor.key==="string"&&!used.has(cursor.key))cursor.delete();cursor.continue();});});}
 /** @param {IDBTransaction} tx @param {string} key */
 function removeIndexedDbPackageFromCollections(tx,key){const store=tx.objectStore("collections"),request=store.getAll();request.onsuccess=()=>{for(const value of request.result){const collection=copyCollection(value);if(!collection.packageKeys.includes(key))continue;if(collection.packageKeys.length===1){store.delete(collection.collectionId);continue;}store.put({...collection,packageKeys:collection.packageKeys.filter((item)=>item!==key),packages:collection.packages.filter((entry)=>entry.packageKey!==key)});}};}
 /** @param {unknown} value */
@@ -179,6 +183,47 @@ function transaction(database, storeName, mode, operation) {
     if (request) { request.onsuccess = () => { result = request.result; }; request.onerror = () => reject(idbStorageError(request.error,"indexeddb_request_failed","IndexedDB request failed")); }
     tx.oncomplete = () => resolve(result); tx.onerror = () => reject(idbStorageError(tx.error,"indexeddb_transaction_failed","IndexedDB transaction failed")); tx.onabort = () => reject(idbStorageError(tx.error,"indexeddb_transaction_aborted","IndexedDB transaction aborted"));
   });
+}
+
+const packageBaseKeys=["key","package","packageHash","assets","sourceCache","createdAtMs","schemaVersion","writeToken"];
+const collectionBaseKeys=["collectionId","songName","sourceProvider","sourceId","sourceVersionHash","converterProfileId","converterProfileHash","modifierIds","packageKeys","packages","createdAtMs","schemaVersion","writeToken"];
+const historicalFlowObstacleContracts=new Set(["source_geometry_v1","bounded_mask_v1"]);
+
+/** Reconstruct one exact known historical package shape, deliberately omitting the obsolete alias. @param {unknown} value @param {number} oldVersion @returns {StoredPackageRecord} */
+function migratePackageRecord(value,oldVersion){
+  const refs=exactRecord(value,[...packageBaseKeys,"assetRefs","flowCellOrientation","flowObstacleContract"])||exactRecord(value,[...packageBaseKeys,"assetRefs","flowCellOrientation","flowObstacleContract","obstacleContract"]);
+  const noRefs=exactRecord(value,[...packageBaseKeys,"flowCellOrientation","flowObstacleContract"])||exactRecord(value,[...packageBaseKeys,"flowCellOrientation","flowObstacleContract","obstacleContract"]);
+  if(oldVersion===5||(oldVersion===6&&valueFor(value,"flowObstacleContract")!==undefined)){
+    const dual=valueFor(value,"obstacleContract")!==undefined;
+    if((!refs&&!noRefs)||!historicalFlowObstacleContracts.has(String(valueFor(value,"flowObstacleContract")))||(oldVersion===5&&dual)||(oldVersion===6&&(!dual||valueFor(value,"obstacleContract")!==legacyObstacleContract)))throw storageError("storage_migration_invalid","Stored package has an unknown historical obstacle-contract shape");
+    const candidate={key:valueFor(value,"key"),package:valueFor(value,"package"),packageHash:valueFor(value,"packageHash"),assets:valueFor(value,"assets"),sourceCache:valueFor(value,"sourceCache"),createdAtMs:valueFor(value,"createdAtMs"),schemaVersion:authoringDatabaseVersion,writeToken:valueFor(value,"writeToken"),flowCellOrientation:valueFor(value,"flowCellOrientation"),obstacleContract:legacyObstacleContract};
+    return copyRecord(/** @type {StoredPackageRecord} */(refs?{...candidate,assetRefs:valueFor(value,"assetRefs")}:candidate));
+  }
+  if(oldVersion===6)return copyRecord(/** @type {StoredPackageRecord} */(value));
+  if(oldVersion>0&&oldVersion<5){
+    const minimalKeys=["key","package","packageHash","assets","createdAtMs","schemaVersion"],hasRefs=valueFor(value,"assetRefs")!==undefined,orientation=oldVersion<4?legacyFlowCellOrientation:(valueFor(value,"flowCellOrientation")??correctedFlowCellOrientation);
+    const allowed=exactRecord(value,minimalKeys)||exactRecord(value,hasRefs?[...packageBaseKeys,"assetRefs"]:packageBaseKeys)||exactRecord(value,hasRefs?[...packageBaseKeys,"assetRefs","flowCellOrientation"]:[...packageBaseKeys,"flowCellOrientation"]);
+    if(!allowed)throw storageError("storage_migration_invalid","Stored package has an unknown legacy shape");
+    const candidate={key:valueFor(value,"key"),package:valueFor(value,"package"),packageHash:valueFor(value,"packageHash"),assets:valueFor(value,"assets"),sourceCache:Array.isArray(valueFor(value,"sourceCache"))?valueFor(value,"sourceCache"):[],createdAtMs:valueFor(value,"createdAtMs"),schemaVersion:authoringDatabaseVersion,writeToken:typeof valueFor(value,"writeToken")==="string"?valueFor(value,"writeToken"):"",flowCellOrientation:orientation,obstacleContract:legacyObstacleContract};
+    return copyRecord(/** @type {StoredPackageRecord} */(hasRefs?{...candidate,assetRefs:valueFor(value,"assetRefs")}:candidate));
+  }
+  throw storageError("storage_migration_invalid","Stored package database version is unsupported");
+}
+
+/** Reconstruct one exact known historical collection shape, deliberately omitting the obsolete alias. @param {unknown} value @param {number} oldVersion @returns {StoredCollectionRecord} */
+function migrateCollectionRecord(value,oldVersion){
+  const historical=exactRecord(value,[...collectionBaseKeys,"flowCellOrientation","flowObstacleContract"]),dual=exactRecord(value,[...collectionBaseKeys,"flowCellOrientation","flowObstacleContract","obstacleContract"]);
+  if(oldVersion===5||(oldVersion===6&&valueFor(value,"flowObstacleContract")!==undefined)){
+    if((!historical&&!dual)||!historicalFlowObstacleContracts.has(String(valueFor(value,"flowObstacleContract")))||(oldVersion===5&&dual)||(oldVersion===6&&(!dual||valueFor(value,"obstacleContract")!==legacyObstacleContract)))throw storageError("storage_migration_invalid","Stored collection has an unknown historical obstacle-contract shape");
+    return copyCollection({collectionId:valueFor(value,"collectionId"),songName:valueFor(value,"songName"),sourceProvider:valueFor(value,"sourceProvider"),sourceId:valueFor(value,"sourceId"),sourceVersionHash:valueFor(value,"sourceVersionHash"),converterProfileId:valueFor(value,"converterProfileId"),converterProfileHash:valueFor(value,"converterProfileHash"),modifierIds:valueFor(value,"modifierIds"),packageKeys:valueFor(value,"packageKeys"),packages:valueFor(value,"packages"),createdAtMs:valueFor(value,"createdAtMs"),schemaVersion:authoringDatabaseVersion,writeToken:valueFor(value,"writeToken"),flowCellOrientation:valueFor(value,"flowCellOrientation"),obstacleContract:legacyObstacleContract});
+  }
+  if(oldVersion===6)return copyCollection(value);
+  if(oldVersion>0&&oldVersion<5){
+    const allowed=exactRecord(value,collectionBaseKeys)||exactRecord(value,[...collectionBaseKeys,"flowCellOrientation"]);
+    if(!allowed)throw storageError("storage_migration_invalid","Stored collection has an unknown legacy shape");
+    return copyCollection({collectionId:valueFor(value,"collectionId"),songName:valueFor(value,"songName"),sourceProvider:valueFor(value,"sourceProvider"),sourceId:valueFor(value,"sourceId"),sourceVersionHash:valueFor(value,"sourceVersionHash"),converterProfileId:valueFor(value,"converterProfileId"),converterProfileHash:valueFor(value,"converterProfileHash"),modifierIds:valueFor(value,"modifierIds"),packageKeys:valueFor(value,"packageKeys"),packages:valueFor(value,"packages"),createdAtMs:valueFor(value,"createdAtMs"),schemaVersion:authoringDatabaseVersion,writeToken:typeof valueFor(value,"writeToken")==="string"?valueFor(value,"writeToken"):"",flowCellOrientation:oldVersion<4?legacyFlowCellOrientation:(valueFor(value,"flowCellOrientation")??correctedFlowCellOrientation),obstacleContract:legacyObstacleContract});
+  }
+  throw storageError("storage_migration_invalid","Stored collection database version is unsupported");
 }
 
 /** @param {StoredPackageRecord} record @param {FlowCellOrientation} [assumedOrientation] @param {boolean} [forceOrientation] */
@@ -241,6 +286,13 @@ function collectUnusedAssets(records,assets){const used=new Set();for(const reco
 function removePackageFromCollections(collections,key){for(const [id,collection] of [...collections]){const index=collection.packageKeys.indexOf(key);if(index<0)continue;if(collection.packageKeys.length===1){collections.delete(id);continue;}collections.set(id,{...collection,packageKeys:collection.packageKeys.filter((item)=>item!==key),packages:collection.packages.filter((entry)=>entry.packageKey!==key)});}}
 /** @param {unknown} value */
 function finite(value) { return typeof value === "number" && Number.isFinite(value) ? value : 0; }
+const transactionCallbackErrors=new WeakMap();
+/** @param {IDBTransaction} tx @param {()=>void} callback */
+function guardedIdbCallback(tx,callback){return ()=>{try{callback();}catch(error){transactionCallbackErrors.set(tx,boundedStorageError(error,"storage_record_invalid","Stored authoring data is invalid"));try{tx.abort();}catch{}}};}
+/** @param {unknown} error @param {string} fallbackCode @param {string} fallbackMessage */
+function boundedStorageError(error,fallbackCode,fallbackMessage){return error instanceof Error&&error.name==="AeroAuthoringStorageError"?error:storageError(fallbackCode,error instanceof Error&&error.message?error.message:fallbackMessage);}
+/** @param {IDBTransaction} tx @param {string} fallbackCode @param {string} fallbackMessage */
+function transactionStorageError(tx,fallbackCode,fallbackMessage){return transactionCallbackErrors.get(tx)??idbStorageError(tx.error,fallbackCode,fallbackMessage);}
 /** @param {DOMException | null} error @param {string} fallbackCode @param {string} fallbackMessage */
 function idbStorageError(error,fallbackCode,fallbackMessage){return storageError(error?.name==="QuotaExceededError"?"quota_exceeded":fallbackCode,error?.message||fallbackMessage);}
 /** @param {string} code @param {string} message */
