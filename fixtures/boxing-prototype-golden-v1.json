@@ -115,5 +115,15 @@
       "boxing-weave-right-23a93deff994"
     ]
   },
-  "webSemanticParityHash": "sha256:a48c7d1765dc23af5e177fe5f706b34835609e50d8aa911d3ce9647abdff7f21"
+  "webSemanticParityHash": "sha256:8266e55e54f65dcb9d5949decfa993707581401869f15bc58cf4d134ad9d0daa",
+  "webV4Golden": {
+    "packageCanonicalBytes": 35574,
+    "flowCanonicalBytes": 1454,
+    "packageCanonicalHash": "sha256:9dd97c023c56a47e6134b71353f85bc75a64fcb6f434ece0cf4dfaab0f93167d",
+    "flowCanonicalHash": "sha256:744a7d109aca585fe3c2632e95f920b6a8d61004fc31394f71efe0e7954c8325",
+    "flowContentHash": "sha256:3fa76fa8637beb50fd360134fcdc99bb8a649bfcae1e23594052e12aa51fdc09",
+    "paletteCanonical": "null",
+    "paletteCanonicalHash": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "semanticParityHash": "sha256:a48c7d1765dc23af5e177fe5f706b34835609e50d8aa911d3ce9647abdff7f21"
+  }
 }
