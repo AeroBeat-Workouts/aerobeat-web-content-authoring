@@ -1,7 +1,6 @@
 // @ts-check
 
 import { isObstacleGameplayGeometry, isObstacleGridMask, isObstacleSourceGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
-import { isAuthoredNotePalette } from "@aerobeat/web-contracts/note-palette-contracts";
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord } from "./canonical.js";
 
 export const authoringDatabaseName = "aerobeat-web-content-authoring";
@@ -258,7 +257,7 @@ function copyCollectionBatch(batch){if(!exactRecord(batch,["collection","package
 function obstacleContractForPackage(packageValue){
   const schemaId=valueFor(packageValue,"schemaId"),schemaVersion=valueFor(packageValue,"schemaVersion"),packageVersion=valueFor(packageValue,"packageVersion");
   const historicalV3=schemaId==="aerobeat.song-package.v3"&&schemaVersion===3&&packageVersion==="3.0.0",currentV4=schemaId==="aerobeat.song-package.v4"&&schemaVersion===4&&packageVersion==="4.0.0";
-  if(!historicalV3&&!currentV4)return legacyObstacleContract;
+  if(!historicalV3&&!currentV4)throw storageError("storage_record_invalid","Stored package generation is unsupported");
   const source=valueFor(packageValue,"source");if(!isPlainRecord(source)||valueFor(source,"obstacleContract")!==currentObstacleContract)return legacyObstacleContract;
   const charts=denseDataArray(valueFor(packageValue,"charts"),64);if(!charts)return legacyObstacleContract;
   const flowCharts=charts.filter((chart)=>isPlainRecord(chart)&&valueFor(chart,"mode")==="flow");if(flowCharts.length!==1)return legacyObstacleContract;
@@ -268,13 +267,12 @@ function obstacleContractForPackage(packageValue){
   for(const beat of beats){if(!isPlainRecord(beat)||valueFor(beat,"type")!=="obstacle")continue;obstacleCount+=1;if(obstacleCount>maximumObstaclesPerChart)return legacyObstacleContract;const keys=["start","end","type","sourceGeometry","gameplayGeometry","gridMask"];if(Reflect.ownKeys(beat).length!==keys.length||!keys.every((key)=>Object.hasOwn(beat,key)))return legacyObstacleContract;const start=valueFor(beat,"start"),end=valueFor(beat,"end"),sourceGeometry=valueFor(beat,"sourceGeometry"),gameplayGeometry=valueFor(beat,"gameplayGeometry"),gridMask=valueFor(beat,"gridMask");if(typeof start!=="number"||!Number.isFinite(start)||start<0||typeof end!=="number"||!Number.isFinite(end)||end<=start||end>144000||!isObstacleSourceGeometry(sourceGeometry)||!isObstacleGameplayGeometry(gameplayGeometry)||!isObstacleGridMask(gridMask,gameplayGeometry))return legacyObstacleContract;}
   return currentObstacleContract;
 }
-/** Derive the independent palette generation without mutating historical rows. @param {Record<string,unknown>} packageValue @returns {NotePaletteContract} */
+/** Derive only the exact package-generation palette boundary without mutating or validating package data. @param {Record<string,unknown>} packageValue @returns {NotePaletteContract} */
 function notePaletteContractForPackage(packageValue){
-  if(valueFor(packageValue,"schemaId")!=="aerobeat.song-package.v4"||valueFor(packageValue,"schemaVersion")!==4||valueFor(packageValue,"packageVersion")!=="4.0.0")return priorNotePaletteContract;
-  const palette=valueFor(packageValue,"notePalette");if(palette!==null&&!isAuthoredNotePalette(palette))return priorNotePaletteContract;
-  const charts=denseDataArray(valueFor(packageValue,"charts"),64);if(!charts)return priorNotePaletteContract;const flow=charts.filter((chart)=>isPlainRecord(chart)&&valueFor(chart,"mode")==="flow");if(flow.length!==1||valueFor(flow[0],"schemaId")!=="aerobeat.chart.flow.v4"||valueFor(flow[0],"schemaVersion")!==4)return priorNotePaletteContract;
-  const reference=valueFor(flow[0],"notePalette"),current=palette===null?reference===null:isPlainRecord(reference)&&valueFor(reference,"source")==="package"&&valueFor(reference,"paletteHash")===palette.paletteHash;
-  return current?currentNotePaletteContract:priorNotePaletteContract;
+  const schemaId=valueFor(packageValue,"schemaId"),schemaVersion=valueFor(packageValue,"schemaVersion"),packageVersion=valueFor(packageValue,"packageVersion");
+  if(schemaId==="aerobeat.song-package.v3"&&schemaVersion===3&&packageVersion==="3.0.0")return priorNotePaletteContract;
+  if(schemaId==="aerobeat.song-package.v4"&&schemaVersion===4&&packageVersion==="4.0.0")return currentNotePaletteContract;
+  throw storageError("storage_record_invalid","Stored package generation is unsupported");
 }
 /** Descriptor-safe dense own-data array. @param {unknown} value @param {number} maximum @returns {unknown[] | null} */
 function denseDataArray(value,maximum){if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>maximum||Reflect.ownKeys(value).length!==value.length+1)return null;const result=[];for(let index=0;index<value.length;index+=1){const descriptor=Object.getOwnPropertyDescriptor(value,String(index));if(!descriptor||!("value" in descriptor)||!descriptor.enumerable)return null;result.push(descriptor.value);}return result;}

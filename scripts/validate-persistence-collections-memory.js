@@ -27,20 +27,12 @@ assert.equal(await adapter.deleteCollection("collection-b"), true);
 assert.equal(await adapter.get("hard"), null);
 
 const legacy = createMemoryPersistenceAdapter();
-await legacy.put(legacyRecord("old"));
-const legacyList = await legacy.listCollections();
-assert.equal(legacyList.length, 1);
-assert.equal(legacyList[0].collectionId, "legacy:old");
-assert.equal((await legacy.getCollection("legacy:old"))?.packageKeys[0], "old");
-await assert.rejects(()=>legacy.get("old"),hasCode("flow_obstacle_reimport_required"),"legacy public put must remain management-only");
-const forged=legacyRecord("forged");forged.package.source.obstacleContract="normalized_obstacle_v2";await legacy.put(forged);await assert.rejects(()=>legacy.get("forged"),hasCode("flow_obstacle_reimport_required"),"a source stamp without a Flow v2 geometry chart must not upgrade legacy content");
-assert.equal((await legacy.getForExport("forged"))?.obstacleContract,"prior_obstacle_contract");
-assert.equal(await legacy.delete("forged"),true);
-const malformed={...legacyRecord("malformed"),package:sourceGeometryPackage("malformed","Hard")};malformed.package.charts[0].beats[0].gridMask=[1];await legacy.put(malformed);await assert.rejects(()=>legacy.get("malformed"),hasCode("flow_obstacle_reimport_required"),"invalid geometry/mask truth must not receive current provenance");assert.equal((await legacy.getForExport("malformed"))?.obstacleContract,"prior_obstacle_contract");assert.equal(await legacy.delete("malformed"),true);
-assert.equal(await legacy.deleteCollection("legacy:old"), true);
+await assert.rejects(()=>legacy.put(legacyRecord("unknown")),hasCode("storage_record_invalid"),"new writes with an unknown package generation must not be mislabeled as obstacle- or palette-stale");
+const forged=legacyRecord("forged");forged.package.source.obstacleContract="normalized_obstacle_v2";await assert.rejects(()=>legacy.put(forged),hasCode("storage_record_invalid"),"a hostile current source stamp must not make an unknown generation historical");
+const malformed={...legacyRecord("malformed"),package:sourceGeometryPackage("malformed","Hard")};malformed.package.charts[0].beats[0].gridMask=[1];await legacy.put(malformed);await assert.rejects(()=>legacy.get("malformed"),hasCode("flow_obstacle_reimport_required"),"invalid geometry/mask truth in a recognized package generation must retain obstacle-stale classification");assert.equal((await legacy.getForExport("malformed"))?.obstacleContract,"prior_obstacle_contract");assert.equal(await legacy.delete("malformed"),true);
 assert.equal((await legacy.list()).length, 0);
 
-const history=createMemoryPersistenceAdapter();const historical=historicalV3Record("song-v3");await history.put(historical);const historicalBytes=(await history.getForExport("song-v3"))?.assets[0].bytes;assert.deepEqual(historicalBytes,audio);assert.equal((await history.list())[0].packageHash,historical.packageHash);await assert.rejects(()=>history.get("song-v3"),hasCode("note_palette_reimport_required"));const current=standaloneRecord("song-v4","Hard");await history.put(current);assert.equal((await history.get("song-v4"))?.package.schemaId,"aerobeat.song-package.v4","same-source reimport must create a current package without rewriting historical bytes");assert.equal((await history.list()).length,2);assert.deepEqual((await history.getForExport("song-v3"))?.assets[0].bytes,historicalBytes);assert.equal(await history.delete("song-v3"),true);assert.equal((await history.get("song-v4"))?.package.schemaVersion,4);history.destroy();
+const history=createMemoryPersistenceAdapter();const historical=historicalV3Record("song-v3");await history.put(historical);const historicalBytes=(await history.getForExport("song-v3"))?.assets[0].bytes;assert.deepEqual(historicalBytes,audio);assert.equal((await history.list())[0].packageHash,historical.packageHash);await assert.rejects(()=>history.get("song-v3"),hasCode("note_palette_reimport_required"));const current=standaloneRecord("song-v4","Hard");await history.put(current);assert.equal((await history.get("song-v4"))?.package.schemaId,"aerobeat.song-package.v4","same-source reimport must create a current package without rewriting historical bytes");assert.equal((await history.list()).length,2);assert.deepEqual((await history.getForExport("song-v3"))?.assets[0].bytes,historicalBytes);assert.equal(await history.delete("song-v3"),true);assert.equal((await history.get("song-v4"))?.package.schemaVersion,4);const malformedV4=standaloneRecord("malformed-v4","Hard");malformedV4.package.notePalette={hostile:true};await history.put(malformedV4);assert.deepEqual((await history.get("malformed-v4"))?.package.notePalette,{hostile:true},"persistence must classify exact v4 only by generation and leave package validation to the normal boundary");history.destroy();
 
 const cancelled = createMemoryPersistenceAdapter();
 const controller = new AbortController();

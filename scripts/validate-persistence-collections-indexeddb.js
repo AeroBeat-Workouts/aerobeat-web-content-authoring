@@ -23,14 +23,8 @@ assert.equal(await adapter.deleteCollection("two"), true);
 assert.equal(await adapter.get("hard"), null);
 const historical=historicalV3Record("song-v3");await adapter.put(historical);const historicalExport=await adapter.getForExport("song-v3");assert.deepEqual(historicalExport?.assets[0].bytes,bytes);assert.equal((await adapter.list()).find((entry)=>entry.key==="song-v3")?.packageHash,historical.packageHash);await assert.rejects(()=>adapter.get("song-v3"),hasCode("note_palette_reimport_required"));const current=standaloneRecord("song-v4","Hard");await adapter.put(current);assert.equal((await adapter.get("song-v4"))?.package.schemaId,"aerobeat.song-package.v4");assert.deepEqual((await adapter.getForExport("song-v3"))?.assets[0].bytes,historicalExport?.assets[0].bytes);assert.equal(await adapter.delete("song-v3"),true);assert.equal((await adapter.get("song-v4"))?.package.schemaVersion,4);assert.equal(await adapter.delete("song-v4"),true);
 
-await adapter.put(legacyRecord("old"));
-await assert.rejects(()=>adapter.get("old"),hasCode("flow_obstacle_reimport_required"),"legacy public IndexedDB put must remain management-only");
-assert.equal((await adapter.getForExport("old"))?.obstacleContract,"prior_obstacle_contract");
-const forged=legacyRecord("forged");forged.package.source.obstacleContract="normalized_obstacle_v2";await adapter.put(forged);await assert.rejects(()=>adapter.get("forged"),hasCode("flow_obstacle_reimport_required"),"a source stamp without a Flow v2 geometry chart must not upgrade IndexedDB content");assert.equal(await adapter.delete("forged"),true);
-const legacy = await adapter.listCollections();
-assert.equal(legacy.length, 1);
-assert.equal(legacy[0].collectionId, "legacy:old");
-assert.equal(await adapter.deleteCollection("legacy:old"), true);
+await assert.rejects(()=>adapter.put(legacyRecord("unknown")),hasCode("storage_record_invalid"),"new IndexedDB writes with an unknown package generation must be rejected rather than labeled stale");
+const forged=legacyRecord("forged");forged.package.source.obstacleContract="normalized_obstacle_v2";await assert.rejects(()=>adapter.put(forged),hasCode("storage_record_invalid"),"a hostile current source stamp must not make an unknown IndexedDB generation historical");
 assert.equal((await adapter.list()).length, 0);
 
 const controller = new AbortController();
