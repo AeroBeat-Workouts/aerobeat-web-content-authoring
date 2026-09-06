@@ -57,7 +57,10 @@ assert.deepEqual(single.sourceCache.map((entry) => entry.path), ["info.dat", "ha
 assert.deepEqual(single.requestManifest.selectedDifficulty, {
   difficulty: "Hard",
   path: "hard.dat",
-  contentHash: single.requestManifest.selectedDifficulty.contentHash
+  beatMapFormat:"v3",
+  beatMapVersion:"3.3.0",
+  contentHash: single.requestManifest.selectedDifficulty.contentHash,
+  notePalette:null
 });
 assert.equal(singleFixture.readCounts.get("Hard.dat"), 1);
 assert.equal(singleFixture.readCounts.get("Song.ogg"), 1);
@@ -92,7 +95,7 @@ const mixedV4 = makeSource([
 ], 4);
 const mixedV4Batch = await prepareAllStandardSourceMaterials(mixedV4.source, {});
 assert.deepEqual(mixedV4Batch.materials.map((material) => material.requestManifest.selectedDifficulty.difficulty), ["Expert"]);
-assert.equal(mixedV4Batch.materials[0].requestManifest.sourceFormatMajor, 4);
+assert.equal(mixedV4Batch.materials[0].requestManifest.infoFormat, "v4");
 assert.equal(mixedV4.readCounts.has("Lightshow.dat"), false);
 assert.equal(mixedV4.readCounts.has("OneSaber.dat"), false);
 
@@ -115,10 +118,10 @@ assert.equal(cancelled.readCounts.size, 0);
 console.log("all-Standard source material validation passed");
 
 /** @param {string} name @param {string} path */
-function difficulty(name, path) { return { characteristic: "Standard", difficulty: name, path }; }
+function difficulty(name, path) { return { characteristic: "Standard", difficulty: name, path, beatMapFormat:"v3", beatMapVersion:"3.3.0", notePalette:null }; }
 
-/** @param {Record<string, unknown>[]} difficulties @param {number} [sourceFormatMajor] */
-function makeSource(difficulties, sourceFormatMajor = 3) {
+/** @param {Record<string, unknown>[]} difficulties @param {number} [beatMapMajor] */
+function makeSource(difficulties, beatMapMajor = 3) {
   const entries = new Map([
     ["Info.dat", infoBytes],
     ["Song.ogg", audioBytes],
@@ -136,14 +139,17 @@ function makeSource(difficulties, sourceFormatMajor = 3) {
   let lists = 0;
   const source = {
     manifest: {
-      sourceFormatMajor,
+      schemaId:"aerobeat.beatsaver-source-manifest.v2",
+      infoFormatMajor:beatMapMajor===4?4:2,
+      infoFormat:beatMapMajor===4?"v4":"v2",
+      infoVersion:beatMapMajor===4?"4.0.0":"2.1.0",
       infoPath: "Info.dat",
       songName: "Batch Fixture",
       songAuthorName: "Fixture Artist",
       levelAuthorName: "Fixture Mapper",
       bpm: 120,
       audioPath: "Song.ogg",
-      difficulties
+      difficulties:difficulties.map((entry)=>entry.characteristic==="Standard"&&beatMapMajor===4?{...entry,beatMapFormat:"v4",beatMapVersion:"4.0.0"}:entry)
     },
     listEntryPaths() { lists += 1; return [...entries.keys()]; },
     readEntry(path) {

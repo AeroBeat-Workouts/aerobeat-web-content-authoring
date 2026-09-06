@@ -18,6 +18,7 @@ import {
 
 const fixture = JSON.parse(await readFile(new URL("../fixtures/task11-source-matrix-v1.json", import.meta.url), "utf8"));
 const { fixtureHash, ...fixtureBody } = fixture;
+const syntheticHash=`sha256:${"0".repeat(64)}`;
 assert.equal(fixture.schema, "aerobeat/task11_source_matrix");
 assert.equal(fixture.version, 1);
 assert.equal(fixture.fixtureId, "task11-source-matrix-v1");
@@ -189,7 +190,7 @@ async function assertStaleProfileResponse() {
 
 async function assertGuardRadiusSubcellDifference() {
   const summary={colorNotes:[{start:1,cell:4,hand:"left",direction:8,sourceIndex:0},{start:1,cell:5,hand:"right",direction:8,sourceIndex:1}],bombNotes:[],obstacles:[{start:1,duration:0.5,sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v3_obstacle_rect",kind:"v3_rect",x:0,y:1,width:1,height:1},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:0,y:1,width:1,height:1},sourceIndex:0}],sliders:[],burstSliders:[]};
-  const base={difficulty:/** @type {const} */("Hard"),songToken:"profile-guard-radius",songName:"Profile Guard Radius",bpm:120,sourceProvider:"synthetic",sourceId:"profile-guard-radius",sourceVersionHash:"0".repeat(40),sourceDifficultyPath:"Hard.dat",sourceBeatmapVersion:"v3"};
+  const base={difficulty:/** @type {const} */("Hard"),songToken:"profile-guard-radius",songName:"Profile Guard Radius",bpm:120,sourceProvider:"synthetic",sourceId:"profile-guard-radius",sourceVersionHash:"0".repeat(40),sourceInfoFormat:/** @type {const} */("v2"),sourceInfoVersion:"2.1.0",sourceInfoHash:syntheticHash,sourceDifficultyPath:"Hard.dat",sourceBeatmapFormat:/** @type {const} */("v3"),sourceBeatmapVersion:"3.3.0",sourceDifficultyHash:syntheticHash,notePalette:null};
   const legacy=await convertDifficulty(summary,base);const canonical=await convertDifficulty(summary,{...base,converterProfile:canonicalConverterProfile});const reach=await convertDifficulty(summary,{...base,converterProfile:prototypeReachConverterProfile});
   const guards=(result)=>result.charts.filter((chart)=>chart.mode==="boxing").reduce((count,chart)=>count+(/** @type {Record<string,unknown>[]} */(chart.beats)).filter((beat)=>beat.type==="guard").length,0);
   assert.equal(guards(legacy),4,"no-profile conversion must preserve unrestricted legacy guard relocation");
@@ -199,7 +200,7 @@ async function assertGuardRadiusSubcellDifference() {
 
 async function assertMaterialProfileDifference() {
   const summary = { colorNotes: [{ start: 0.6, cell: 1, hand: "left", direction: 2, sourceIndex: 0 }], bombNotes: [], obstacles: [], sliders: [], burstSliders: [] };
-  const base = { difficulty: /** @type {const} */ ("Hard"), songToken: "profile-materiality", songName: "Profile Materiality", bpm: 120, sourceProvider: "synthetic", sourceId: "profile-materiality", sourceVersionHash: "0".repeat(40), sourceDifficultyPath: "Hard.dat", sourceBeatmapVersion: "v3" };
+  const base = { difficulty: /** @type {const} */ ("Hard"), songToken: "profile-materiality", songName: "Profile Materiality", bpm: 120, sourceProvider: "synthetic", sourceId: "profile-materiality", sourceVersionHash: "0".repeat(40), sourceInfoFormat:/** @type {const} */("v2"),sourceInfoVersion:"2.1.0",sourceInfoHash:syntheticHash,sourceDifficultyPath: "Hard.dat",sourceBeatmapFormat:/** @type {const} */("v3"), sourceBeatmapVersion: "3.3.0",sourceDifficultyHash:syntheticHash,notePalette:null };
   const canonical = await convertDifficulty(summary, { ...base, converterProfile: canonicalConverterProfile });
   const reach = await convertDifficulty(summary, { ...base, converterProfile: prototypeReachConverterProfile });
   const canonicalPunches = canonical.charts.filter((chart) => chart.mode === "boxing").reduce((count, chart) => count + (/** @type {Record<string,unknown>[]} */ (chart.beats)).filter((beat) => String(beat.type).startsWith("hook_")).length, 0);
@@ -211,10 +212,10 @@ async function assertMaterialProfileDifference() {
 /** @param {string} format @param {string} version @param {Uint8Array} difficultyBytes @param {Uint8Array} audio */
 function sourceBundle(format, version, difficultyBytes, audio) {
   const major = Number(format.slice(1));
-  const entries = new Map([["Hard.dat", Uint8Array.from(difficultyBytes)], ["song.ogg", Uint8Array.from(audio)]]);
+  const entries = new Map([["Info.dat",encoder.encode("{}")],["Hard.dat", Uint8Array.from(difficultyBytes)], ["song.ogg", Uint8Array.from(audio)]]);
   return Object.freeze({
-    manifest: Object.freeze({ schemaId: "aerobeat.beatsaver-source.v1", sourceFormatMajor: major, infoPath: "Info.dat", songName: `Task 11 ${format}`, songAuthorName: "AeroBeat", levelAuthorName: "AeroBeat", bpm: 120, audioPath: "song.ogg", sourceBeatmapVersion: version, difficulties: Object.freeze([Object.freeze({ characteristic: "Standard", difficulty: "Hard", path: "Hard.dat" })]) }),
-    listEntryPaths() { return Object.freeze(["Hard.dat", "song.ogg"]); },
+    manifest: Object.freeze({ schemaId: "aerobeat.beatsaver-source-manifest.v2",infoFormatMajor:major===4?4:2,infoFormat:major===4?"v4":"v2",infoVersion:major===4?"4.0.0":"2.1.0", infoPath: "Info.dat", songName: `Task 11 ${format}`, songAuthorName: "AeroBeat", levelAuthorName: "AeroBeat", bpm: 120, audioPath: "song.ogg", difficulties: Object.freeze([Object.freeze({ characteristic: "Standard", difficulty: "Hard", path: "Hard.dat",beatMapFormat:format,beatMapVersion:version,notePalette:null })]) }),
+    listEntryPaths() { return Object.freeze(["Info.dat","Hard.dat", "song.ogg"]); },
     readEntry(path) { const bytes = entries.get(path); if (!bytes) throw new Error("missing synthetic entry"); return Uint8Array.from(bytes); }
   });
 }

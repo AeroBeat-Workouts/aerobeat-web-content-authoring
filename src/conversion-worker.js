@@ -8,10 +8,10 @@ scope.onmessage = async (event) => {
   const request = event.data;
   const jobId = safeJobId(request);
   try {
-    const result = await executeWorkerConversion(request, { onProgress(progress, phase) { scope.postMessage({ schema: "aerobeat/authoring_worker_message", version: 1, kind: "progress", jobId, progress, phase }); } });
-    scope.postMessage({ schema: "aerobeat/authoring_worker_message", version: 1, kind: "result", jobId, result });
+    const result = await executeWorkerConversion(request, { onProgress(progress, phase) { scope.postMessage({ schema: "aerobeat/authoring_worker_message", version: 2, kind: "progress", jobId, progress, phase }); } });
+    scope.postMessage({ schema: "aerobeat/authoring_worker_message", version: 2, kind: "result", jobId, result });
   } catch (cause) {
-    scope.postMessage({ schema: "aerobeat/authoring_worker_message", version: 1, kind: "error", jobId, code: errorCode(cause), message: errorMessage(cause) });
+    scope.postMessage({ schema: "aerobeat/authoring_worker_message", version: 2, kind: "error", jobId, code: errorCode(cause), message: errorMessage(cause) });
   }
 };
 

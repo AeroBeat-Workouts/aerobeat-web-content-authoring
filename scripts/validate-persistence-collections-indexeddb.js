@@ -21,6 +21,7 @@ assert.equal(await adapter.deleteCollection("one"), true);
 assert.deepEqual((await adapter.get("hard"))?.assets[0].bytes, bytes, "shared asset must survive first collection delete");
 assert.equal(await adapter.deleteCollection("two"), true);
 assert.equal(await adapter.get("hard"), null);
+const historical=historicalV3Record("song-v3");await adapter.put(historical);const historicalExport=await adapter.getForExport("song-v3");assert.deepEqual(historicalExport?.assets[0].bytes,bytes);assert.equal((await adapter.list()).find((entry)=>entry.key==="song-v3")?.packageHash,historical.packageHash);await assert.rejects(()=>adapter.get("song-v3"),hasCode("note_palette_reimport_required"));const current=standaloneRecord("song-v4","Hard");await adapter.put(current);assert.equal((await adapter.get("song-v4"))?.package.schemaId,"aerobeat.song-package.v4");assert.deepEqual((await adapter.getForExport("song-v3"))?.assets[0].bytes,historicalExport?.assets[0].bytes);assert.equal(await adapter.delete("song-v3"),true);assert.equal((await adapter.get("song-v4"))?.package.schemaVersion,4);assert.equal(await adapter.delete("song-v4"),true);
 
 await adapter.put(legacyRecord("old"));
 await assert.rejects(()=>adapter.get("old"),hasCode("flow_obstacle_reimport_required"),"legacy public IndexedDB put must remain management-only");
@@ -83,7 +84,7 @@ assert.equal(await migrated.delete("stale-delete"), true, "stale ungrouped recor
 
 const correctedPackage=sourceGeometryPackage("inverted-flow","Easy");
 await migrated.put({ ...legacyRecord("inverted-flow"), package: correctedPackage, packageHash: legacyPackageHash });
-assert.equal((await migrated.get("inverted-flow"))?.package.schemaId, "aerobeat.song-package.v3", "proven Flow v2 put with the stable package key must replace stale state");
+assert.equal((await migrated.get("inverted-flow"))?.package.schemaId, "aerobeat.song-package.v4", "current package put with the stable package key must replace stale state");
 const replacementHash = `sha256:${"4".repeat(64)}`;
 const replacementBytes = new Uint8Array([4, 2]);
 await migrated.putCollection(batch("inverted-collection", [record("inverted-flow", "Easy", replacementHash)], replacementHash, replacementBytes));
@@ -143,14 +144,16 @@ const hostileAdapter=createIndexedDbPersistenceAdapter({indexedDB,databaseName:h
 await assert.rejects(()=>hostileAdapter.list(),hasCode("storage_migration_invalid"),"unknown DB6 shape must fail with one bounded migration error");hostileAdapter.destroy();
 const hostileRaw=await inspectDatabase(hostileName);assert.equal(hostileRaw.version,6,"hostile migration must abort the complete versionchange transaction");assert.equal(hostileRaw.packages.find((row)=>row.key==="valid-before").schemaVersion,6);assert.equal(hostileRaw.packages.find((row)=>row.key==="hostile").unknownHostileField,true);await deleteDatabase(hostileName);
 
-console.log("IndexedDB collection persistence and atomic non-destructive DB4/DB5/DB6→7 obstacle-contract migration validation passed.");
+console.log("Fake IndexedDB DB7 collection/shared-asset, non-destructive DB4/DB5/DB6 migration, and v3 palette-history preservation/list/export/delete/reimport validation passed.");
 
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} assetBytes */
 function batch(collectionId, records, contentHash, assetBytes) { return { collection: { collectionId, songName: "Song", sourceProvider: "synthetic", sourceId: "song", sourceVersionHash: "version", converterProfileId: "profile", converterProfileHash: "profile-hash", modifierIds: [], packageKeys: records.map((item) => item.key), packages: records.map((item) => ({ packageKey: item.key, packageId: /** @type {string} */ (item.package.packageId), difficultyId: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty), difficultyLabel: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty) })), createdAtMs: 1, schemaVersion: 3, writeToken: "batch" }, packages: records, assets: [{ contentHash, bytes: assetBytes }] }; }
 /** @param {string} key @param {string} difficulty @param {string} contentHash */
 function record(key, difficulty, contentHash) { return { key, package: sourceGeometryPackage(key,difficulty), packageHash: `sha256:${"a".repeat(64)}`, assets: [], sourceCache: [], createdAtMs: 1, schemaVersion: 3, writeToken: "batch", assetRefs: [{ path: "media/audio/song.ogg", contentHash }] }; }
 /** @param {string} key @param {string} difficulty */
-function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v3",schemaVersion:3,packageVersion:"3.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,obstacleContract:"normalized_obstacle_v2"},charts:[{schemaId:"aerobeat.chart.flow.v3",schemaVersion:3,mode:"flow",rulesetId:"flow_grid_v2",beats:[{start:1,end:2,type:"obstacle",sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v2_legacy_obstacle",kind:"v2_type_1",x:1,y:2,width:1,height:3},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:1,y:0,width:1,height:3},gridMask:[1,5,9]}]}]};}
+function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v4",schemaVersion:4,packageVersion:"4.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,obstacleContract:"normalized_obstacle_v2"},notePalette:null,charts:[{schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,mode:"flow",rulesetId:"flow_grid_v2",notePalette:null,beats:[{start:1,end:2,type:"obstacle",sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v2_legacy_obstacle",kind:"v2_type_1",x:1,y:2,width:1,height:3},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:1,y:0,width:1,height:3},gridMask:[1,5,9]}]}]};}
+function standaloneRecord(key,difficulty){const value=record(key,difficulty,hash);delete value.assetRefs;value.assets=[{path:"media/audio/song.ogg",bytes:Uint8Array.from(bytes)}];return value;}
+function historicalV3Record(key){const value=standaloneRecord(key,"Hard");value.package.schemaId="aerobeat.song-package.v3";value.package.schemaVersion=3;value.package.packageVersion="3.0.0";delete value.package.notePalette;value.package.charts[0].schemaId="aerobeat.chart.flow.v3";value.package.charts[0].schemaVersion=3;delete value.package.charts[0].notePalette;value.schemaVersion=3;return value;}
 /** @param {string} key */
 function legacyRecord(key) { return { key, package: { packageId: `package-${key}`, songName: "Legacy", source: { difficulty: "Hard" } }, packageHash: `sha256:${"b".repeat(64)}`, assets: [{ path: "audio.ogg", bytes: new Uint8Array([9]) }], sourceCache: [], createdAtMs: 1, schemaVersion: 2, writeToken: "legacy" }; }
 /** @param {string} code */

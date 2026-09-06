@@ -15,7 +15,7 @@ const descriptor = createAeroWebContentAuthoringServiceDescriptor();
 assert.equal(aeroWebContentAuthoringPackageId, "aero.web.content-authoring");
 assert.equal(aeroWebContentAuthoringServiceId, "aero.content.authoring");
 assert.equal(aeroWebContentAuthoringContractVersion, 1);
-assert.equal(authoringWorkerProtocolVersion, 1);
+assert.equal(authoringWorkerProtocolVersion, 2);
 assert.equal(descriptor.implementationState, "implemented");
 for (const capability of ["providerNeutralSourceInput", "conversionWorker", "cancellation", "localPersistence", "packageExport"]) assert.equal(descriptor.capabilities[capability], true, `${capability} must be implemented`);
 assert.equal(descriptor.capabilities.sharedArrayBufferRequired, false);

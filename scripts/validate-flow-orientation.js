@@ -12,15 +12,16 @@ const options = {
   sourceProvider: "synthetic",
   sourceId: "flow-orientation",
   sourceVersionHash: "0".repeat(40),
-  sourceDifficultyPath: "Easy.dat",
-  sourceBeatmapVersion: "v3"
+  sourceInfoFormat:/** @type {const} */("v2"),sourceInfoVersion:"2.1.0",sourceInfoHash:`sha256:${"0".repeat(64)}`,
+  sourceDifficultyPath: "Easy.dat",sourceBeatmapFormat:/** @type {const} */("v3"),
+  sourceBeatmapVersion: "3.3.0",sourceDifficultyHash:`sha256:${"0".repeat(64)}`,notePalette:null
 };
 
 for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
   const summary = parseBeatMapDifficulty(JSON.stringify(orientationBeatmap(format)), format);
   assert.deepEqual(summary.colorNotes.map((note) => note.cell), [0, 4, 8], `${format} normalization must retain bottom-left source cells`);
   assert.deepEqual(summary.colorNotes.map((note) => note.y), [0, 1, 2], `${format} normalization must retain source y`);
-  const converted = await convertDifficulty(summary, { ...options, songToken: `flow-orientation-${format}`, sourceBeatmapVersion: format });
+  const converted = await convertDifficulty(summary, { ...options, songToken: `flow-orientation-${format}`,sourceInfoFormat:format==="v4"?"v4":"v2",sourceInfoVersion:format==="v4"?"4.0.0":"2.1.0",sourceBeatmapFormat:format, sourceBeatmapVersion:format==="v2"?"2.6.0":format==="v3"?"3.3.0":"4.0.0" });
   const flow = /** @type {{beats:Record<string,unknown>[]}} */ (converted.charts.find((chart) => chart.mode === "flow"));
   assert.deepEqual(flow.beats.filter((beat) => beat.type === "note").map((beat) => beat.placement), [8, 4, 0], `${format} note y=0/1/2 must emit bottom/middle/top`);
   assert.deepEqual(flow.beats.filter((beat) => beat.type === "bomb").map((beat) => beat.placement), [9, 5, 1], `${format} bomb y=0/1/2 must emit bottom/middle/top`);

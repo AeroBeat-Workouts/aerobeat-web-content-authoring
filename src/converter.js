@@ -3,6 +3,7 @@
 import { deriveObstacleGridMask, isObstacleGameplayGeometry, isObstacleSourceGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
 import { canonicalJson, cloneData, deepFreeze, prefixedSha256 } from "./canonical.js";
 import { normalizeConverterProfile } from "./converter-profile.js";
+import { createAuthoredNotePalette, flowPaletteReference, verifySourceNotePalette } from "./note-palette.js";
 import {
   boxingPrototypeContractId,
   cutFamilyRecipeId,
@@ -29,7 +30,7 @@ import {
  * Convert one normalized difficulty into Flow plus four Boxing charts.
  *
  * @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary
- * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceDifficultyPath: string, sourceBeatmapVersion: string, sourceDifficultyHash?: string, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>}} options
+ * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceInfoFormat: "v2"|"v4", sourceInfoVersion: string|null, sourceInfoHash: string, sourceDifficultyPath: string, sourceBeatmapFormat: "v2"|"v3"|"v4", sourceBeatmapVersion: string|null, sourceDifficultyHash: string, notePalette: unknown, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>}} options
  * @param {(progress: number, phase: string) => void} [onProgress]
  * @returns {Promise<Readonly<{package: DataRecord, packageHash: string, sourceHash: string, charts: DataRecord[], traces: DataRecord[], flowTrace: DataRecord}>>}
  */
@@ -41,7 +42,9 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
   const converterSettings = converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 0, reachAllowanceSubcells: 0, profileApplied: false };
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
-  const sourceDifficultyHash = options.sourceDifficultyHash ?? await prefixedSha256(canonicalJson(sourceSummary));
+  const sourceDifficultyHash = options.sourceDifficultyHash;
+  const verifiedSourcePalette = verifySourceNotePalette(options.notePalette, { infoFormat: options.sourceInfoFormat, infoHash: options.sourceInfoHash, difficultyHash: sourceDifficultyHash });
+  const notePalette = await createAuthoredNotePalette(verifiedSourcePalette);
   const charts = [];
   const traces = [];
   let matrixIndex = 0;
@@ -58,7 +61,11 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
         rulesetId,
         sourceHash,
         contentHash: chart.prototype.contentHash,
+        sourceInfoFormat: options.sourceInfoFormat,
+        sourceInfoVersion: options.sourceInfoVersion,
+        sourceInfoHash: options.sourceInfoHash,
         sourceDifficultyPath: options.sourceDifficultyPath,
+        sourceBeatmapFormat: options.sourceBeatmapFormat,
         sourceBeatmapVersion: options.sourceBeatmapVersion,
         sourceDifficultyHash,
         ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
@@ -69,17 +76,17 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
       onProgress(0.15 + matrixIndex * 0.15, "converting");
     }
   }
-  const flow = convertFlowChart(sourceSummary, difficulty, songToken);
-  Object.assign(flow.trace, { sourceHash, sourceDifficultyPath: options.sourceDifficultyPath, sourceBeatmapVersion: options.sourceBeatmapVersion, sourceDifficultyHash });
+  const flow = await convertFlowChart(sourceSummary, difficulty, songToken, notePalette);
+  Object.assign(flow.trace, { sourceHash, sourceInfoFormat: options.sourceInfoFormat, sourceInfoVersion: options.sourceInfoVersion, sourceInfoHash: options.sourceInfoHash, sourceDifficultyPath: options.sourceDifficultyPath, sourceBeatmapFormat: options.sourceBeatmapFormat, sourceBeatmapVersion: options.sourceBeatmapVersion, sourceDifficultyHash });
   charts.push(flow.chart);
   const packageId = `ab-songpkg-${songToken}-${sanitizeToken(options.sourceVersionHash).slice(0, 12)}-${difficulty.toLowerCase()}`;
   const songId = `ab-song-${songToken}`;
   const sets = charts.map((chart) => ({ schemaId: "aerobeat.set.v1", schemaVersion: 1, recordVersion: 1, setId: `ab-set-${String(chart.chartId).replace(/^ab-chart-/u, "")}`, setName: `${titleize(songToken)} ${difficulty} ${titleize(String(chart.mode))}`, songId, chartId: chart.chartId }));
   const durationSec = estimateDuration(charts, bpm);
   const packageRecord = {
-    schemaId: "aerobeat.song-package.v3",
-    schemaVersion: 3,
-    packageVersion: "3.0.0",
+    schemaId: "aerobeat.song-package.v4",
+    schemaVersion: 4,
+    packageVersion: "4.0.0",
     packageId,
     songId,
     songName: options.songName || titleize(songToken),
@@ -88,13 +95,18 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
       sourceId: options.sourceId,
       sourceVersionHash: options.sourceVersionHash,
       difficulty,
+      sourceInfoFormat: options.sourceInfoFormat,
+      sourceInfoVersion: options.sourceInfoVersion,
+      sourceInfoHash: options.sourceInfoHash,
       sourceDifficultyPath: options.sourceDifficultyPath,
+      sourceBeatmapFormat: options.sourceBeatmapFormat,
       sourceBeatmapVersion: options.sourceBeatmapVersion,
       sourceDifficultyHash,
       sourceHash,
       obstacleContract: "normalized_obstacle_v2",
       ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {})
     },
+    notePalette,
     song: {
       schemaId: "aerobeat.song.v1",
       schemaVersion: 1,
@@ -109,7 +121,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
     sets,
     recipeDefinitions: cloneData(recipeDefinitions),
     rulesetDefinitions: cloneData(rulesetDefinitions),
-    conversionTrace: { boxing: traces, flow: [flow.trace], ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}) },
+    conversionTrace: { notePalette: flowPaletteReference(notePalette), boxing: traces, flow: [flow.trace], ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}) },
     presentationSuggestion: options.presentationSuggestion ? cloneData(options.presentationSuggestion) : null
   };
   const packageHash = await prefixedSha256(canonicalJson(packageRecord));
@@ -294,7 +306,16 @@ function acceptedSubcells(cell,family,hand){const row=Math.floor(cell/4),column=
 function reachable(start,target,deltaBeats,rate,blocked){if(target<0||target>=48||blocked.has(target))return false;const distances=Array(48).fill(Infinity),visited=new Set();distances[clamp(start,0,47)]=0;for(let step=0;step<48;step+=1){let current=-1,currentDistance=Infinity;for(let candidate=0;candidate<48;candidate+=1)if(!visited.has(candidate)&&distances[candidate]<currentDistance){current=candidate;currentDistance=distances[candidate];}if(current<0||current===target)break;visited.add(current);const x=current%8,y=Math.floor(current/8);for(let dy=-1;dy<=1;dy+=1)for(let dx=-1;dx<=1;dx+=1){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx<0||nx>=8||ny<0||ny>=6)continue;const next=ny*8+nx;if(blocked.has(next))continue;distances[next]=Math.min(distances[next],currentDistance+(dx&&dy?Math.SQRT2:1));}}return distances[target]<=Math.max(deltaBeats*rate,0)+0.0001;}
 
 /** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} summary @param {Difficulty} difficulty @param {string} songToken */
-function convertFlowChart(summary,difficulty,songToken){const beats=[];const events=[];const lookup=buildFlowNoteLookup(summary.colorNotes??[]);for(const note of summary.colorNotes??[]){const emitted=emitFlowNote(note);beats.push(emitted);events.push({start:Number(note.start??0),sourceFamily:"note",result:{action:"emit",beat:cloneData(emitted),noteRef:flowNoteRef(note)},note:cloneData(note)});}for(const bomb of summary.bombNotes??[]){const emitted={start:Number(bomb.start??0),type:"bomb",placement:topLeftCell(Number(bomb.cell??0))};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"bomb",result:{action:"emit",beat:cloneData(emitted)},bomb:cloneData(bomb)});}for(const obstacle of summary.obstacles??[]){const emitted={start:Number(obstacle.start??0),end:Number(obstacle.start??0)+Number(obstacle.duration??0),type:"obstacle",...normalizedGeometryForObstacle(obstacle),gridMask:gridMaskForObstacle(obstacle)};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"obstacle",result:{action:"emit",beat:cloneData(emitted)},obstacle:cloneData(obstacle)});}for(const slider of summary.sliders??[]){const emitted=emitFlowArc(slider,lookup);beats.push(emitted);events.push({start:Number(slider.start??0),sourceFamily:"slider",result:{action:"emit",beat:cloneData(emitted)},slider:cloneData(slider)});}for(const burst of summary.burstSliders??[]){const emitted={start:Number(burst.start??0),end:Number(burst.end??burst.start??0),type:"burst",hand:String(burst.hand??"left"),placement:topLeftCell(Number(burst.cell??0)),direction:Number(burst.direction??8),tailPlacement:topLeftCell(Number(burst.tailCell??burst.cell??0)),checkpointCount:Math.max(Number(burst.sliceCount??1),1)};if(Object.hasOwn(burst,"spacingBias"))Object.assign(emitted,{spacingBias:Number(burst.spacingBias)});beats.push(emitted);events.push({start:emitted.start,sourceFamily:"burstSlider",result:{action:"emit",beat:cloneData(emitted)},source:cloneData(burst)});}const order={note:0,bomb:1,obstacle:2,arc:3,burst:4};beats.sort((a,b)=>Number(a.start)-Number(b.start)||(order[/** @type {keyof typeof order} */(a.type)]??99)-(order[/** @type {keyof typeof order} */(b.type)]??99)||JSON.stringify(a).localeCompare(JSON.stringify(b)));return{chart:{schemaId:"aerobeat.chart.flow.v3",schemaVersion:3,recordVersion:2,rulesetId:"flow_grid_v2",chartId:`ab-chart-${songToken}-flow-${difficulty.toLowerCase()}`,chartName:`${titleize(songToken)} ${difficulty} Flow`,mode:"flow",difficulty,beats},trace:{difficulty,obstacleContract:"normalized_obstacle_v2",events}};}
+function buildFlowChartBase(summary,difficulty,songToken){const beats=[];const events=[];const lookup=buildFlowNoteLookup(summary.colorNotes??[]);for(const note of summary.colorNotes??[]){const emitted=emitFlowNote(note);beats.push(emitted);events.push({start:Number(note.start??0),sourceFamily:"note",result:{action:"emit",beat:cloneData(emitted),noteRef:flowNoteRef(note)},note:cloneData(note)});}for(const bomb of summary.bombNotes??[]){const emitted={start:Number(bomb.start??0),type:"bomb",placement:topLeftCell(Number(bomb.cell??0))};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"bomb",result:{action:"emit",beat:cloneData(emitted)},bomb:cloneData(bomb)});}for(const obstacle of summary.obstacles??[]){const emitted={start:Number(obstacle.start??0),end:Number(obstacle.start??0)+Number(obstacle.duration??0),type:"obstacle",...normalizedGeometryForObstacle(obstacle),gridMask:gridMaskForObstacle(obstacle)};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"obstacle",result:{action:"emit",beat:cloneData(emitted)},obstacle:cloneData(obstacle)});}for(const slider of summary.sliders??[]){const emitted=emitFlowArc(slider,lookup);beats.push(emitted);events.push({start:Number(slider.start??0),sourceFamily:"slider",result:{action:"emit",beat:cloneData(emitted)},slider:cloneData(slider)});}for(const burst of summary.burstSliders??[]){const emitted={start:Number(burst.start??0),end:Number(burst.end??burst.start??0),type:"burst",hand:String(burst.hand??"left"),placement:topLeftCell(Number(burst.cell??0)),direction:Number(burst.direction??8),tailPlacement:topLeftCell(Number(burst.tailCell??burst.cell??0)),checkpointCount:Math.max(Number(burst.sliceCount??1),1)};if(Object.hasOwn(burst,"spacingBias"))Object.assign(emitted,{spacingBias:Number(burst.spacingBias)});beats.push(emitted);events.push({start:emitted.start,sourceFamily:"burstSlider",result:{action:"emit",beat:cloneData(emitted)},source:cloneData(burst)});}const order={note:0,bomb:1,obstacle:2,arc:3,burst:4};beats.sort((a,b)=>Number(a.start)-Number(b.start)||(order[/** @type {keyof typeof order} */(a.type)]??99)-(order[/** @type {keyof typeof order} */(b.type)]??99)||JSON.stringify(a).localeCompare(JSON.stringify(b)));return{chart:{schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,recordVersion:2,rulesetId:"flow_grid_v2",chartId:`ab-chart-${songToken}-flow-${difficulty.toLowerCase()}`,chartName:`${titleize(songToken)} ${difficulty} Flow`,mode:"flow",difficulty,beats},trace:{difficulty,obstacleContract:"normalized_obstacle_v2",events}};}
+/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} summary @param {Difficulty} difficulty @param {string} songToken @param {import("@aerobeat/web-contracts/note-palette-contracts").AeroAuthoredNotePalette|null} notePalette */
+async function convertFlowChart(summary,difficulty,songToken,notePalette){
+  const base=buildFlowChartBase(summary,difficulty,songToken);
+  const palette=flowPaletteReference(notePalette);
+  const chart=/** @type {DataRecord} */({...base.chart,schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,notePalette:palette});
+  chart.contentHash=await prefixedSha256(canonicalJson({beats:chart.beats,rulesetId:chart.rulesetId,notePalette:palette}));
+  const trace={...base.trace,notePalette:palette,contentHash:chart.contentHash};
+  return {chart,trace};
+}
 /** @param {Readonly<Record<string, unknown>>} note */
 function emitFlowNote(note){const direction=Number(note.direction??8);const beat={start:Number(note.start??0),type:"note",hand:String(note.hand??"left"),placement:topLeftCell(Number(note.cell??0)),requiresDirection:direction!==8,angleOffset:Number(note.angleOffset??0)};if(direction!==8)Object.assign(beat,{direction});return beat;}
 /** @param {Readonly<Record<string, unknown>>} slider @param {Map<string,string>} lookup */

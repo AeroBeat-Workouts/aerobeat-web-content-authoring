@@ -1,6 +1,7 @@
 // @ts-check
 
 import { deepFreeze, isPlainRecord, prefixedSha256 } from "./canonical.js";
+import { verifySourceNotePalette } from "./note-palette.js";
 
 /** @typedef {{manifest: Record<string, unknown>, listEntryPaths: () => readonly string[], readEntry: (path: string) => Uint8Array}} SourceBundle */
 
@@ -44,7 +45,12 @@ async function prepareSourceMaterialSet(acquired, options, all) {
   if (signalValue !== undefined && !signal) throw sourceError("source_options_invalid", "signal must be an AbortSignal");
   checkAbort(signal);
   const advertised = arrayData(dataProperty(manifest, "difficulties"), maximumDifficulties, "source_manifest_invalid");
-  /** @type {{difficulty: string, path: string}[]} */
+  if (dataProperty(manifest, "schemaId") !== "aerobeat.beatsaver-source-manifest.v2") throw sourceError("source_manifest_invalid", "Source manifest must use the finalized BeatSaver manifest v2 interface");
+  const infoFormatValue = dataProperty(manifest, "infoFormat");
+  if (infoFormatValue !== "v2" && infoFormatValue !== "v4") throw sourceError("source_format_unsupported", "Info format must be v2 or v4");
+  const infoVersionValue = dataProperty(manifest, "infoVersion");
+  if (infoVersionValue !== null && (typeof infoVersionValue !== "string" || !/^\d+\.\d+\.\d+$/u.test(infoVersionValue))) throw sourceError("source_manifest_invalid", "Info version must be an exact semantic version or null");
+  /** @type {{difficulty: string, path: string, beatMapFormat: "v2"|"v3"|"v4", beatMapVersion: string|null, notePalette: unknown}[]} */
   let selected;
   if (all) {
     const byDifficulty = new Map();
@@ -60,7 +66,7 @@ async function prepareSourceMaterialSet(acquired, options, all) {
       const entry = /** @type {Record<string, unknown>} */ (byDifficulty.get(difficulty));
       const pathValue = dataProperty(entry, "path");
       if (typeof pathValue !== "string" || !pathValue) throw sourceError("difficulty_unavailable", `Standard ${difficulty} has no source path`);
-      return { difficulty, path: normalizePath(pathValue, limits.pathChars) };
+      return selectedDifficultyMetadata(entry, difficulty, normalizePath(pathValue, limits.pathChars), infoFormatValue);
     });
   } else {
     const difficultyValue = dataProperty(options, "difficulty");
@@ -73,7 +79,7 @@ async function prepareSourceMaterialSet(acquired, options, all) {
       if (typeof candidate === "string" && candidate.length <= 64 && normalizeDifficulty(candidate) === wanted) {
         const pathValue = dataProperty(entry, "path");
         if (typeof pathValue !== "string" || !pathValue) break;
-        selected = [{ difficulty: wanted, path: normalizePath(pathValue, limits.pathChars) }];
+        selected = [selectedDifficultyMetadata(entry, wanted, normalizePath(pathValue, limits.pathChars), infoFormatValue)];
         break;
       }
     }
@@ -92,8 +98,17 @@ async function prepareSourceMaterialSet(acquired, options, all) {
     listedByNormalized.set(normalized, original);
   }
 
+  const infoPathValue = dataProperty(manifest, "infoPath");
+  if (typeof infoPathValue !== "string" || !infoPathValue) throw sourceError("source_manifest_invalid", "Source manifest must identify Info.dat");
+  const infoPath = normalizePath(infoPathValue, limits.pathChars);
+  const infoOriginal = listedByNormalized.get(infoPath);
+  if (!infoOriginal) throw sourceError("source_entry_missing", "Info.dat is absent from the advertised source entries");
+  const infoBytes = readBounded(readEntry, source, infoOriginal, limits.cacheEntryBytes, "Info.dat");
+  const infoHash = await prefixedSha256(infoBytes);
+  checkAbort(signal);
+
   const prepared = [];
-  let selectedByteCount = 0;
+  let selectedByteCount = infoBytes.byteLength;
   for (const item of selected) {
     checkAbort(signal);
     const original = listedByNormalized.get(item.path);
@@ -104,7 +119,8 @@ async function prepareSourceMaterialSet(acquired, options, all) {
     const expected = expectedPathHash(dataProperty(options, "expectedDifficultyContentHashes"), item.path, limits.pathChars);
     const contentHash = await verifyExpectedHash(bytes, expected, "difficulty_hash_mismatch");
     checkAbort(signal);
-    prepared.push({ ...item, bytes, contentHash });
+    const notePalette = verifySourceNotePalette(item.notePalette, { infoFormat: infoFormatValue, infoHash, difficultyHash: contentHash });
+    prepared.push({ ...item, notePalette, bytes, contentHash });
   }
 
   const audioPathValue = dataProperty(manifest, "audioPath");
@@ -121,15 +137,13 @@ async function prepareSourceMaterialSet(acquired, options, all) {
 
   const cache = [];
   if (dataProperty(options, "cacheSourceEntries") === true) {
-    const infoPathValue = dataProperty(manifest, "infoPath");
-    const infoPath = typeof infoPathValue === "string" && infoPathValue ? normalizePath(infoPathValue, limits.pathChars) : "";
-    const requiredCachePaths = [...new Set([infoPath, ...prepared.map((item) => item.path)].filter(Boolean))];
+    const requiredCachePaths = [...new Set([infoPath, ...prepared.map((item) => item.path)])];
     for (const path of requiredCachePaths) {
       checkAbort(signal);
       const original = listedByNormalized.get(path);
       if (!original) throw sourceError("source_entry_missing", "Requested cache entry is absent");
       const preparedEntry = prepared.find((item) => item.path === path);
-      const cachedBytes = preparedEntry ? Uint8Array.from(preparedEntry.bytes) : readBounded(readEntry, source, original, limits.cacheEntryBytes, "cache");
+      const cachedBytes = path === infoPath ? Uint8Array.from(infoBytes) : preparedEntry ? Uint8Array.from(preparedEntry.bytes) : readBounded(readEntry, source, original, limits.cacheEntryBytes, "cache");
       if (cachedBytes.byteLength > limits.cacheEntryBytes) throw sourceError("source_entry_too_large", "cache entry exceeds the byte limit");
       cache.push({ path, bytes: cachedBytes });
     }
@@ -144,21 +158,27 @@ async function prepareSourceMaterialSet(acquired, options, all) {
   const sourceVersionOption = optionalIdentity(dataProperty(options, "sourceVersionHash"), "sourceVersionHash");
   const sourceId = sourceIdOption || boundedDataString(dataProperty(map, "mapId")) || boundedDataString(dataProperty(manifest, "songName")) || "local-import";
   const sourceVersionHash = sourceVersionOption || boundedDataString(dataProperty(version, "hash")) || boundedDataString(dataProperty(acquired, "sourceHash")) || "local-unverified";
-  const major = dataProperty(manifest, "sourceFormatMajor");
-  if (!Number.isInteger(major) || ![2, 3, 4].includes(Number(major))) throw sourceError("source_format_unsupported", "Only Beat Saber v2, v3 and v4 are supported");
   const bpmValue = dataProperty(manifest, "bpm");
   const common = {
-    schemaId: "aerobeat.authoring-source.v1", sourceFormatMajor: major,
-    infoPath: boundedDataString(dataProperty(manifest, "infoPath"), limits.pathChars),
+    schemaId: "aerobeat.authoring-source.v2", infoFormat: infoFormatValue, infoVersion: infoVersionValue, infoPath, infoHash,
     songName: boundedDataString(dataProperty(manifest, "songName")) || "Imported Song",
     songAuthorName: boundedDataString(dataProperty(manifest, "songAuthorName")), levelAuthorName: boundedDataString(dataProperty(manifest, "levelAuthorName")),
     bpm: typeof bpmValue === "number" ? positive(bpmValue, 120) : 120, audioPath, audioContentHash, sourceProvider, sourceId, sourceVersionHash
   };
   const audio = audioPath ? [{ path: audioPath, bytes: Uint8Array.from(audioBytes), contentHash: audioContentHash }] : [];
-  const materials = prepared.map((item) => deepFreeze({ requestManifest: deepFreeze({ ...common, selectedDifficulty: { difficulty: item.difficulty, path: item.path, contentHash: item.contentHash } }), difficultyBytes: Uint8Array.from(item.bytes), audio, sourceCache: cache }));
+  const materials = prepared.map((item) => deepFreeze({ requestManifest: deepFreeze({ ...common, selectedDifficulty: { difficulty: item.difficulty, path: item.path, beatMapFormat: item.beatMapFormat, beatMapVersion: item.beatMapVersion, contentHash: item.contentHash, notePalette: item.notePalette } }), difficultyBytes: Uint8Array.from(item.bytes), audio, sourceCache: cache }));
   return deepFreeze({ materials, audio, sourceCache: cache, sourceProvider, sourceId, sourceVersionHash, songName: common.songName, audioPath, audioContentHash });
 }
 
+/** @param {Record<string,unknown>} entry @param {string} difficulty @param {string} path @param {"v2"|"v4"} infoFormat */
+function selectedDifficultyMetadata(entry,difficulty,path,infoFormat){
+  const beatMapFormat=dataProperty(entry,"beatMapFormat");
+  const beatMapVersion=dataProperty(entry,"beatMapVersion");
+  const notePalette=dataProperty(entry,"notePalette");
+  if(typeof beatMapFormat!=="string"||!["v2","v3","v4"].includes(beatMapFormat)||(beatMapVersion!==null&&(typeof beatMapVersion!=="string"||!/^\d+\.\d+\.\d+$/u.test(beatMapVersion)))||(infoFormat==="v2"&&beatMapFormat==="v4")||(infoFormat==="v4"&&beatMapFormat!=="v4"))throw sourceError("source_manifest_invalid","Selected difficulty Info and beatmap formats are invalid or incompatible");
+  if(notePalette===undefined)throw sourceError("source_manifest_invalid","Selected difficulty must explicitly provide notePalette null or song authority");
+  return {difficulty,path,beatMapFormat:/** @type {"v2"|"v3"|"v4"} */(beatMapFormat),beatMapVersion,notePalette};
+}
 /** @param {unknown} value @returns {value is SourceBundle} */
 function isSourceBundle(value) { return isPlainRecord(value) && isPlainRecord(dataProperty(value, "manifest")) && typeof dataProperty(value, "listEntryPaths") === "function" && typeof dataProperty(value, "readEntry") === "function"; }
 /** @param {Record<string, unknown>} record @param {string} key */

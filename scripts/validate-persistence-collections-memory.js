@@ -40,6 +40,8 @@ const malformed={...legacyRecord("malformed"),package:sourceGeometryPackage("mal
 assert.equal(await legacy.deleteCollection("legacy:old"), true);
 assert.equal((await legacy.list()).length, 0);
 
+const history=createMemoryPersistenceAdapter();const historical=historicalV3Record("song-v3");await history.put(historical);const historicalBytes=(await history.getForExport("song-v3"))?.assets[0].bytes;assert.deepEqual(historicalBytes,audio);assert.equal((await history.list())[0].packageHash,historical.packageHash);await assert.rejects(()=>history.get("song-v3"),hasCode("note_palette_reimport_required"));const current=standaloneRecord("song-v4","Hard");await history.put(current);assert.equal((await history.get("song-v4"))?.package.schemaId,"aerobeat.song-package.v4","same-source reimport must create a current package without rewriting historical bytes");assert.equal((await history.list()).length,2);assert.deepEqual((await history.getForExport("song-v3"))?.assets[0].bytes,historicalBytes);assert.equal(await history.delete("song-v3"),true);assert.equal((await history.get("song-v4"))?.package.schemaVersion,4);history.destroy();
+
 const cancelled = createMemoryPersistenceAdapter();
 const controller = new AbortController();
 controller.abort();
@@ -59,7 +61,7 @@ await assert.rejects(() => adapter.putCollection(/** @type {never} */ (hostile))
 assert.equal(getterCalls, 0);
 
 assert.equal(authoringDatabaseVersion, 7);
-console.log("Memory collection persistence validation passed.");
+console.log("Memory DB7 collection/shared-asset and v3 palette-history preservation/list/export/delete/reimport validation passed.");
 
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} bytes */
 function batch(collectionId, records, contentHash, bytes) {
@@ -104,7 +106,9 @@ function record(key, difficulty, contentHash) {
 }
 
 /** @param {string} key @param {string} difficulty */
-function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v3",schemaVersion:3,packageVersion:"3.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,obstacleContract:"normalized_obstacle_v2"},charts:[{schemaId:"aerobeat.chart.flow.v3",schemaVersion:3,mode:"flow",rulesetId:"flow_grid_v2",beats:[{start:1,end:2,type:"obstacle",sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v2_legacy_obstacle",kind:"v2_type_1",x:1,y:2,width:1,height:3},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:1,y:0,width:1,height:3},gridMask:[1,5,9]}]}]};}
+function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v4",schemaVersion:4,packageVersion:"4.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,obstacleContract:"normalized_obstacle_v2"},notePalette:null,charts:[{schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,mode:"flow",rulesetId:"flow_grid_v2",notePalette:null,beats:[{start:1,end:2,type:"obstacle",sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v2_legacy_obstacle",kind:"v2_type_1",x:1,y:2,width:1,height:3},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:1,y:0,width:1,height:3},gridMask:[1,5,9]}]}]};}
+function standaloneRecord(key,difficulty){const value=record(key,difficulty,hash);delete value.assetRefs;value.assets=[{path:"media/audio/song.ogg",bytes:Uint8Array.from(audio)}];return value;}
+function historicalV3Record(key){const value=standaloneRecord(key,"Hard");value.package.schemaId="aerobeat.song-package.v3";value.package.schemaVersion=3;value.package.packageVersion="3.0.0";delete value.package.notePalette;value.package.charts[0].schemaId="aerobeat.chart.flow.v3";value.package.charts[0].schemaVersion=3;delete value.package.charts[0].notePalette;value.schemaVersion=3;return value;}
 /** @param {string} key */
 function legacyRecord(key) {
   return { key, package: { packageId: `package-${key}`, songName: "Legacy", source: { difficulty: "Hard" } }, packageHash: `sha256:${"b".repeat(64)}`, assets: [{ path: "audio.ogg", bytes: new Uint8Array([9]) }], sourceCache: [], createdAtMs: 1, schemaVersion: 2, writeToken: "legacy" };

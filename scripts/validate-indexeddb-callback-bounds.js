@@ -151,7 +151,7 @@ function record(key, writeToken) {
 }
 /** @param {string} key */
 function packageValue(key) {
-  return { schemaId: "aerobeat.song-package.v3", schemaVersion: 3, packageVersion: "3.0.0", packageId: `package-${key}`, songName: "Song", source: { difficulty: "Hard", obstacleContract: "normalized_obstacle_v2" }, charts: [{ schemaId: "aerobeat.chart.flow.v3", schemaVersion: 3, mode: "flow", rulesetId: "flow_grid_v2", beats: [{ start: 1, end: 2, type: "obstacle", sourceGeometry: { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace: "beatsaber_v2_legacy_obstacle", kind: "v2_type_1", x: 1, y: 2, width: 1, height: 3 }, gameplayGeometry: { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 1, y: 0, width: 1, height: 3 }, gridMask: [1, 5, 9] }] }] };
+  return { schemaId: "aerobeat.song-package.v4", schemaVersion: 4, packageVersion: "4.0.0", packageId: `package-${key}`, songName: "Song", source: { difficulty: "Hard", obstacleContract: "normalized_obstacle_v2" },notePalette:null, charts: [{ schemaId: "aerobeat.chart.flow.v4", schemaVersion: 4, mode: "flow", rulesetId: "flow_grid_v2",notePalette:null, beats: [{ start: 1, end: 2, type: "obstacle", sourceGeometry: { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace: "beatsaber_v2_legacy_obstacle", kind: "v2_type_1", x: 1, y: 2, width: 1, height: 3 }, gameplayGeometry: { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 1, y: 0, width: 1, height: 3 }, gridMask: [1, 5, 9] }] }] };
 }
 /** @param {string} key @param {string} writeToken */
 function collection(key, writeToken) {

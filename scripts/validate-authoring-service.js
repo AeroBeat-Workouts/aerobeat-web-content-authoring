@@ -15,8 +15,9 @@ import {
 } from "../src/index.js";
 
 const golden = JSON.parse(await readFile(new URL("../fixtures/boxing-prototype-golden-v1.json", import.meta.url), "utf8"));
+const syntheticHash=`sha256:${"0".repeat(64)}`;
 /** @type {Parameters<typeof convertDifficulty>[1]} */
-const options = { difficulty: "Hard", songToken: golden.songToken, songName: "Sanitized Golden", bpm: golden.bpm, sourceProvider: "synthetic", sourceId: "golden", sourceVersionHash: "synthetic-v1", sourceDifficultyPath: "Hard.dat", sourceBeatmapVersion: "3.0.0" };
+const options = { difficulty: "Hard", songToken: golden.songToken, songName: "Sanitized Golden", bpm: golden.bpm, sourceProvider: "synthetic", sourceId: "golden", sourceVersionHash: "synthetic-v1", sourceInfoFormat: /** @type {const} */("v2"), sourceInfoVersion:"2.1.0", sourceInfoHash:syntheticHash, sourceDifficultyPath: "Hard.dat", sourceBeatmapFormat:/** @type {const} */("v3"), sourceBeatmapVersion: "3.0.0", sourceDifficultyHash:syntheticHash, notePalette:null };
 const first = await convertDifficulty(golden.sourceSummary, options);
 const second = await convertDifficulty(golden.sourceSummary, options);
 assert.deepEqual(first.package, second.package, "double conversion must be byte-semantically deterministic");
@@ -42,7 +43,7 @@ for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
   assert.equal(summary.obstacles.length, 1, `${format} must normalize its obstacle`);
   assert.equal(summary.sliders.length, 1, `${format} must normalize its arc`);
   assert.equal(summary.burstSliders.length, format === "v2" ? 0 : 1, `${format} must normalize supported bursts`);
-  const convertedFormat=await convertDifficulty(summary,{...options,songToken:`synthetic-${format}`,sourceBeatmapVersion:format});
+  const convertedFormat=await convertDifficulty(summary,{...options,songToken:`synthetic-${format}`,sourceInfoFormat:format==="v4"?"v4":"v2",sourceInfoVersion:format==="v4"?"4.0.0":"2.1.0",sourceBeatmapFormat:format,sourceBeatmapVersion:format==="v2"?"2.6.0":format==="v3"?"3.3.0":"4.0.0"});
   const flow=/** @type {{beats:Record<string,unknown>[]}} */(convertedFormat.charts.find((chart)=>chart.mode==="flow"));
   const flowTypes=flow.beats.map((beat)=>beat.type);for(const type of ["note","bomb","obstacle","arc"])assert.ok(flowTypes.includes(type),`${format} Flow must preserve ${type}`);if(format!=="v2")assert.ok(flowTypes.includes("burst"),`${format} Flow must preserve burst`);
 }
@@ -125,7 +126,7 @@ function syntheticSourceBundle(format) { return sourceBundleForDocument(format, 
 function sourceBundleForDocument(format, document) {
   const path = "Hard.dat"; const info = new TextEncoder().encode("{}"); const map = new TextEncoder().encode(JSON.stringify(document)); const audio = new Uint8Array([1, 2, 3, 4]); const entries = new Map([["info.dat", info], [path.toLowerCase(), map], ["song.ogg", audio]]);
   return Object.freeze({
-    manifest: Object.freeze({ schemaId: "aerobeat.beatsaver-source-manifest.v1", sourceFormatMajor: Number(format.slice(1)), infoPath: "Info.dat", songName: "Synthetic Golden", songAuthorName: "AeroBeat", levelAuthorName: "AeroBeat", audioPath: "song.ogg", bpm: 120, difficulties: Object.freeze([{ characteristic: "Standard", difficulty: "Hard", path }]), entries: Object.freeze([]) }),
+    manifest: Object.freeze({ schemaId: "aerobeat.beatsaver-source-manifest.v2", infoFormatMajor: format==="v4"?4:2, infoFormat:format==="v4"?"v4":"v2",infoVersion:format==="v4"?"4.0.0":"2.1.0", infoPath: "Info.dat", songName: "Synthetic Golden", songAuthorName: "AeroBeat", levelAuthorName: "AeroBeat", audioPath: "song.ogg", bpm: 120, difficulties: Object.freeze([{ characteristic: "Standard", difficulty: "Hard", path,beatMapFormat:format,beatMapVersion:format==="v2"?"2.6.0":format==="v3"?"3.3.0":"4.0.0",notePalette:null }]), entries: Object.freeze([]) }),
     listEntryPaths() { return Object.freeze(["Info.dat", path, "song.ogg"]); },
     readEntry(entryPath) { const bytes = entries.get(entryPath.toLowerCase()); if (!bytes) throw new Error("missing entry"); return Uint8Array.from(bytes); }
   });
