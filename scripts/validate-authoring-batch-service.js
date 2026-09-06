@@ -94,7 +94,32 @@ assert.equal((await cancelService.listPackages()).length, 0);
 assert.equal((await cancelService.listCollections()).length, 0);
 cancelService.destroy();
 
-console.log("Atomic all-Standard authoring service validation passed.");
+for (const action of ["cancel", "replace", "destroy"]) {
+  const blocked = blockingPersistence();
+  const raceService = createAeroWebContentAuthoringService({ persistence: blocked.adapter });
+  const first = raceService.convertAllStandardAndPersist(acquired, { sourceId: `${action}-first`, sourceVersionHash: "v1" });
+  await blocked.entered.promise;
+  let replacement = null;
+  if (action === "cancel") assert.equal(raceService.cancel(), true);
+  else if (action === "replace") replacement = raceService.convertAllStandardAndPersist(acquired, { sourceId: "replacement", sourceVersionHash: "v2" });
+  else raceService.destroy();
+  const firstOutcome = await settledOnce(first);
+  assert.equal(firstOutcome.status, "rejected", `${action} must reject the superseded persistence operation`);
+  assert.equal(firstOutcome.error?.code, "operation_aborted");
+  assert.equal(blocked.firstAbortEvents, 1, `${action} must abort the active persistence operation once`);
+  if (replacement) {
+    const replacementOutcome = await settledOnce(replacement);
+    assert.equal(replacementOutcome.status, "fulfilled", "replacement must complete after cancelling the prior persistence call");
+    assert.equal((await raceService.listCollections()).length, 1);
+    assert.equal((await raceService.listPackages()).length, 2);
+  } else if (action !== "destroy") {
+    assert.equal((await raceService.listCollections()).length, 0);
+    assert.equal((await raceService.listPackages()).length, 0);
+  }
+  raceService.destroy();
+}
+
+console.log("Atomic all-Standard authoring service validation passed, including persistence-phase cancel/replace/destroy.");
 
 function sourceBundle() {
   const bytes = new TextEncoder().encode(JSON.stringify({ version: "3.3.0", colorNotes: [], bombNotes: [], obstacles: [], sliders: [], burstSliders: [] }));
@@ -107,6 +132,13 @@ function sourceBundle() {
 }
 
 function createDeferred() { let resolve = () => undefined; const promise = new Promise((done) => { resolve = () => done(undefined); }); return { promise, resolve }; }
+function blockingPersistence() {
+  const base = createMemoryPersistenceAdapter(), entered = createDeferred(); let calls = 0, firstAbortEvents = 0;
+  const adapter = Object.freeze({ ...base, putCollection(batch, options = {}) { calls += 1; if (calls !== 1) return base.putCollection(batch, options); entered.resolve(); return new Promise((resolve, reject) => { const signal = options.signal; const abort = () => { firstAbortEvents += 1; reject(codedError("operation_aborted")); }; if (signal?.aborted) { abort(); return; } signal?.addEventListener("abort", abort, { once: true }); }); } });
+  return { adapter, entered, get firstAbortEvents() { return firstAbortEvents; } };
+}
+/** @param {Promise<unknown>} promise */
+async function settledOnce(promise) { let settlements = 0; promise.then(() => { settlements += 1; }, () => { settlements += 1; }); const outcome = await Promise.race([promise.then((value) => ({ status: "fulfilled", value }), (error) => ({ status: "rejected", error })), new Promise((_, reject) => setTimeout(() => reject(new Error("service operation exceeded 2000 ms")), 2000))]); await Promise.resolve(); assert.equal(settlements, 1); return outcome; }
 /** @param {string} code */
 function codedError(code) { const error = new Error(code); Object.assign(error, { code }); return error; }
 /** @param {string} code */

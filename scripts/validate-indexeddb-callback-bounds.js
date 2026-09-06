@@ -1,7 +1,7 @@
 // @ts-check
 
 import assert from "node:assert/strict";
-import { indexedDB } from "fake-indexeddb";
+import { IDBObjectStore, IDBTransaction, indexedDB } from "fake-indexeddb";
 import { createIndexedDbPersistenceAdapter } from "../src/index.js";
 
 const hash = `sha256:${"3".repeat(64)}`;
@@ -55,7 +55,67 @@ for (const operation of ["delete", "deleteIfToken"]) {
   await remove(name);
 }
 
-console.log(`IndexedDB callback bounding validation passed (${operations.length} valid operations, ${hostileCases.length + 2} hostile operations, exact errors, one settlement, bounded time, and atomic rollback).`);
+await fakeAbortRace("decoder-first");
+await fakeAbortRace("cancellation-first");
+await fakeAbortRace("pre-aborted");
+await fakeAbortRace("post-completion");
+
+console.log(`IndexedDB callback bounding validation passed (${operations.length} valid operations, ${hostileCases.length + 2} hostile operations, decoder/cancellation first-cause races, exact errors, one settlement/effective abort, bounded time, listener cleanup, and atomic rollback).`);
+
+/** @param {"decoder-first"|"cancellation-first"|"pre-aborted"|"post-completion"} mode */
+async function fakeAbortRace(mode) {
+  const name = `callback-race-${mode}-${Date.now()}-${Math.random()}`;
+  await seed(name, mode === "decoder-first" ? "package" : "valid");
+  const before = await inspect(name), adapter = createIndexedDbPersistenceAdapter({ indexedDB, databaseName: name }), controller = new AbortController();
+  await adapter.migrate();
+  const originalAbort = IDBTransaction.prototype.abort, originalGetAll = IDBObjectStore.prototype.getAll;
+  let abortCalls = 0, cancellationTriggered = false;
+  IDBTransaction.prototype.abort = function () {
+    abortCalls += 1;
+    const result = originalAbort.call(this);
+    if (mode === "decoder-first" && abortCalls === 1) {
+      controller.abort();
+      controller.signal.dispatchEvent(new Event("abort"));
+    }
+    return result;
+  };
+  IDBObjectStore.prototype.getAll = function (...arguments_) {
+    const request = originalGetAll.apply(this, arguments_);
+    if (mode === "cancellation-first" && !cancellationTriggered && this.name === "packages") {
+      cancellationTriggered = true;
+      controller.abort();
+      controller.signal.dispatchEvent(new Event("abort"));
+    }
+    return request;
+  };
+  try {
+    if (mode === "pre-aborted") controller.abort();
+    const pending = adapter.putCollection(batch("replacement", "replacement-token"), { signal: controller.signal });
+    const outcome = await settledOnce(pending, 1000);
+    if (mode === "post-completion") {
+      assert.equal(outcome.status, "fulfilled");
+      const committed = await inspect(name);
+      const callsBeforeLateSignal = abortCalls;
+      controller.abort(); controller.signal.dispatchEvent(new Event("abort"));
+      assert.equal(abortCalls, callsBeforeLateSignal, "completion must remove the abort listener before later signals");
+      assert.deepEqual(await inspect(name), committed, "post-completion cancellation must not change committed data");
+    } else {
+      assert.equal(outcome.status, "rejected");
+      assert.equal(outcome.error?.name, "AeroAuthoringStorageError");
+      assert.equal(outcome.error?.code, mode === "decoder-first" ? "storage_record_invalid" : "operation_aborted");
+      assert.equal(outcome.error?.message, mode === "decoder-first" ? "Stored package record shape is invalid" : "Persistence operation was cancelled");
+      assert.equal(abortCalls, mode === "pre-aborted" ? 0 : 1, `${mode} must initiate exactly one effective transaction abort`);
+      const callsBeforeLateSignal = abortCalls;
+      controller.signal.dispatchEvent(new Event("abort"));
+      assert.equal(abortCalls, callsBeforeLateSignal, `${mode} terminal cleanup must remove the abort listener`);
+      assert.deepEqual(await inspect(name), before, `${mode} must atomically roll back package, collection, and shared-asset writes`);
+    }
+  } finally {
+    IDBTransaction.prototype.abort = originalAbort;
+    IDBObjectStore.prototype.getAll = originalGetAll;
+    adapter.destroy(); await remove(name);
+  }
+}
 
 /** @param {ReturnType<typeof createIndexedDbPersistenceAdapter>} adapter @param {string} operation @param {string} [target] */
 function invoke(adapter, operation, target = "target") {

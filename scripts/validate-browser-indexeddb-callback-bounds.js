@@ -20,7 +20,7 @@ const server = createServer((request, response) => {
     if (rewritten === source) { response.writeHead(500).end("Declared hash import was not found"); return; }
     response.end(rewritten); return;
   }
-  if (pathname === "/src/persistence.js") {
+  if (pathname === "/src/persistence.js" || pathname === "/src/converter.js" || pathname === "/src/validator.js") {
     const source = readFileSync(path, "utf8");
     const rewritten = source.replace('from "@aerobeat/web-contracts/obstacle-contracts"', 'from "/node_modules/@aerobeat/web-contracts/src/obstacle-contracts.js"');
     if (rewritten === source) { response.writeHead(500).end("Declared contract import was not found"); return; }
@@ -41,7 +41,7 @@ try {
   await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: "load" });
   const result = await page.evaluate(async () => {
     // @ts-expect-error Browser-served absolute module path is intentionally unavailable to Node's checker.
-    const { createIndexedDbPersistenceAdapter } = await import("/src/persistence.js");
+    const [{ createIndexedDbPersistenceAdapter }, { createAeroWebContentAuthoringService }] = await Promise.all([import("/src/persistence.js"), import("/src/service.js")]);
     const hash = `sha256:${"3".repeat(64)}`, assetBytes = new Uint8Array([3, 1, 4, 1, 5]);
     const operations = ["list", "get", "getForExport", "listCollections", "getCollection", "put", "putCollection", "delete", "deleteCollection", "deleteIfToken"];
     const hostileCases = [
@@ -61,9 +61,39 @@ try {
     for (const operation of operations) { const name = `browser-valid-${operation}-${crypto.randomUUID()}`; await seed(name, "valid"); const adapter = createIndexedDbPersistenceAdapter({ databaseName: name }); const outcome = await settledOnce(invoke(adapter, operation)); expect(outcome.status === "fulfilled", `valid ${operation} failed`); adapter.destroy(); await remove(name); }
     for (const [hostileKind, operation] of hostileCases) { const name = `browser-hostile-${hostileKind}-${operation}-${crypto.randomUUID()}`; await seed(name, hostileKind); const before = await inspect(name); const adapter = createIndexedDbPersistenceAdapter({ databaseName: name }); const target = hostileKind === "package" && (operation === "get" || operation === "getForExport") ? "hostile" : "target"; const outcome = await settledOnce(invoke(adapter, operation, target)); const message = hostileKind === "package" ? "Stored package record shape is invalid" : hostileKind === "collection" ? "Stored collection shape is invalid" : "Stored shared asset shape is invalid"; expect(outcome.status === "rejected" && outcome.name === "AeroAuthoringStorageError" && outcome.code === "storage_record_invalid" && outcome.message === message, `${hostileKind}/${operation} lost original bounded error: ${JSON.stringify(outcome)}`); expect(await inspect(name) === before, `${hostileKind}/${operation} was not atomic`); adapter.destroy(); await remove(name); }
     for (const operation of ["delete", "deleteIfToken"]) { const name = `browser-target-${operation}-${crypto.randomUUID()}`; await seed(name, "target-package"); const adapter = createIndexedDbPersistenceAdapter({ databaseName: name }); const outcome = await settledOnce(invoke(adapter, operation, "hostile")); expect(outcome.status === "fulfilled" && outcome.value === true, `${operation} lost hostile target key/token semantics`); const after = await inspect(name); expect(after === JSON.stringify({ packages: [], assets: [], collections: [] }), `${operation} did not clean hostile target atomically`); adapter.destroy(); await remove(name); }
-    return { validOperations: operations.length, hostileOperations: hostileCases.length + 2, schemaVersion: 7 };
+    const race = async (mode) => {
+      const name = `browser-race-${mode}-${crypto.randomUUID()}`; await seed(name, mode === "decoder-first" ? "package" : "valid");
+      const before = await inspect(name), adapter = createIndexedDbPersistenceAdapter({ databaseName: name }), controller = new AbortController(); await adapter.migrate();
+      const originalAbort = IDBTransaction.prototype.abort, originalGetAll = IDBObjectStore.prototype.getAll; let abortCalls = 0, cancellationTriggered = false;
+      IDBTransaction.prototype.abort = function () { abortCalls += 1; const value = originalAbort.call(this); if (mode === "decoder-first" && abortCalls === 1) { controller.abort(); controller.signal.dispatchEvent(new Event("abort")); } return value; };
+      IDBObjectStore.prototype.getAll = function (...arguments_) { const request = originalGetAll.apply(this, arguments_); if (mode === "cancellation-first" && !cancellationTriggered && this.name === "packages") { cancellationTriggered = true; controller.abort(); controller.signal.dispatchEvent(new Event("abort")); } return request; };
+      try {
+        if (mode === "pre-aborted") controller.abort();
+        const outcome = await settledOnce(adapter.putCollection(batch("replacement", "replacement-token"), { signal: controller.signal }));
+        if (mode === "post-completion") { expect(outcome.status === "fulfilled", "post-completion operation failed"); const committed = await inspect(name), beforeLate = abortCalls; controller.abort(); controller.signal.dispatchEvent(new Event("abort")); expect(abortCalls === beforeLate, "post-completion listener was not removed"); expect(await inspect(name) === committed, "post-completion signal changed committed data"); }
+        else { const code = mode === "decoder-first" ? "storage_record_invalid" : "operation_aborted", message = mode === "decoder-first" ? "Stored package record shape is invalid" : "Persistence operation was cancelled"; expect(outcome.status === "rejected" && outcome.name === "AeroAuthoringStorageError" && outcome.code === code && outcome.message === message, `${mode} lost first cause: ${JSON.stringify(outcome)}`); expect(abortCalls === (mode === "pre-aborted" ? 0 : 1), `${mode} initiated ${abortCalls} aborts`); const beforeLate = abortCalls; controller.signal.dispatchEvent(new Event("abort")); expect(abortCalls === beforeLate, `${mode} terminal listener was not removed`); expect(await inspect(name) === before, `${mode} was not atomic`); }
+      } finally { IDBTransaction.prototype.abort = originalAbort; IDBObjectStore.prototype.getAll = originalGetAll; adapter.destroy(); await remove(name); }
+    };
+    for (const mode of ["decoder-first", "cancellation-first", "pre-aborted", "post-completion"]) await race(mode);
+    const sourceBundle = () => { const bytes = new TextEncoder().encode(JSON.stringify({ version: "3.3.0", colorNotes: [], bombNotes: [], obstacles: [], sliders: [], burstSliders: [] })), entries = new Map([["info.dat", new TextEncoder().encode("{}")], ["hard.dat", bytes], ["expert.dat", bytes], ["song.ogg", new Uint8Array([1, 2, 3, 4])]]); return Object.freeze({ manifest: Object.freeze({ schemaId: "aerobeat.beatsaver-source-manifest.v1", sourceFormatMajor: 3, infoPath: "Info.dat", songName: "Race Song", songAuthorName: "AeroBeat", levelAuthorName: "AeroBeat", audioPath: "song.ogg", bpm: 120, difficulties: Object.freeze([{ characteristic: "Standard", difficulty: "Expert", path: "Expert.dat" }, { characteristic: "Standard", difficulty: "Hard", path: "Hard.dat" }]), entries: Object.freeze([]) }), listEntryPaths() { return Object.freeze(["Info.dat", "Hard.dat", "Expert.dat", "song.ogg"]); }, readEntry(path) { const value = entries.get(path.toLowerCase()); if (!value) throw new Error("missing entry"); return Uint8Array.from(value); } }); };
+    const serviceRace = async (action) => {
+      const name = `browser-service-${action}-${crypto.randomUUID()}`, base = createIndexedDbPersistenceAdapter({ databaseName: name }); let service, triggered = false, replacement = null, abortCalls = 0;
+      const persistence = Object.freeze({ ...base, putCollection(value, options) { return base.putCollection(value, options); } });
+      service = createAeroWebContentAuthoringService({ persistence });
+      const originalAbort = IDBTransaction.prototype.abort, originalGetAll = IDBObjectStore.prototype.getAll;
+      IDBTransaction.prototype.abort = function () { abortCalls += 1; return originalAbort.call(this); };
+      IDBObjectStore.prototype.getAll = function (...arguments_) { const request = originalGetAll.apply(this, arguments_); if (!triggered && this.name === "packages") { triggered = true; if (action === "cancel") service.cancel(); else if (action === "replace") replacement = service.convertAllStandardAndPersist({ providerId: "synthetic", sourceHash: "v2", source: sourceBundle() }, { sourceId: "replacement", sourceVersionHash: "v2" }); else service.destroy(); } return request; };
+      try {
+        const first = service.convertAllStandardAndPersist({ providerId: "synthetic", sourceHash: "v1", source: sourceBundle() }, { sourceId: `${action}-first`, sourceVersionHash: "v1" }), outcome = await settledOnce(first);
+        expect(outcome.status === "rejected" && outcome.code === "operation_aborted", `${action} service operation lost cancellation: ${JSON.stringify(outcome)}`); expect(abortCalls === 1, `${action} service path initiated ${abortCalls} aborts`);
+        if (replacement) { const second = await settledOnce(replacement); expect(second.status === "fulfilled", "service replacement failed"); const stored = JSON.parse(await inspect(name)); expect(stored.packages.length === 2 && stored.collections.length === 1 && stored.assets.length === 1, "service replacement did not commit one exact collection"); }
+        else { const stored = JSON.parse(await inspect(name)); expect(stored.packages.length === 0 && stored.collections.length === 0 && stored.assets.length === 0, `${action} service path partially committed`); }
+      } finally { IDBTransaction.prototype.abort = originalAbort; IDBObjectStore.prototype.getAll = originalGetAll; service.destroy(); base.destroy(); await remove(name); }
+    };
+    for (const action of ["cancel", "replace", "destroy"]) await serviceRace(action);
+    return { validOperations: operations.length, hostileOperations: hostileCases.length + 2, raceOperations: 4, serviceOperations: 3, schemaVersion: 7 };
   });
-  assert.deepEqual(result, { validOperations: 10, hostileOperations: 18, schemaVersion: 7 });
+  assert.deepEqual(result, { validOperations: 10, hostileOperations: 18, raceOperations: 4, serviceOperations: 3, schemaVersion: 7 });
   assert.deepEqual(noise, [], "real Chromium callback matrix must emit zero pageerror, unhandledrejection, warning, or error noise");
   console.log(JSON.stringify({ currentDb7CallbackBounds: "PASS", ...result, settlements: "exactly-once", timeoutMs: 2000, rollback: "package+collection+asset" }));
 } finally {
