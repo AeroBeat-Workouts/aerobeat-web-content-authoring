@@ -44,8 +44,8 @@ async function prepareSourceMaterialSet(acquired, options, all) {
   const signal = signalValue instanceof AbortSignal ? signalValue : undefined;
   if (signalValue !== undefined && !signal) throw sourceError("source_options_invalid", "signal must be an AbortSignal");
   checkAbort(signal);
+  verifyFinalSourceManifest(manifest);
   const advertised = arrayData(dataProperty(manifest, "difficulties"), maximumDifficulties, "source_manifest_invalid");
-  if (dataProperty(manifest, "schemaId") !== "aerobeat.beatsaver-source-manifest.v2") throw sourceError("source_manifest_invalid", "Source manifest must use the finalized BeatSaver manifest v2 interface");
   const infoFormatValue = dataProperty(manifest, "infoFormat");
   if (infoFormatValue !== "v2" && infoFormatValue !== "v4") throw sourceError("source_format_unsupported", "Info format must be v2 or v4");
   const infoVersionValue = dataProperty(manifest, "infoVersion");
@@ -170,6 +170,19 @@ async function prepareSourceMaterialSet(acquired, options, all) {
   return deepFreeze({ materials, audio, sourceCache: cache, sourceProvider, sourceId, sourceVersionHash, songName: common.songName, audioPath, audioContentHash });
 }
 
+/** @param {Record<string,unknown>} manifest */
+function verifyFinalSourceManifest(manifest){
+  const keys=["schemaId","infoFormatMajor","infoFormat","infoVersion","infoPath","hashInputPaths","songName","songSubName","songAuthorName","levelAuthorName","audioPath","coverPath","bpm","previewStartSeconds","previewDurationSeconds","difficulties","entries","archiveBytes","expandedBytes"];
+  if(!hasExactDataKeys(manifest,keys)||dataProperty(manifest,"schemaId")!=="aerobeat.beatsaver-source-manifest.v2")throw sourceError("source_manifest_invalid","Source manifest must use the exact finalized BeatSaver manifest v2 interface");
+  const infoFormat=dataProperty(manifest,"infoFormat"),infoMajor=dataProperty(manifest,"infoFormatMajor");if(!((infoFormat==="v2"&&infoMajor===2)||(infoFormat==="v4"&&infoMajor===4)))throw sourceError("source_manifest_invalid","Source manifest Info format fields are inconsistent");
+  for(const key of ["infoPath","songName","songSubName","songAuthorName","levelAuthorName","audioPath","coverPath"]){const value=dataProperty(manifest,key);if(typeof value!=="string"||value.length>4096)throw sourceError("source_manifest_invalid",`Source manifest ${key} must be bounded text`);}
+  for(const key of ["bpm","previewStartSeconds","previewDurationSeconds"]){if(typeof dataProperty(manifest,key)!=="number"||!Number.isFinite(dataProperty(manifest,key)))throw sourceError("source_manifest_invalid",`Source manifest ${key} must be finite`);}
+  for(const key of ["archiveBytes","expandedBytes"]){const value=dataProperty(manifest,key);if(!Number.isSafeInteger(value)||Number(value)<0)throw sourceError("source_manifest_invalid",`Source manifest ${key} must be a non-negative safe integer`);}
+  const hashPaths=arrayData(dataProperty(manifest,"hashInputPaths"),defaultLimits.entryCount,"source_manifest_invalid");if(hashPaths.some((value)=>typeof value!=="string"))throw sourceError("source_manifest_invalid","Source hash input paths must be strings");arrayData(dataProperty(manifest,"entries"),defaultLimits.entryCount,"source_manifest_invalid");
+  const difficulties=arrayData(dataProperty(manifest,"difficulties"),maximumDifficulties,"source_manifest_invalid");for(const value of difficulties){if(!isPlainRecord(value)||!hasExactDataKeys(value,["characteristic","difficulty","difficultyRank","path","beatMapFormatMajor","beatMapFormat","beatMapVersion","notePalette","noteJumpMovementSpeed","noteJumpStartBeatOffset"]))throw sourceError("source_manifest_invalid","Every source difficulty must use the exact finalized v2 shape");const format=dataProperty(value,"beatMapFormat"),major=dataProperty(value,"beatMapFormatMajor");if(dataProperty(value,"characteristic")!=="Standard"||typeof dataProperty(value,"difficulty")!=="string"||typeof dataProperty(value,"path")!=="string"||!Number.isInteger(dataProperty(value,"difficultyRank"))||!((format==="v2"&&major===2)||(format==="v3"&&major===3)||(format==="v4"&&major===4))||!Number.isFinite(dataProperty(value,"noteJumpMovementSpeed"))||!Number.isFinite(dataProperty(value,"noteJumpStartBeatOffset"))||dataProperty(value,"notePalette")===undefined)throw sourceError("source_manifest_invalid","Source difficulty fields are invalid");}
+}
+/** @param {Record<string,unknown>} value @param {readonly string[]} keys */
+function hasExactDataKeys(value,keys){if(Reflect.ownKeys(value).length!==keys.length)return false;for(const key of keys){const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable)return false;}return true;}
 /** @param {Record<string,unknown>} entry @param {string} difficulty @param {string} path @param {"v2"|"v4"} infoFormat */
 function selectedDifficultyMetadata(entry,difficulty,path,infoFormat){
   const beatMapFormat=dataProperty(entry,"beatMapFormat");

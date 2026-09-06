@@ -23,9 +23,7 @@ assert.deepEqual(standardDifficultyOrder, ["Easy", "Normal", "Hard", "Expert", "
 const fixture = makeSource([
   difficulty("ExpertPlus", "ExpertPlus.dat"),
   difficulty("Hard", "Hard.dat"),
-  { characteristic: "Lightshow", difficulty: "Expert", path: "Lightshow.dat" },
   difficulty("Easy", "Easy.dat"),
-  { characteristic: "OneSaber", difficulty: "Normal", path: "OneSaber.dat" },
   difficulty("Expert", "Expert.dat"),
   difficulty("Normal", "Normal.dat")
 ]);
@@ -47,7 +45,6 @@ assert.equal(batch.materials.some((material) => "archive" in material || "blob" 
 // does not start validating unrelated Standard entries after the selected entry.
 const singleFixture = makeSource([
   difficulty("Hard", "Hard.dat"),
-  { characteristic: "Standard", difficulty: "UnsupportedAfterSelection", path: "Ignored.dat" },
   difficulty("Expert", "Expert.dat")
 ]);
 const single = await prepareSourceMaterial(singleFixture.source, { difficulty: "hard", cacheSourceEntries: true });
@@ -77,27 +74,10 @@ await assert.rejects(
 );
 assert.equal(duplicate.readCounts.size, 0, "duplicate identity must reject before any source bytes are read");
 
-const mixedOnly = makeSource([
-  { characteristic: "Lightshow", difficulty: "Expert", path: "Lightshow.dat" },
-  { characteristic: "OneSaber", difficulty: "Hard", path: "OneSaber.dat" }
-]);
-await assert.rejects(
-  () => prepareAllStandardSourceMaterials(mixedOnly.source, {}),
-  hasCode("difficulty_unavailable")
-);
-assert.equal(mixedOnly.readCounts.size, 0);
-
-// Catalyst contains only Standard gameplay, so mixed v4 exclusion remains locked by a synthetic source.
-const mixedV4 = makeSource([
-  { characteristic: "Lightshow", difficulty: "ExpertPlus", path: "Lightshow.dat" },
-  { characteristic: "OneSaber", difficulty: "Hard", path: "OneSaber.dat" },
-  difficulty("Expert", "Expert.dat")
-], 4);
-const mixedV4Batch = await prepareAllStandardSourceMaterials(mixedV4.source, {});
-assert.deepEqual(mixedV4Batch.materials.map((material) => material.requestManifest.selectedDifficulty.difficulty), ["Expert"]);
-assert.equal(mixedV4Batch.materials[0].requestManifest.infoFormat, "v4");
-assert.equal(mixedV4.readCounts.has("Lightshow.dat"), false);
-assert.equal(mixedV4.readCounts.has("OneSaber.dat"), false);
+const legacyDifficultyShape=makeSource([difficulty("Hard","Hard.dat")]);legacyDifficultyShape.source.manifest.difficulties=[{characteristic:"Lightshow",difficulty:"Expert",path:"Lightshow.dat"}];
+await assert.rejects(()=>prepareAllStandardSourceMaterials(legacyDifficultyShape.source,{}),hasCode("source_manifest_invalid"));
+assert.equal(legacyDifficultyShape.readCounts.size,0,"legacy pre-v2 difficulty shapes must reject before source reads");
+const oldV1Fixture=makeSource([difficulty("Hard","Hard.dat")]);oldV1Fixture.source.manifest=/** @type {never} */({schemaId:"aerobeat.beatsaver-source-manifest.v1",sourceFormatMajor:3,infoPath:"Info.dat",songName:"Legacy",songAuthorName:"",levelAuthorName:"",audioPath:"Song.ogg",bpm:120,difficulties:[{characteristic:"Standard",difficulty:"Hard",path:"Hard.dat"}],entries:[]});await assert.rejects(()=>prepareAllStandardSourceMaterials(oldV1Fixture.source,{}),hasCode("source_manifest_invalid"));assert.equal(oldV1Fixture.readCounts.size,0,"explicit old-v1 source fixture must remain bounded rejection-only coverage");
 
 const bounded = makeSource([difficulty("Hard", "Hard.dat"), difficulty("Expert", "Expert.dat")]);
 await assert.rejects(
@@ -118,7 +98,7 @@ assert.equal(cancelled.readCounts.size, 0);
 console.log("all-Standard source material validation passed");
 
 /** @param {string} name @param {string} path */
-function difficulty(name, path) { return { characteristic: "Standard", difficulty: name, path, beatMapFormat:"v3", beatMapVersion:"3.3.0", notePalette:null }; }
+function difficulty(name, path) { return { characteristic: "Standard", difficulty: name,difficultyRank:{Easy:1,Normal:3,Hard:5,Expert:7,ExpertPlus:9}[name]??5, path,beatMapFormatMajor:3, beatMapFormat:"v3", beatMapVersion:"3.3.0", notePalette:null,noteJumpMovementSpeed:10,noteJumpStartBeatOffset:0 }; }
 
 /** @param {Record<string, unknown>[]} difficulties @param {number} [beatMapMajor] */
 function makeSource(difficulties, beatMapMajor = 3) {
@@ -143,13 +123,13 @@ function makeSource(difficulties, beatMapMajor = 3) {
       infoFormatMajor:beatMapMajor===4?4:2,
       infoFormat:beatMapMajor===4?"v4":"v2",
       infoVersion:beatMapMajor===4?"4.0.0":"2.1.0",
-      infoPath: "Info.dat",
-      songName: "Batch Fixture",
+      infoPath: "Info.dat",hashInputPaths:difficulties.map((entry)=>String(entry.path)),
+      songName: "Batch Fixture",songSubName:"",
       songAuthorName: "Fixture Artist",
       levelAuthorName: "Fixture Mapper",
       bpm: 120,
-      audioPath: "Song.ogg",
-      difficulties:difficulties.map((entry)=>entry.characteristic==="Standard"&&beatMapMajor===4?{...entry,beatMapFormat:"v4",beatMapVersion:"4.0.0"}:entry)
+      audioPath: "Song.ogg",coverPath:"",previewStartSeconds:0,previewDurationSeconds:0,
+      difficulties:difficulties.map((entry)=>entry.characteristic==="Standard"&&beatMapMajor===4?{...entry,beatMapFormatMajor:4,beatMapFormat:"v4",beatMapVersion:"4.0.0"}:entry),entries:[],archiveBytes:0,expandedBytes:0
     },
     listEntryPaths() { lists += 1; return [...entries.keys()]; },
     readEntry(path) {
