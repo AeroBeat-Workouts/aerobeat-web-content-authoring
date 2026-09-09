@@ -3,9 +3,10 @@
 import { isObstacleGameplayGeometry, isObstacleGridMask, isObstacleSourceGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
 import { isAuthoredNotePalette } from "@aerobeat/web-contracts/note-palette-contracts";
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord } from "./canonical.js";
+import { flowChartSchemaId, flowChartSchemaVersion, flowGridRulesetId, hasExactFlowRulesetVariants } from "./flow-contract.js";
 
 export const authoringDatabaseName = "aerobeat-web-content-authoring";
-export const authoringDatabaseVersion = 7;
+export const authoringDatabaseVersion = 8;
 export const authoringPersistenceNamespace = "aerobeat.authored-packages.v2";
 const correctedFlowCellOrientation = "aerobeat_top_left_v1";
 const legacyFlowCellOrientation = "beatsaber_bottom_left_legacy";
@@ -112,7 +113,8 @@ export function createIndexedDbPersistenceAdapter(options = {}) {
             const assetCursor = transaction.objectStore("assets").openCursor();
             assetCursor.onsuccess = () => { if(upgradeError)return;try { const cursor=assetCursor.result;if(!cursor)return;copySharedAssetRecord(cursor.value);cursor.continue(); } catch(error) { failUpgrade(error); } };
             transaction.objectStore("meta").put({ key: "flow-orientation-invalidation", invalidatedBeforeVersion: Math.min(authoringDatabaseVersion,4), mode: "preserved-reimport-required" });
-            transaction.objectStore("meta").put({ key: "flow-obstacle-contract-invalidation", invalidatedBeforeVersion: authoringDatabaseVersion, mode: "preserved-reimport-required" });
+            transaction.objectStore("meta").put({ key: "flow-obstacle-contract-invalidation", invalidatedBeforeVersion: 7, mode: "preserved-reimport-required" });
+            transaction.objectStore("meta").put({ key: "flow-colliders-contract-invalidation", invalidatedBeforeVersion: authoringDatabaseVersion, mode: "preserved-reimport-required" });
           }
         }
       };
@@ -203,7 +205,7 @@ function migratePackageRecord(value,oldVersion){
     const candidate={key:valueFor(value,"key"),package:valueFor(value,"package"),packageHash:valueFor(value,"packageHash"),assets:valueFor(value,"assets"),sourceCache:valueFor(value,"sourceCache"),createdAtMs:valueFor(value,"createdAtMs"),schemaVersion:authoringDatabaseVersion,writeToken:valueFor(value,"writeToken"),flowCellOrientation:valueFor(value,"flowCellOrientation"),obstacleContract:legacyObstacleContract};
     return copyRecord(/** @type {StoredPackageRecord} */(refs?{...candidate,assetRefs:valueFor(value,"assetRefs")}:candidate));
   }
-  if(oldVersion===6)return copyRecord(/** @type {StoredPackageRecord} */(value));
+  if(oldVersion===6||oldVersion===7)return copyRecord(/** @type {StoredPackageRecord} */(value));
   if(oldVersion>0&&oldVersion<5){
     const minimalKeys=["key","package","packageHash","assets","createdAtMs","schemaVersion"],hasRefs=valueFor(value,"assetRefs")!==undefined,orientation=oldVersion<4?legacyFlowCellOrientation:(valueFor(value,"flowCellOrientation")??correctedFlowCellOrientation);
     const allowed=exactRecord(value,minimalKeys)||exactRecord(value,hasRefs?[...packageBaseKeys,"assetRefs"]:packageBaseKeys)||exactRecord(value,hasRefs?[...packageBaseKeys,"assetRefs","flowCellOrientation"]:[...packageBaseKeys,"flowCellOrientation"]);
@@ -221,7 +223,7 @@ function migrateCollectionRecord(value,oldVersion){
     if((!historical&&!dual)||!historicalFlowObstacleContracts.has(String(valueFor(value,"flowObstacleContract")))||(oldVersion===5&&dual)||(oldVersion===6&&(!dual||valueFor(value,"obstacleContract")!==legacyObstacleContract)))throw storageError("storage_migration_invalid","Stored collection has an unknown historical obstacle-contract shape");
     return copyCollection({collectionId:valueFor(value,"collectionId"),songName:valueFor(value,"songName"),sourceProvider:valueFor(value,"sourceProvider"),sourceId:valueFor(value,"sourceId"),sourceVersionHash:valueFor(value,"sourceVersionHash"),converterProfileId:valueFor(value,"converterProfileId"),converterProfileHash:valueFor(value,"converterProfileHash"),modifierIds:valueFor(value,"modifierIds"),packageKeys:valueFor(value,"packageKeys"),packages:valueFor(value,"packages"),createdAtMs:valueFor(value,"createdAtMs"),schemaVersion:authoringDatabaseVersion,writeToken:valueFor(value,"writeToken"),flowCellOrientation:valueFor(value,"flowCellOrientation"),obstacleContract:legacyObstacleContract});
   }
-  if(oldVersion===6)return copyCollection(value);
+  if(oldVersion===6||oldVersion===7)return copyCollection(value);
   if(oldVersion>0&&oldVersion<5){
     const allowed=exactRecord(value,collectionBaseKeys)||exactRecord(value,[...collectionBaseKeys,"flowCellOrientation"]);
     if(!allowed)throw storageError("storage_migration_invalid","Stored collection has an unknown legacy shape");
@@ -257,12 +259,12 @@ function copyCollectionBatch(batch){if(!exactRecord(batch,["collection","package
 /** Derive persistence provenance from package truth; a source stamp alone is never authority. @param {Record<string, unknown>} packageValue @returns {ObstacleContract} */
 function obstacleContractForPackage(packageValue){
   const schemaId=valueFor(packageValue,"schemaId"),schemaVersion=valueFor(packageValue,"schemaVersion"),packageVersion=valueFor(packageValue,"packageVersion");
-  const historicalV3=schemaId==="aerobeat.song-package.v3"&&schemaVersion===3&&packageVersion==="3.0.0",currentV4=schemaId==="aerobeat.song-package.v4"&&schemaVersion===4&&packageVersion==="4.0.0",currentV5=schemaId==="aerobeat.song-package.v5"&&schemaVersion===5&&packageVersion==="5.0.0";
-  if(!historicalV3&&!currentV4&&!currentV5)throw storageError("storage_record_invalid","Stored package generation is unsupported");
+  const historicalV3=schemaId==="aerobeat.song-package.v3"&&schemaVersion===3&&packageVersion==="3.0.0",currentV4=schemaId==="aerobeat.song-package.v4"&&schemaVersion===4&&packageVersion==="4.0.0",currentV5=schemaId==="aerobeat.song-package.v5"&&schemaVersion===5&&packageVersion==="5.0.0",currentV6=schemaId==="aerobeat.song-package.v6"&&schemaVersion===6&&packageVersion==="6.0.0";
+  if(!historicalV3&&!currentV4&&!currentV5&&!currentV6)throw storageError("storage_record_invalid","Stored package generation is unsupported");
   const source=valueFor(packageValue,"source");if(!isPlainRecord(source)||valueFor(source,"obstacleContract")!==currentObstacleContract)return legacyObstacleContract;
   const charts=denseDataArray(valueFor(packageValue,"charts"),64);if(!charts)return legacyObstacleContract;
   const flowCharts=charts.filter((chart)=>isPlainRecord(chart)&&valueFor(chart,"mode")==="flow");if(flowCharts.length!==1)return legacyObstacleContract;
-  const flow=flowCharts[0];const expectedFlowSchema=currentV4||currentV5?"aerobeat.chart.flow.v4":"aerobeat.chart.flow.v3",expectedFlowVersion=currentV4||currentV5?4:3;if(valueFor(flow,"schemaId")!==expectedFlowSchema||valueFor(flow,"schemaVersion")!==expectedFlowVersion||valueFor(flow,"rulesetId")!=="flow_grid_v2")return legacyObstacleContract;
+  const flow=flowCharts[0];const expectedFlowSchema=currentV6?flowChartSchemaId:currentV4||currentV5?"aerobeat.chart.flow.v4":"aerobeat.chart.flow.v3",expectedFlowVersion=currentV6?flowChartSchemaVersion:currentV4||currentV5?4:3;if(valueFor(flow,"schemaId")!==expectedFlowSchema||valueFor(flow,"schemaVersion")!==expectedFlowVersion||valueFor(flow,"rulesetId")!==flowGridRulesetId||(currentV6&&!hasExactFlowRulesetVariants(valueFor(flow,"rulesetVariants"))))return legacyObstacleContract;
   const beats=denseDataArray(valueFor(flow,"beats"),500000);if(!beats)return legacyObstacleContract;
   let obstacleCount=0;
   for(const beat of beats){if(!isPlainRecord(beat)||valueFor(beat,"type")!=="obstacle")continue;obstacleCount+=1;if(obstacleCount>maximumObstaclesPerChart)return legacyObstacleContract;const keys=["start","end","type","sourceGeometry","gameplayGeometry","gridMask"];if(Reflect.ownKeys(beat).length!==keys.length||!keys.every((key)=>Object.hasOwn(beat,key)))return legacyObstacleContract;const start=valueFor(beat,"start"),end=valueFor(beat,"end"),sourceGeometry=valueFor(beat,"sourceGeometry"),gameplayGeometry=valueFor(beat,"gameplayGeometry"),gridMask=valueFor(beat,"gridMask");if(typeof start!=="number"||!Number.isFinite(start)||start<0||typeof end!=="number"||!Number.isFinite(end)||end<=start||end>144000||!isObstacleSourceGeometry(sourceGeometry)||!isObstacleGameplayGeometry(gameplayGeometry)||!isObstacleGridMask(gridMask,gameplayGeometry))return legacyObstacleContract;}
@@ -272,11 +274,12 @@ function obstacleContractForPackage(packageValue){
 function notePaletteContractForPackage(packageValue){
   const schemaId=valueFor(packageValue,"schemaId"),schemaVersion=valueFor(packageValue,"schemaVersion"),packageVersion=valueFor(packageValue,"packageVersion");
   if(schemaId==="aerobeat.song-package.v3"&&schemaVersion===3&&packageVersion==="3.0.0")return priorNotePaletteContract;
-  if(!((schemaId==="aerobeat.song-package.v4"&&schemaVersion===4&&packageVersion==="4.0.0")||(schemaId==="aerobeat.song-package.v5"&&schemaVersion===5&&packageVersion==="5.0.0")))throw storageError("storage_record_invalid","Stored package generation is unsupported");
+  if(!((schemaId==="aerobeat.song-package.v4"&&schemaVersion===4&&packageVersion==="4.0.0")||(schemaId==="aerobeat.song-package.v5"&&schemaVersion===5&&packageVersion==="5.0.0")||(schemaId==="aerobeat.song-package.v6"&&schemaVersion===6&&packageVersion==="6.0.0")))throw storageError("storage_record_invalid","Stored package generation is unsupported");
   const palette=valueFor(packageValue,"notePalette");
   if(palette!==null&&!isAuthoredNotePalette(palette))throw storageError("storage_record_invalid","Stored v4 note palette contract is malformed");
   const charts=denseDataArray(valueFor(packageValue,"charts"),64),flow=charts?.filter((chart)=>isPlainRecord(chart)&&valueFor(chart,"mode")==="flow")??[];
-  if(flow.length!==1||valueFor(flow[0],"schemaId")!=="aerobeat.chart.flow.v4"||valueFor(flow[0],"schemaVersion")!==4)throw storageError("storage_record_invalid","Stored v4 Flow palette contract is malformed");
+  const successor=schemaVersion===6;
+  if(flow.length!==1||valueFor(flow[0],"schemaId")!==(successor?flowChartSchemaId:"aerobeat.chart.flow.v4")||valueFor(flow[0],"schemaVersion")!==(successor?flowChartSchemaVersion:4)||(successor&&!hasExactFlowRulesetVariants(valueFor(flow[0],"rulesetVariants"))))throw storageError("storage_record_invalid","Stored Flow palette/ruleset contract is malformed");
   const reference=valueFor(flow[0],"notePalette"),validReference=palette===null?reference===null:exactRecord(reference,["source","paletteHash"])&&valueFor(reference,"source")==="package"&&valueFor(reference,"paletteHash")===valueFor(palette,"paletteHash");
   if(!validReference)throw storageError("storage_record_invalid","Stored v4 Flow palette reference is malformed or mismatched");
   return currentNotePaletteContract;
@@ -286,7 +289,7 @@ function denseDataArray(value,maximum){if(!Array.isArray(value)||Object.getProto
 /** @param {AbortSignal | undefined} signal */
 function assertNotAborted(signal){if(signal?.aborted)throw storageError("operation_aborted","Persistence operation was cancelled");}
 /** @param {StoredPackageRecord} record @param {Map<string, SharedAssetRecord>} assets @param {boolean} allowStale */
-function resolveRecordAssets(record,assets,allowStale){const copy=copyRecord(record);const schema=valueFor(copy.package,"schemaId"),version=valueFor(copy.package,"schemaVersion");if(!allowStale&&[1,2,3,4].some((candidate)=>schema===`aerobeat.song-package.v${candidate}`&&version===candidate))throw storageError("spawn_timing_reimport_required","Stored package predates hash-bound source spawn timing and must be reimported");if(!allowStale&&copy.obstacleContract===legacyObstacleContract)throw storageError("flow_obstacle_reimport_required","Stored package lacks source-faithful Flow obstacle geometry and must be reimported");if(!allowStale&&copy.flowCellOrientation===legacyFlowCellOrientation)throw storageError("flow_orientation_reimport_required","Stored package uses the legacy Flow orientation and must be reimported");if(!allowStale&&notePaletteContractForPackage(copy.package)===priorNotePaletteContract)throw storageError("note_palette_reimport_required","Stored package predates explicit note palette provenance and must be reimported");if(!copy.assetRefs?.length)return copy;const resolved=[...copy.assets];const paths=new Set(resolved.map((entry)=>entry.path));for(const ref of copy.assetRefs){const asset=assets.get(ref.contentHash);if(!asset||paths.has(ref.path))throw storageError("storage_record_invalid","Stored shared asset is unavailable");paths.add(ref.path);resolved.push({path:ref.path,bytes:Uint8Array.from(asset.bytes)});}return {...copy,assets:resolved};}
+function resolveRecordAssets(record,assets,allowStale){const copy=copyRecord(record);const schema=valueFor(copy.package,"schemaId"),version=valueFor(copy.package,"schemaVersion");if(!allowStale&&[1,2,3,4].some((candidate)=>schema===`aerobeat.song-package.v${candidate}`&&version===candidate))throw storageError("spawn_timing_reimport_required","Stored package predates hash-bound source spawn timing and must be reimported");if(!allowStale&&copy.obstacleContract===legacyObstacleContract)throw storageError("flow_obstacle_reimport_required","Stored package lacks source-faithful Flow obstacle geometry and must be reimported");if(!allowStale&&copy.flowCellOrientation===legacyFlowCellOrientation)throw storageError("flow_orientation_reimport_required","Stored package uses the legacy Flow orientation and must be reimported");if(!allowStale&&notePaletteContractForPackage(copy.package)===priorNotePaletteContract)throw storageError("note_palette_reimport_required","Stored package predates explicit note palette provenance and must be reimported");if(!allowStale&&schema==="aerobeat.song-package.v5"&&version===5)throw storageError("flow_colliders_reimport_required","Stored package predates explicit flow_colliders_v1 authoring and must be reimported");if(!copy.assetRefs?.length)return copy;const resolved=[...copy.assets];const paths=new Set(resolved.map((entry)=>entry.path));for(const ref of copy.assetRefs){const asset=assets.get(ref.contentHash);if(!asset||paths.has(ref.path))throw storageError("storage_record_invalid","Stored shared asset is unavailable");paths.add(ref.path);resolved.push({path:ref.path,bytes:Uint8Array.from(asset.bytes)});}return {...copy,assets:resolved};}
 /** @param {StoredCollectionRecord} collection */
 function collectionSummary(collection){return deepFreeze({collectionId:collection.collectionId,songName:collection.songName,createdAtMs:collection.createdAtMs,packages:collection.packages.map((entry)=>({packageKey:entry.packageKey,packageId:entry.packageId,difficultyId:entry.difficultyId,difficultyLabel:entry.difficultyLabel}))});}
 /** @param {Map<string, StoredPackageRecord>} records @param {Map<string, StoredCollectionRecord>} collections */

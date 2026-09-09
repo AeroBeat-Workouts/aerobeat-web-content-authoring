@@ -147,15 +147,15 @@ async function settledOnce(promise, timeoutMs) {
 
 /** @param {string} key @param {string} writeToken */
 function record(key, writeToken) {
-  return { key, package: packageValue(key), packageHash: `sha256:${"a".repeat(64)}`, assets: [], sourceCache: [], createdAtMs: 1, schemaVersion: 7, writeToken, assetRefs: [{ path: "media/audio/song.ogg", contentHash: hash }], flowCellOrientation: "aerobeat_top_left_v1", obstacleContract: "normalized_obstacle_v2" };
+  return { key, package: packageValue(key), packageHash: `sha256:${"a".repeat(64)}`, assets: [], sourceCache: [], createdAtMs: 1, schemaVersion: 8, writeToken, assetRefs: [{ path: "media/audio/song.ogg", contentHash: hash }], flowCellOrientation: "aerobeat_top_left_v1", obstacleContract: "normalized_obstacle_v2" };
 }
 /** @param {string} key */
 function packageValue(key) {
-  return { schemaId: "aerobeat.song-package.v5", schemaVersion: 5, packageVersion: "5.0.0", packageId: `package-${key}`, songName: "Song", source: { difficulty: "Hard", spawnTiming: { schema: "aerobeat/beatsaber_spawn_timing", version: 1 }, obstacleContract: "normalized_obstacle_v2" },notePalette:null, charts: [{ schemaId: "aerobeat.chart.flow.v4", schemaVersion: 4, mode: "flow", rulesetId: "flow_grid_v2",notePalette:null, beats: [{ start: 1, end: 2, type: "obstacle", sourceGeometry: { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace: "beatsaber_v2_legacy_obstacle", kind: "v2_type_1", x: 1, y: 2, width: 1, height: 3 }, gameplayGeometry: { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 1, y: 0, width: 1, height: 3 }, gridMask: [1, 5, 9] }] }] };
+  return { schemaId: "aerobeat.song-package.v6", schemaVersion: 6, packageVersion: "6.0.0", packageId: `package-${key}`, songName: "Song", source: { difficulty: "Hard", spawnTiming: { schema: "aerobeat/beatsaber_spawn_timing", version: 1 }, obstacleContract: "normalized_obstacle_v2" },notePalette:null, charts: [{ schemaId: "aerobeat.chart.flow.v5", schemaVersion: 5, mode: "flow", rulesetId: "flow_grid_v2", rulesetVariants: ["flow_grid_v2", "flow_colliders_v1"],notePalette:null, beats: [{ start: 1, end: 2, type: "obstacle", sourceGeometry: { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace: "beatsaber_v2_legacy_obstacle", kind: "v2_type_1", x: 1, y: 2, width: 1, height: 3 }, gameplayGeometry: { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 1, y: 0, width: 1, height: 3 }, gridMask: [1, 5, 9] }] }] };
 }
 /** @param {string} key @param {string} writeToken */
 function collection(key, writeToken) {
-  return { collectionId: "collection", songName: "Song", sourceProvider: "synthetic", sourceId: "song", sourceVersionHash: "version", converterProfileId: "profile", converterProfileHash: "profile-hash", modifierIds: [], packageKeys: [key], packages: [{ packageKey: key, packageId: `package-${key}`, difficultyId: "Hard", difficultyLabel: "Hard" }], createdAtMs: 1, schemaVersion: 7, writeToken, flowCellOrientation: "aerobeat_top_left_v1", obstacleContract: "normalized_obstacle_v2" };
+  return { collectionId: "collection", songName: "Song", sourceProvider: "synthetic", sourceId: "song", sourceVersionHash: "version", converterProfileId: "profile", converterProfileHash: "profile-hash", modifierIds: [], packageKeys: [key], packages: [{ packageKey: key, packageId: `package-${key}`, difficultyId: "Hard", difficultyLabel: "Hard" }], createdAtMs: 1, schemaVersion: 8, writeToken, flowCellOrientation: "aerobeat_top_left_v1", obstacleContract: "normalized_obstacle_v2" };
 }
 /** @param {string} key @param {string} writeToken */
 function batch(key, writeToken) { return { collection: collection(key, writeToken), packages: [record(key, writeToken)], assets: [{ contentHash: hash, bytes: assetBytes }] }; }
@@ -163,7 +163,7 @@ function batch(key, writeToken) { return { collection: collection(key, writeToke
 /** @param {string} name @param {string} hostileKind */
 function seed(name, hostileKind) {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 7);
+    const request = indexedDB.open(name, 8);
     request.onupgradeneeded = () => {
       const database = request.result;
       const packages = database.createObjectStore("packages", { keyPath: "key" });

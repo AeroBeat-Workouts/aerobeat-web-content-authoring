@@ -14,6 +14,7 @@ export {
   spatialGridRulesetId
 } from "./definitions.js";
 export { exportAuthoredPackage, inspectAuthoredPackageExport } from "./export.js";
+export { authoredPackageSchemaId, authoredPackageSchemaVersion, authoredPackageVersion, flowChartSchemaId, flowChartSchemaVersion, flowCollidersRulesetId, flowGridRulesetId, flowRulesetVariants } from "./flow-contract.js";
 export { semanticParityHash, semanticParityProjection } from "./parity.js";
 export {
   authoringDatabaseName,

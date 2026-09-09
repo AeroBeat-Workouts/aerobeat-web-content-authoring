@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { convertDifficulty, deriveBeatSaberSpawnTiming, parseBeatMapDifficulty } from "../src/index.js";
+import { convertDifficulty, deriveBeatSaberSpawnTiming, parseBeatMapDifficulty, semanticParityHash } from "../src/index.js";
 
 const options = {
   difficulty: /** @type {const} */ ("Easy"),
@@ -70,7 +70,12 @@ const evidenceConversion = await convertDifficulty(evidenceSummary, {
   sourceVersionHash: evidence.source.versionHash,
   sourceDifficultyPath: evidence.source.difficultyPath
 });
-const evidenceFlow = /** @type {{beats:Record<string,unknown>[]}} */ (evidenceConversion.charts.find((chart) => chart.mode === "flow"));
+const evidenceFlow = /** @type {{schemaId:string,schemaVersion:number,rulesetId:string,rulesetVariants:string[],contentHash:string,beats:Record<string,unknown>[]}} */ (evidenceConversion.charts.find((chart) => chart.mode === "flow"));
+assert.deepEqual([evidenceConversion.package.schemaId,evidenceConversion.package.schemaVersion,evidenceConversion.package.packageVersion],[evidence.successor.packageSchemaId,evidence.successor.packageSchemaVersion,evidence.successor.packageVersion]);
+assert.deepEqual([evidenceFlow.schemaId,evidenceFlow.schemaVersion,evidenceFlow.rulesetId,evidenceFlow.rulesetVariants],[evidence.successor.flowChartSchemaId,evidence.successor.flowChartSchemaVersion,evidence.successor.rulesetId,evidence.successor.rulesetVariants]);
+assert.equal(evidenceFlow.contentHash,evidence.successor.flowContentHash);
+assert.equal(evidenceConversion.packageHash,evidence.successor.packageHash);
+assert.equal(await semanticParityHash(evidenceConversion.package),evidence.successor.semanticParityHash);
 const actualPlacements = evidenceFlow.beats.map((beat) => beat.placement);
 assert.deepEqual(actualPlacements, evidence.notes.map((note) => note.canonicalCell), "sanitized 3C9D first Easy notes must match canonical source-view row orientation");
 assert.equal(evidenceFlow.beats.find((beat) => beat.start === 21)?.placement, 11, "3C9D Easy beat 21 x=3,y=0 must emit cell 11");

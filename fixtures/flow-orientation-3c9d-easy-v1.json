@@ -11,6 +11,18 @@
     "difficultyPath": "Easy.dat",
     "coordinateConvention": "beat_saber_bottom_left_row_major"
   },
+  "successor": {
+    "packageSchemaId": "aerobeat.song-package.v6",
+    "packageSchemaVersion": 6,
+    "packageVersion": "6.0.0",
+    "flowChartSchemaId": "aerobeat.chart.flow.v5",
+    "flowChartSchemaVersion": 5,
+    "rulesetId": "flow_grid_v2",
+    "rulesetVariants": ["flow_grid_v2", "flow_colliders_v1"],
+    "flowContentHash": "sha256:329bf3af3435f309670a307748f70585cf4be15372d4a7b54a658fa28cfd6145",
+    "packageHash": "sha256:60e850b3a822b22f34ff1050e0f8531b5d34ce8e3bb3a01bd3208ae27a074b92",
+    "semanticParityHash": "sha256:978c9d7d1415e5597e1e2560b88090a05236088d117f422dae0222f21182cc99"
+  },
   "notes": [
     { "sourceIndex": 0, "beat": 21, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 1, "canonicalCell": 11 },
     { "sourceIndex": 1, "beat": 25, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 1, "canonicalCell": 8 },

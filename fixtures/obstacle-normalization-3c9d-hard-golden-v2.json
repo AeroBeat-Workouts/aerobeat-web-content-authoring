@@ -24,7 +24,7 @@
       "type": "weave_right",
       "sourceEventIds": ["obstacle-002"],
       "noseSafeCells": [0, 2, 3, 4, 6, 7, 8, 10, 11],
-      "semanticParityHash": "sha256:6d1b7ae14180e5c8d4d5c4cc46d79f761c18319c5486b7a59ba2916e321b5b39",
+      "semanticParityHash": "sha256:264cffd77055f93dee478e538cdccea7330acaf6fcd90b0d588359fa7847e3ef",
       "charts": {
         "row_family_balanced_height_v1|boxing_semantic_track_v1": { "eventId": "boxing-weave-right-ba9cc0325cf4", "contentHash": "sha256:30ef52be595af69885e25ccb6fe1be6acceba2be155b878753cd51f353d0f685" },
         "row_family_balanced_height_v1|boxing_spatial_grid_v1": { "eventId": "boxing-weave-right-ba9cc0325cf4", "contentHash": "sha256:05e7b90f19a4cf0815a94d2d7f94f04ae28b3279061decc052a0963ddb8102ac" },

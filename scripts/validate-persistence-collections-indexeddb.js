@@ -21,7 +21,9 @@ assert.equal(await adapter.deleteCollection("one"), true);
 assert.deepEqual((await adapter.get("hard"))?.assets[0].bytes, bytes, "shared asset must survive first collection delete");
 assert.equal(await adapter.deleteCollection("two"), true);
 assert.equal(await adapter.get("hard"), null);
-const historical=historicalV3Record("song-v3");await adapter.put(historical);const historicalExport=await adapter.getForExport("song-v3");assert.deepEqual(historicalExport?.assets[0].bytes,bytes);assert.equal((await adapter.list()).find((entry)=>entry.key==="song-v3")?.packageHash,historical.packageHash);await assert.rejects(()=>adapter.get("song-v3"),hasCode("spawn_timing_reimport_required"));const current=standaloneRecord("song-v5","Hard");await adapter.put(current);assert.equal((await adapter.get("song-v5"))?.package.schemaId,"aerobeat.song-package.v5");assert.deepEqual((await adapter.getForExport("song-v3"))?.assets[0].bytes,historicalExport?.assets[0].bytes);assert.equal(await adapter.delete("song-v3"),true);assert.equal((await adapter.get("song-v5"))?.package.schemaVersion,5);assert.equal(await adapter.delete("song-v5"),true);const malformedV4=standaloneRecord("malformed-v4","Hard");malformedV4.package.notePalette={hostile:true};await adapter.put(malformedV4);await assert.rejects(()=>adapter.get("malformed-v4"),hasCode("storage_record_invalid"),"fake IndexedDB malformed v4 palette must be invalid rather than stale");assert.deepEqual((await adapter.getForExport("malformed-v4"))?.package.notePalette,{hostile:true});assert.equal(await adapter.delete("malformed-v4"),true);
+const historical=historicalV3Record("song-v3");await adapter.put(historical);const historicalExport=await adapter.getForExport("song-v3");assert.deepEqual(historicalExport?.assets[0].bytes,bytes);assert.equal((await adapter.list()).find((entry)=>entry.key==="song-v3")?.packageHash,historical.packageHash);await assert.rejects(()=>adapter.get("song-v3"),hasCode("spawn_timing_reimport_required"));const current=standaloneRecord("song-v6","Hard");await adapter.put(current);assert.equal((await adapter.get("song-v6"))?.package.schemaId,"aerobeat.song-package.v6");assert.deepEqual((await adapter.getForExport("song-v3"))?.assets[0].bytes,historicalExport?.assets[0].bytes);assert.equal(await adapter.delete("song-v3"),true);assert.equal((await adapter.get("song-v6"))?.package.schemaVersion,6);assert.equal(await adapter.delete("song-v6"),true);const malformedV4=standaloneRecord("malformed-v4","Hard");malformedV4.package.notePalette={hostile:true};await adapter.put(malformedV4);await assert.rejects(()=>adapter.get("malformed-v4"),hasCode("storage_record_invalid"),"fake IndexedDB malformed v4 palette must be invalid rather than stale");assert.deepEqual((await adapter.getForExport("malformed-v4"))?.package.notePalette,{hostile:true});assert.equal(await adapter.delete("malformed-v4"),true);
+
+const predecessor=historicalV5Record("song-v5");await adapter.put(predecessor);assert.equal((await adapter.getForExport("song-v5"))?.package.schemaVersion,5);await assert.rejects(()=>adapter.get("song-v5"),hasCode("flow_colliders_reimport_required"),"v5 bytes remain exportable but cannot be silently promoted");assert.equal(await adapter.delete("song-v5"),true);
 
 await assert.rejects(()=>adapter.put(legacyRecord("unknown")),hasCode("storage_record_invalid"),"new IndexedDB writes with an unknown package generation must be rejected rather than labeled stale");
 const forged=legacyRecord("forged");forged.package.source.obstacleContract="normalized_obstacle_v2";await assert.rejects(()=>adapter.put(forged),hasCode("storage_record_invalid"),"a hostile current source stamp must not make an unknown IndexedDB generation historical");
@@ -49,14 +51,14 @@ const migrated = createIndexedDbPersistenceAdapter({ indexedDB, databaseName: st
 const stalePackages = await migrated.list();
 assert.equal(stalePackages.length, 2, "v4 migration must retain legacy package records");
 const migratedRaw = await inspectVersionFourDatabase(staleName);
-assert.equal(migratedRaw.packages.length, 2, "DB4→7 migration must retain every legacy package row");
+assert.equal(migratedRaw.packages.length, 2, "DB4→8 migration must retain every legacy package row");
 const exactMigrated = migratedRaw.packages.find((row) => row.key === "inverted-flow");
-assert.deepEqual(exactMigrated.package, legacyPackage, "DB4→7 migration must not rewrite legacy package bytes/data");
-assert.equal(exactMigrated.packageHash, legacyPackageHash, "DB4→7 migration must not rewrite legacy package hash");
+assert.deepEqual(exactMigrated.package, legacyPackage, "DB4→8 migration must not rewrite legacy package bytes/data");
+assert.equal(exactMigrated.packageHash, legacyPackageHash, "DB4→8 migration must not rewrite legacy package hash");
 assert.ok(migratedRaw.packages.every((row) => row.flowCellOrientation === "aerobeat_top_left_v1"), "v4 migration must mark every legacy package stale internally");
-assert.equal(migratedRaw.collections[0].flowCellOrientation, "aerobeat_top_left_v1", "DB4→7 migration must retain corrected orientation truth");
-assert.ok(migratedRaw.packages.every((row) => row.obstacleContract === "prior_obstacle_contract"), "DB7 migration must label legacy package obstacle contracts without rewriting package bytes/hashes");
-assert.equal(migratedRaw.collections[0].obstacleContract, "prior_obstacle_contract", "DB7 migration must label the legacy collection obstacle contract");
+assert.equal(migratedRaw.collections[0].flowCellOrientation, "aerobeat_top_left_v1", "DB4→8 migration must retain corrected orientation truth");
+assert.ok(migratedRaw.packages.every((row) => row.obstacleContract === "prior_obstacle_contract"), "DB8 migration must label legacy package obstacle contracts without rewriting package bytes/hashes");
+assert.equal(migratedRaw.collections[0].obstacleContract, "prior_obstacle_contract", "DB8 migration must label the legacy collection obstacle contract");
 assert.equal(migratedRaw.assets.length, 1, "v4 migration must retain shared asset rows");
 assert.deepEqual(migratedRaw.assets[0].bytes, bytes, "v4 migration must retain shared asset bytes exactly");
 assert.deepEqual(Object.keys(stalePackages[0]), ["key", "packageId", "packageHash", "songName", "difficulty", "createdAtMs", "assetCount", "sourceCacheCount"], "public package summary keys must remain exact");
@@ -78,7 +80,7 @@ assert.equal(await migrated.delete("stale-delete"), true, "stale ungrouped recor
 
 const correctedPackage=sourceGeometryPackage("inverted-flow","Easy");
 await migrated.put({ ...legacyRecord("inverted-flow"), package: correctedPackage, packageHash: legacyPackageHash });
-assert.equal((await migrated.get("inverted-flow"))?.package.schemaId, "aerobeat.song-package.v5", "current package put with the stable package key must replace stale state");
+assert.equal((await migrated.get("inverted-flow"))?.package.schemaId, "aerobeat.song-package.v6", "current package put with the stable package key must replace stale state");
 const replacementHash = `sha256:${"4".repeat(64)}`;
 const replacementBytes = new Uint8Array([4, 2]);
 await migrated.putCollection(batch("inverted-collection", [record("inverted-flow", "Easy", replacementHash)], replacementHash, replacementBytes));
@@ -94,7 +96,7 @@ assert.equal(raw.assets.length, 1, "replacement GC must retain only the currentl
 assert.deepEqual(raw.assets[0].bytes, replacementBytes);
 assert.equal(await migrated.deleteCollection("inverted-collection"), true);
 assert.equal((await inspectVersionFourDatabase(staleName)).assets.length, 0, "final deletion must safely collect replacement assets");
-assert.equal((await migrated.estimate()).schemaVersion, 7);
+assert.equal((await migrated.estimate()).schemaVersion, 8);
 migrated.destroy();
 await deleteDatabase(staleName);
 
@@ -110,7 +112,7 @@ const v5Export=await v5Adapter.getForExport("historical");
 assert.deepEqual(v5Export?.assets.map((entry)=>[entry.path,[...entry.bytes]]),[["cover.bin",[8,6,7]],["media/audio/song.ogg",[...bytes]]]);
 assert.deepEqual(v5Export?.sourceCache[0].bytes,new Uint8Array([5,3,0,9]));
 const v5Raw=await inspectDatabase(v5Name);
-assert.equal(v5Raw.version,7);assert.equal(v5Raw.packages[0].flowObstacleContract,undefined);assert.equal(v5Raw.packages[0].obstacleContract,"prior_obstacle_contract");
+assert.equal(v5Raw.version,8);assert.equal(v5Raw.packages[0].flowObstacleContract,undefined);assert.equal(v5Raw.packages[0].obstacleContract,"prior_obstacle_contract");
 assert.equal(v5Raw.collections[0].flowObstacleContract,undefined);assert.equal(v5Raw.collections[0].obstacleContract,"prior_obstacle_contract");
 for(const key of ["key","packageHash","createdAtMs","writeToken","flowCellOrientation"])assert.deepEqual(v5Raw.packages[0][key],historicalPackage[key],`DB5 package ${key} must be preserved exactly`);
 assert.deepEqual(v5Raw.packages[0].package,historicalPackage.package);assert.deepEqual(v5Raw.packages[0].assets,historicalPackage.assets);assert.deepEqual(v5Raw.packages[0].sourceCache,historicalPackage.sourceCache);assert.deepEqual(v5Raw.packages[0].assetRefs,historicalPackage.assetRefs);assert.deepEqual(v5Raw.assets[0].bytes,bytes);
@@ -138,16 +140,17 @@ const hostileAdapter=createIndexedDbPersistenceAdapter({indexedDB,databaseName:h
 await assert.rejects(()=>hostileAdapter.list(),hasCode("storage_migration_invalid"),"unknown DB6 shape must fail with one bounded migration error");hostileAdapter.destroy();
 const hostileRaw=await inspectDatabase(hostileName);assert.equal(hostileRaw.version,6,"hostile migration must abort the complete versionchange transaction");assert.equal(hostileRaw.packages.find((row)=>row.key==="valid-before").schemaVersion,6);assert.equal(hostileRaw.packages.find((row)=>row.key==="hostile").unknownHostileField,true);await deleteDatabase(hostileName);
 
-console.log("Fake IndexedDB DB7 collection/shared-asset, non-destructive DB4/DB5/DB6 migration, and v3 palette-history preservation/list/export/delete/reimport validation passed.");
+console.log("Fake IndexedDB DB8 collection/shared-asset, non-destructive DB4/DB5/DB6 migration, and v3 palette-history preservation/list/export/delete/reimport validation passed.");
 
 /** @param {string} collectionId @param {ReturnType<typeof record>[]} records @param {string} contentHash @param {Uint8Array} assetBytes */
 function batch(collectionId, records, contentHash, assetBytes) { return { collection: { collectionId, songName: "Song", sourceProvider: "synthetic", sourceId: "song", sourceVersionHash: "version", converterProfileId: "profile", converterProfileHash: "profile-hash", modifierIds: [], packageKeys: records.map((item) => item.key), packages: records.map((item) => ({ packageKey: item.key, packageId: /** @type {string} */ (item.package.packageId), difficultyId: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty), difficultyLabel: /** @type {string} */ (/** @type {Record<string,unknown>} */ (item.package.source).difficulty) })), createdAtMs: 1, schemaVersion: 3, writeToken: "batch" }, packages: records, assets: [{ contentHash, bytes: assetBytes }] }; }
 /** @param {string} key @param {string} difficulty @param {string} contentHash */
 function record(key, difficulty, contentHash) { return { key, package: sourceGeometryPackage(key,difficulty), packageHash: `sha256:${"a".repeat(64)}`, assets: [], sourceCache: [], createdAtMs: 1, schemaVersion: 3, writeToken: "batch", assetRefs: [{ path: "media/audio/song.ogg", contentHash }] }; }
 /** @param {string} key @param {string} difficulty */
-function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v5",schemaVersion:5,packageVersion:"5.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,spawnTiming:{schema:"aerobeat/beatsaber_spawn_timing",version:1},obstacleContract:"normalized_obstacle_v2"},notePalette:null,charts:[{schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,mode:"flow",rulesetId:"flow_grid_v2",notePalette:null,beats:[{start:1,end:2,type:"obstacle",sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v2_legacy_obstacle",kind:"v2_type_1",x:1,y:2,width:1,height:3},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:1,y:0,width:1,height:3},gridMask:[1,5,9]}]}]};}
+function sourceGeometryPackage(key,difficulty){return {schemaId:"aerobeat.song-package.v6",schemaVersion:6,packageVersion:"6.0.0",packageId:`package-${key}`,songName:"Song",source:{difficulty,spawnTiming:{schema:"aerobeat/beatsaber_spawn_timing",version:1},obstacleContract:"normalized_obstacle_v2"},notePalette:null,charts:[{schemaId:"aerobeat.chart.flow.v5",schemaVersion:5,mode:"flow",rulesetId:"flow_grid_v2",rulesetVariants:["flow_grid_v2","flow_colliders_v1"],notePalette:null,beats:[{start:1,end:2,type:"obstacle",sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v2_legacy_obstacle",kind:"v2_type_1",x:1,y:2,width:1,height:3},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:1,y:0,width:1,height:3},gridMask:[1,5,9]}]}]};}
 function standaloneRecord(key,difficulty){const value=record(key,difficulty,hash);delete value.assetRefs;value.assets=[{path:"media/audio/song.ogg",bytes:Uint8Array.from(bytes)}];return value;}
-function historicalV3Record(key){const value=standaloneRecord(key,"Hard");value.package.schemaId="aerobeat.song-package.v3";value.package.schemaVersion=3;value.package.packageVersion="3.0.0";delete value.package.notePalette;value.package.charts[0].schemaId="aerobeat.chart.flow.v3";value.package.charts[0].schemaVersion=3;delete value.package.charts[0].notePalette;value.schemaVersion=3;return value;}
+function historicalV3Record(key){const value=standaloneRecord(key,"Hard");value.package.schemaId="aerobeat.song-package.v3";value.package.schemaVersion=3;value.package.packageVersion="3.0.0";delete value.package.notePalette;value.package.charts[0].schemaId="aerobeat.chart.flow.v3";value.package.charts[0].schemaVersion=3;delete value.package.charts[0].rulesetVariants;delete value.package.charts[0].notePalette;value.schemaVersion=3;return value;}
+function historicalV5Record(key){const value=standaloneRecord(key,"Hard");value.package.schemaId="aerobeat.song-package.v5";value.package.schemaVersion=5;value.package.packageVersion="5.0.0";value.package.charts[0].schemaId="aerobeat.chart.flow.v4";value.package.charts[0].schemaVersion=4;delete value.package.charts[0].rulesetVariants;value.schemaVersion=7;return value;}
 /** @param {string} key */
 function legacyRecord(key) { return { key, package: { packageId: `package-${key}`, songName: "Legacy", source: { difficulty: "Hard" } }, packageHash: `sha256:${"b".repeat(64)}`, assets: [{ path: "audio.ogg", bytes: new Uint8Array([9]) }], sourceCache: [], createdAtMs: 1, schemaVersion: 2, writeToken: "legacy" }; }
 /** @param {string} code */

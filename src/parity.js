@@ -29,7 +29,7 @@ export function semanticParityProjection(packageValue) {
       if (!isPlainRecord(chart)) return null;
       const prototype = isPlainRecord(chart.prototype) ? chart.prototype : null;
       return {
-        schemaId: chart.schemaId, schemaVersion: chart.schemaVersion, recordVersion: chart.recordVersion, chartId: chart.chartId, chartName: chart.chartName, mode: chart.mode, difficulty: chart.difficulty, ...(Object.hasOwn(chart,"rulesetId")?{rulesetId:chart.rulesetId}:{}), ...(chart.mode==="flow"?{notePalette:chart.notePalette,contentHash:chart.contentHash}:{}),
+        schemaId: chart.schemaId, schemaVersion: chart.schemaVersion, recordVersion: chart.recordVersion, chartId: chart.chartId, chartName: chart.chartName, mode: chart.mode, difficulty: chart.difficulty, ...(Object.hasOwn(chart,"rulesetId")?{rulesetId:chart.rulesetId}:{}), ...(chart.mode==="flow"?{...(Object.hasOwn(chart,"rulesetVariants")?{rulesetVariants:chart.rulesetVariants}:{}),notePalette:chart.notePalette,contentHash:chart.contentHash}:{}),
         prototype: prototype ? pick(prototype, ["contractId", "recipeId", "recipeVersion", "rulesetId", "rulesetVersion", "modifiers", "converterProfile", "regenerationRequiredFor"]) : null,
         presentationSuggestion: Object.hasOwn(chart, "presentationSuggestion") ? chart.presentationSuggestion : null,
         beats: Array.isArray(chart.beats) ? chart.beats.map(projectBeat) : []

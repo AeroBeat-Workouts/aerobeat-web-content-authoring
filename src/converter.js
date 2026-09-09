@@ -5,6 +5,7 @@ import { canonicalJson, cloneData, deepFreeze, prefixedSha256 } from "./canonica
 import { normalizeConverterProfile } from "./converter-profile.js";
 import { createAuthoredNotePalette, flowPaletteReference, verifySourceNotePalette } from "./note-palette.js";
 import { verifyBeatSaberSpawnTiming } from "./spawn-timing.js";
+import { authoredPackageSchemaId, authoredPackageSchemaVersion, authoredPackageVersion, flowChartSchemaId, flowChartSchemaVersion, flowContentIdentity, flowGridRulesetId, flowRulesetVariants } from "./flow-contract.js";
 import {
   boxingPrototypeContractId,
   cutFamilyRecipeId,
@@ -89,9 +90,9 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const sets = charts.map((chart) => ({ schemaId: "aerobeat.set.v1", schemaVersion: 1, recordVersion: 1, setId: `ab-set-${String(chart.chartId).replace(/^ab-chart-/u, "")}`, setName: `${titleize(songToken)} ${difficulty} ${titleize(String(chart.mode))}`, songId, chartId: chart.chartId }));
   const durationSec = estimateDuration(charts, bpm);
   const packageRecord = {
-    schemaId: "aerobeat.song-package.v5",
-    schemaVersion: 5,
-    packageVersion: "5.0.0",
+    schemaId: authoredPackageSchemaId,
+    schemaVersion: authoredPackageSchemaVersion,
+    packageVersion: authoredPackageVersion,
     packageId,
     songId,
     songName: options.songName || titleize(songToken),
@@ -317,9 +318,9 @@ function buildFlowChartBase(summary,difficulty,songToken){const beats=[];const e
 async function convertFlowChart(summary,difficulty,songToken,notePalette){
   const base=buildFlowChartBase(summary,difficulty,songToken);
   const palette=flowPaletteReference(notePalette);
-  const chart=/** @type {DataRecord} */({...base.chart,schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,notePalette:palette});
-  chart.contentHash=await prefixedSha256(canonicalJson({beats:chart.beats,rulesetId:chart.rulesetId,notePalette:palette}));
-  const trace={...base.trace,notePalette:palette,contentHash:chart.contentHash};
+  const chart=/** @type {DataRecord} */({...base.chart,schemaId:flowChartSchemaId,schemaVersion:flowChartSchemaVersion,rulesetId:flowGridRulesetId,rulesetVariants:[...flowRulesetVariants],notePalette:palette});
+  chart.contentHash=await prefixedSha256(canonicalJson(flowContentIdentity(chart.beats,palette)));
+  const trace={...base.trace,rulesetId:flowGridRulesetId,rulesetVariants:[...flowRulesetVariants],notePalette:palette,contentHash:chart.contentHash};
   return {chart,trace};
 }
 /** @param {Readonly<Record<string, unknown>>} note */
