@@ -1,0 +1,17 @@
+{
+  "schema": "aerobeat/historical_content_consumer_oracle",
+  "version": 1,
+  "fixtureId": "content-runtime-v5-package-acceptance",
+  "fixtureHash": "sha256:eb7494cf466a1eb29238e6dc734e98d4f893e06b0b587ec76a5b4a7706890c53",
+  "acceptedPackage": {
+    "schemaId": "aerobeat.song-package.v5",
+    "schemaVersion": 5,
+    "packageVersion": "5.0.0"
+  },
+  "rejectedSuccessor": {
+    "schemaId": "aerobeat.song-package.v6",
+    "schemaVersion": 6,
+    "packageVersion": "6.0.0",
+    "errorCode": "package_schema_invalid"
+  }
+}
