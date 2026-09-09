@@ -2,6 +2,7 @@
 
 import { deepFreeze, isPlainRecord, prefixedSha256 } from "./canonical.js";
 import { verifySourceNotePalette } from "./note-palette.js";
+import { deriveBeatSaberSpawnTiming } from "./spawn-timing.js";
 
 /** @typedef {{manifest: Record<string, unknown>, listEntryPaths: () => readonly string[], readEntry: (path: string) => Uint8Array}} SourceBundle */
 
@@ -50,7 +51,7 @@ async function prepareSourceMaterialSet(acquired, options, all) {
   if (infoFormatValue !== "v2" && infoFormatValue !== "v4") throw sourceError("source_format_unsupported", "Info format must be v2 or v4");
   const infoVersionValue = dataProperty(manifest, "infoVersion");
   if (infoVersionValue !== null && (typeof infoVersionValue !== "string" || !/^\d+\.\d+\.\d+$/u.test(infoVersionValue))) throw sourceError("source_manifest_invalid", "Info version must be an exact semantic version or null");
-  /** @type {{difficulty: string, path: string, beatMapFormat: "v2"|"v3"|"v4", beatMapVersion: string|null, notePalette: unknown}[]} */
+  /** @type {{difficulty: string, path: string, beatMapFormat: "v2"|"v3"|"v4", beatMapVersion: string|null, notePalette: unknown, noteJumpMovementSpeed: number, noteJumpStartBeatOffset: number}[]} */
   let selected;
   if (all) {
     const byDifficulty = new Map();
@@ -159,14 +160,18 @@ async function prepareSourceMaterialSet(acquired, options, all) {
   const sourceId = sourceIdOption || boundedDataString(dataProperty(map, "mapId")) || boundedDataString(dataProperty(manifest, "songName")) || "local-import";
   const sourceVersionHash = sourceVersionOption || boundedDataString(dataProperty(version, "hash")) || boundedDataString(dataProperty(acquired, "sourceHash")) || "local-unverified";
   const bpmValue = dataProperty(manifest, "bpm");
+  if (typeof bpmValue !== "number" || !Number.isFinite(bpmValue) || bpmValue <= 0) throw sourceError("spawn_timing_bpm_invalid", "Source BPM must be finite and positive");
   const common = {
     schemaId: "aerobeat.authoring-source.v2", infoFormat: infoFormatValue, infoVersion: infoVersionValue, infoPath, infoHash,
     songName: boundedDataString(dataProperty(manifest, "songName")) || "Imported Song",
     songAuthorName: boundedDataString(dataProperty(manifest, "songAuthorName")), levelAuthorName: boundedDataString(dataProperty(manifest, "levelAuthorName")),
-    bpm: typeof bpmValue === "number" ? positive(bpmValue, 120) : 120, audioPath, audioContentHash, sourceProvider, sourceId, sourceVersionHash
+    bpm: bpmValue, audioPath, audioContentHash, sourceProvider, sourceId, sourceVersionHash
   };
   const audio = audioPath ? [{ path: audioPath, bytes: Uint8Array.from(audioBytes), contentHash: audioContentHash }] : [];
-  const materials = prepared.map((item) => deepFreeze({ requestManifest: deepFreeze({ ...common, selectedDifficulty: { difficulty: item.difficulty, path: item.path, beatMapFormat: item.beatMapFormat, beatMapVersion: item.beatMapVersion, contentHash: item.contentHash, notePalette: item.notePalette } }), difficultyBytes: Uint8Array.from(item.bytes), audio, sourceCache: cache }));
+  const materials = prepared.map((item) => {
+    const spawnTiming = deriveBeatSaberSpawnTiming(bpmValue, item.noteJumpMovementSpeed, item.noteJumpStartBeatOffset);
+    return deepFreeze({ requestManifest: deepFreeze({ ...common, selectedDifficulty: { difficulty: item.difficulty, path: item.path, beatMapFormat: item.beatMapFormat, beatMapVersion: item.beatMapVersion, contentHash: item.contentHash, notePalette: item.notePalette, noteJumpMovementSpeed: item.noteJumpMovementSpeed, noteJumpStartBeatOffset: item.noteJumpStartBeatOffset, spawnTiming } }), difficultyBytes: Uint8Array.from(item.bytes), audio, sourceCache: cache });
+  });
   return deepFreeze({ materials, audio, sourceCache: cache, sourceProvider, sourceId, sourceVersionHash, songName: common.songName, audioPath, audioContentHash });
 }
 
@@ -190,7 +195,10 @@ function selectedDifficultyMetadata(entry,difficulty,path,infoFormat){
   const notePalette=dataProperty(entry,"notePalette");
   if(typeof beatMapFormat!=="string"||!["v2","v3","v4"].includes(beatMapFormat)||(beatMapVersion!==null&&(typeof beatMapVersion!=="string"||!/^\d+\.\d+\.\d+$/u.test(beatMapVersion)))||(infoFormat==="v2"&&beatMapFormat==="v4")||(infoFormat==="v4"&&beatMapFormat!=="v4"))throw sourceError("source_manifest_invalid","Selected difficulty Info and beatmap formats are invalid or incompatible");
   if(notePalette===undefined)throw sourceError("source_manifest_invalid","Selected difficulty must explicitly provide notePalette null or song authority");
-  return {difficulty,path,beatMapFormat:/** @type {"v2"|"v3"|"v4"} */(beatMapFormat),beatMapVersion,notePalette};
+  const noteJumpMovementSpeed=dataProperty(entry,"noteJumpMovementSpeed"),noteJumpStartBeatOffset=dataProperty(entry,"noteJumpStartBeatOffset");
+  if(typeof noteJumpMovementSpeed!=="number"||!Number.isFinite(noteJumpMovementSpeed)||noteJumpMovementSpeed<=0)throw sourceError("spawn_timing_njs_invalid","Selected difficulty NJS must be finite and positive");
+  if(typeof noteJumpStartBeatOffset!=="number"||!Number.isFinite(noteJumpStartBeatOffset))throw sourceError("spawn_timing_offset_invalid","Selected difficulty offset must be finite");
+  return {difficulty,path,beatMapFormat:/** @type {"v2"|"v3"|"v4"} */(beatMapFormat),beatMapVersion,notePalette,noteJumpMovementSpeed,noteJumpStartBeatOffset};
 }
 /** @param {unknown} value @returns {value is SourceBundle} */
 function isSourceBundle(value) { return isPlainRecord(value) && isPlainRecord(dataProperty(value, "manifest")) && typeof dataProperty(value, "listEntryPaths") === "function" && typeof dataProperty(value, "readEntry") === "function"; }
@@ -218,8 +226,6 @@ function optionalIdentity(value,field){if(value===undefined||value===null||value
 async function verifyExpectedHash(bytes,expected,mismatchCode){const actual=await prefixedSha256(bytes);if(expected&&actual!==expected)throw sourceError(mismatchCode,`Expected ${expected} but received ${actual}`);return actual;}
 /** @param {AbortSignal | undefined} signal */
 function checkAbort(signal){if(signal?.aborted)throw sourceError("operation_aborted","Source preparation was cancelled");}
-/** @param {number} value @param {number} fallback */
-function positive(value,fallback){return Number.isFinite(value)&&value>0?value:fallback;}
 /** @param {string} message @param {unknown} cause */
 function diagnostic(message,cause){if(cause&&typeof cause==="object"){const descriptor=Object.getOwnPropertyDescriptor(cause,"message");if(descriptor&&"value" in descriptor&&typeof descriptor.value==="string"&&descriptor.value)return`${message}: ${descriptor.value.slice(0,4096)}`;}return message;}
 /** @param {string} code @param {string} message */

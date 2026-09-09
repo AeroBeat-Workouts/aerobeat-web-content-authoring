@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { parseBeatMapDifficulty, convertDifficulty, semanticParityHash, validateAuthoredPackage } from "../src/index.js";
+import { parseBeatMapDifficulty, convertDifficulty, deriveBeatSaberSpawnTiming, semanticParityHash, validateAuthoredPackage } from "../src/index.js";
 
 const raw = await readFile(new URL("../fixtures/flow-obstacle-3c9d-hard-v1.dat", import.meta.url));
 const oracle = JSON.parse(await readFile(new URL("../fixtures/obstacle-normalization-3c9d-hard-golden-v2.json", import.meta.url), "utf8"));
@@ -13,9 +13,9 @@ assert.deepEqual(rawObstacle, oracle.rawObstacle);
 const summary = parseBeatMapDifficulty(raw, "v2");
 const normalized = summary.obstacles.find((entry) => entry.start === oracle.expected.startBeat);
 assert.deepEqual(normalized, { start: oracle.expected.startBeat, duration: oracle.expected.durationBeat, sourceGeometry: oracle.expected.sourceGeometry, gameplayGeometry: oracle.expected.gameplayGeometry, sourceIndex: 2 });
-const converted = await convertDifficulty(summary, { difficulty:"Hard", songToken:"3c9d", songName:"3c9d offline fixture", bpm:150, sourceProvider:"beatsaver", sourceId:"3c9d", sourceVersionHash:oracle.source.versionHash, sourceInfoFormat:"v2",sourceInfoVersion:"2.0.0",sourceInfoHash:`sha256:${"0".repeat(64)}`,sourceDifficultyPath:"Hard.dat",sourceBeatmapFormat:"v2", sourceBeatmapVersion:"2.0.0", sourceDifficultyHash:`sha256:${oracle.source.sha256}`,notePalette:null });
+const converted = await convertDifficulty(summary, { difficulty:"Hard", songToken:"3c9d", songName:"3c9d offline fixture", bpm:150,noteJumpMovementSpeed:oracle.source.njs,noteJumpStartBeatOffset:oracle.source.offset,spawnTiming:deriveBeatSaberSpawnTiming(150,oracle.source.njs,oracle.source.offset), sourceProvider:"beatsaver", sourceId:"3c9d", sourceVersionHash:oracle.source.versionHash, sourceInfoFormat:"v2",sourceInfoVersion:"2.0.0",sourceInfoHash:`sha256:${"0".repeat(64)}`,sourceDifficultyPath:"Hard.dat",sourceBeatmapFormat:"v2", sourceBeatmapVersion:"2.0.0", sourceDifficultyHash:`sha256:${oracle.source.sha256}`,notePalette:null });
 const packageRecord = /** @type {Record<string, unknown>} */ (converted.package);
-assert.deepEqual([packageRecord.schemaId,packageRecord.schemaVersion,packageRecord.packageVersion],["aerobeat.song-package.v4",4,"4.0.0"]);
+assert.deepEqual([packageRecord.schemaId,packageRecord.schemaVersion,packageRecord.packageVersion],["aerobeat.song-package.v5",5,"5.0.0"]);
 assert.equal(/** @type {Record<string, unknown>} */ (packageRecord.source).obstacleContract,"normalized_obstacle_v2");
 const flow=/** @type {Record<string, unknown>[]} */(packageRecord.charts).find((chart)=>chart.mode==="flow");
 assert.deepEqual([flow.schemaId,flow.schemaVersion,flow.rulesetId],["aerobeat.chart.flow.v4",4,"flow_grid_v2"]);

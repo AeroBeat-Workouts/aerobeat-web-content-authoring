@@ -4,6 +4,7 @@ import { deriveObstacleGridMask, isObstacleGameplayGeometry, isObstacleSourceGeo
 import { canonicalJson, cloneData, deepFreeze, prefixedSha256 } from "./canonical.js";
 import { normalizeConverterProfile } from "./converter-profile.js";
 import { createAuthoredNotePalette, flowPaletteReference, verifySourceNotePalette } from "./note-palette.js";
+import { verifyBeatSaberSpawnTiming } from "./spawn-timing.js";
 import {
   boxingPrototypeContractId,
   cutFamilyRecipeId,
@@ -30,12 +31,13 @@ import {
  * Convert one normalized difficulty into Flow plus four Boxing charts.
  *
  * @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary
- * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceInfoFormat: "v2"|"v4", sourceInfoVersion: string|null, sourceInfoHash: string, sourceDifficultyPath: string, sourceBeatmapFormat: "v2"|"v3"|"v4", sourceBeatmapVersion: string|null, sourceDifficultyHash: string, notePalette: unknown, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>}} options
+ * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, noteJumpMovementSpeed: number, noteJumpStartBeatOffset: number, spawnTiming: unknown, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceInfoFormat: "v2"|"v4", sourceInfoVersion: string|null, sourceInfoHash: string, sourceDifficultyPath: string, sourceBeatmapFormat: "v2"|"v3"|"v4", sourceBeatmapVersion: string|null, sourceDifficultyHash: string, notePalette: unknown, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>}} options
  * @param {(progress: number, phase: string) => void} [onProgress]
  * @returns {Promise<Readonly<{package: DataRecord, packageHash: string, sourceHash: string, charts: DataRecord[], traces: DataRecord[], flowTrace: DataRecord}>>}
  */
 export async function convertDifficulty(sourceSummary, options, onProgress = () => undefined) {
-  const bpm = positive(options.bpm, 120);
+  if(!Number.isFinite(options.bpm)||options.bpm<=0)throw new Error("spawn_timing_bpm_invalid");
+  const bpm = options.bpm;
   const difficulty = normalizeDifficulty(options.difficulty);
   const songToken = sanitizeToken(options.songToken || options.sourceId || "imported");
   const modifiers = normalizeModifiers(options.modifiers ?? []);
@@ -43,6 +45,8 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const converterSettings = converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 0, reachAllowanceSubcells: 0, profileApplied: false };
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const sourceDifficultyHash = options.sourceDifficultyHash;
+  const spawnTiming = verifyBeatSaberSpawnTiming(options.spawnTiming);
+  if (spawnTiming.bpm !== bpm || spawnTiming.noteJumpMovementSpeed !== options.noteJumpMovementSpeed || spawnTiming.noteJumpStartBeatOffset !== options.noteJumpStartBeatOffset) throw new Error("spawn_timing_mismatch");
   const verifiedSourcePalette = verifySourceNotePalette(options.notePalette, { infoFormat: options.sourceInfoFormat, infoHash: options.sourceInfoHash, difficultyHash: sourceDifficultyHash });
   const notePalette = await createAuthoredNotePalette(verifiedSourcePalette);
   const charts = [];
@@ -68,6 +72,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
         sourceBeatmapFormat: options.sourceBeatmapFormat,
         sourceBeatmapVersion: options.sourceBeatmapVersion,
         sourceDifficultyHash,
+        spawnTiming: cloneData(spawnTiming),
         ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
         optimizer: cloneData(generated.optimizer),
         events: cloneData(generated.trace)
@@ -77,16 +82,16 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
     }
   }
   const flow = await convertFlowChart(sourceSummary, difficulty, songToken, notePalette);
-  Object.assign(flow.trace, { sourceHash, sourceInfoFormat: options.sourceInfoFormat, sourceInfoVersion: options.sourceInfoVersion, sourceInfoHash: options.sourceInfoHash, sourceDifficultyPath: options.sourceDifficultyPath, sourceBeatmapFormat: options.sourceBeatmapFormat, sourceBeatmapVersion: options.sourceBeatmapVersion, sourceDifficultyHash });
+  Object.assign(flow.trace, { sourceHash, sourceInfoFormat: options.sourceInfoFormat, sourceInfoVersion: options.sourceInfoVersion, sourceInfoHash: options.sourceInfoHash, sourceDifficultyPath: options.sourceDifficultyPath, sourceBeatmapFormat: options.sourceBeatmapFormat, sourceBeatmapVersion: options.sourceBeatmapVersion, sourceDifficultyHash, spawnTiming: cloneData(spawnTiming) });
   charts.push(flow.chart);
   const packageId = `ab-songpkg-${songToken}-${sanitizeToken(options.sourceVersionHash).slice(0, 12)}-${difficulty.toLowerCase()}`;
   const songId = `ab-song-${songToken}`;
   const sets = charts.map((chart) => ({ schemaId: "aerobeat.set.v1", schemaVersion: 1, recordVersion: 1, setId: `ab-set-${String(chart.chartId).replace(/^ab-chart-/u, "")}`, setName: `${titleize(songToken)} ${difficulty} ${titleize(String(chart.mode))}`, songId, chartId: chart.chartId }));
   const durationSec = estimateDuration(charts, bpm);
   const packageRecord = {
-    schemaId: "aerobeat.song-package.v4",
-    schemaVersion: 4,
-    packageVersion: "4.0.0",
+    schemaId: "aerobeat.song-package.v5",
+    schemaVersion: 5,
+    packageVersion: "5.0.0",
     packageId,
     songId,
     songName: options.songName || titleize(songToken),
@@ -103,6 +108,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
       sourceBeatmapVersion: options.sourceBeatmapVersion,
       sourceDifficultyHash,
       sourceHash,
+      spawnTiming: cloneData(spawnTiming),
       obstacleContract: "normalized_obstacle_v2",
       ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {})
     },
@@ -121,7 +127,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
     sets,
     recipeDefinitions: cloneData(recipeDefinitions),
     rulesetDefinitions: cloneData(rulesetDefinitions),
-    conversionTrace: { notePalette: flowPaletteReference(notePalette), boxing: traces, flow: [flow.trace], ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}) },
+    conversionTrace: { notePalette: flowPaletteReference(notePalette), spawnTiming: cloneData(spawnTiming), boxing: traces, flow: [flow.trace], ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}) },
     presentationSuggestion: options.presentationSuggestion ? cloneData(options.presentationSuggestion) : null
   };
   const packageHash = await prefixedSha256(canonicalJson(packageRecord));
@@ -359,8 +365,6 @@ function subcellManhattan(left,right){return Math.abs(Math.floor(left/8)-Math.fl
 function beatToMs(beat,bpm){return beat*60000/Math.max(bpm,1);}
 /** @param {number} value @param {number} minimum @param {number} maximum */
 function clamp(value,minimum,maximum){return Math.max(minimum,Math.min(maximum,Math.trunc(value)));}
-/** @param {number} value @param {number} fallback */
-function positive(value,fallback){return Number.isFinite(value)&&value>0?value:fallback;}
 /** @param {unknown} value @returns {Difficulty} */
 function normalizeDifficulty(value){const compact=String(value).toLowerCase().replace(/[^a-z]/gu,"");/** @type {Record<string, Difficulty>} */ const names={easy:"Easy",normal:"Normal",hard:"Hard",expert:"Expert",expertplus:"ExpertPlus"};const result=names[compact];if(!result)throw new Error("Unsupported difficulty");return result;}
 /** @param {readonly string[]} values */

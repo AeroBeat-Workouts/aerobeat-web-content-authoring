@@ -2,13 +2,14 @@
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { convertDifficulty, parseBeatMapDifficulty } from "../src/index.js";
+import { convertDifficulty, deriveBeatSaberSpawnTiming, parseBeatMapDifficulty } from "../src/index.js";
 
 const options = {
   difficulty: /** @type {const} */ ("Easy"),
   songToken: "flow-orientation",
   songName: "Flow Orientation",
   bpm: 120,
+  noteJumpMovementSpeed:10,noteJumpStartBeatOffset:1,spawnTiming:deriveBeatSaberSpawnTiming(120,10,1),
   sourceProvider: "synthetic",
   sourceId: "flow-orientation",
   sourceVersionHash: "0".repeat(40),

@@ -9,6 +9,7 @@ import {
   createBrowserAuthoringWorkerAdapter,
   createIndexedDbPersistenceAdapter,
   createMemoryPersistenceAdapter,
+  deriveBeatSaberSpawnTiming,
   executeWorkerConversion,
   exportAuthoredPackage,
   inspectAuthoredPackageExport,
@@ -23,7 +24,7 @@ class FakeWorker { constructor(){this.onmessage=null;this.onerror=null;this.term
 const empty = { colorNotes: [], bombNotes: [], obstacles: [], sliders: [], burstSliders: [] };
 const auditHash=`sha256:${"0".repeat(64)}`;
 /** @type {Parameters<typeof convertDifficulty>[1]} */
-const conversionOptions = { difficulty: "Hard", songToken: "audit", songName: "Audit", bpm: 120, sourceProvider: "synthetic", sourceId: "audit", sourceVersionHash: "v1",sourceInfoFormat:/** @type {const} */("v2"),sourceInfoVersion:"2.1.0",sourceInfoHash:auditHash, sourceDifficultyPath: "hard.dat",sourceBeatmapFormat:/** @type {const} */("v3"), sourceBeatmapVersion: "3.3.0",sourceDifficultyHash:auditHash,notePalette:null };
+const conversionOptions = { difficulty: "Hard", songToken: "audit", songName: "Audit", bpm: 120,noteJumpMovementSpeed:10,noteJumpStartBeatOffset:1,spawnTiming:deriveBeatSaberSpawnTiming(120,10,1), sourceProvider: "synthetic", sourceId: "audit", sourceVersionHash: "v1",sourceInfoFormat:/** @type {const} */("v2"),sourceInfoVersion:"2.1.0",sourceInfoHash:auditHash, sourceDifficultyPath: "hard.dat",sourceBeatmapFormat:/** @type {const} */("v3"), sourceBeatmapVersion: "3.3.0",sourceDifficultyHash:auditHash,notePalette:null };
 
 // Final Godot safety fixes: no zero-time reach allowance and full inclusive guard reservations.
 const unreachable = await convertDifficulty({ ...empty, colorNotes: [{ start: 0, cell: 0, hand: "left", direction: 2, sourceIndex: 0 }] }, conversionOptions);
@@ -119,7 +120,7 @@ console.log("Parity/security adversarial validation passed.");
 /** @param {Uint8Array} difficulty @param {Uint8Array} audioBytes @param {string[]} [listedOverride] */
 function sourceBundle(difficulty, audioBytes, listedOverride) { const entries = new Map([["hard.dat", difficulty], ["song.ogg", audioBytes], ["info.dat", encoder.encode("{}")]]); return Object.freeze({ manifest: Object.freeze({schemaId:"aerobeat.beatsaver-source-manifest.v2",infoFormatMajor:2,infoFormat:"v2",infoVersion:"2.1.0", infoPath: "Info.dat",hashInputPaths:Object.freeze(["Hard.dat"]), songName: "Audit",songSubName:"",songAuthorName:"",levelAuthorName:"", bpm: 120, audioPath: "song.ogg",coverPath:"",previewStartSeconds:0,previewDurationSeconds:0, difficulties: Object.freeze([{ characteristic: "Standard", difficulty: "Hard",difficultyRank:5, path: "Hard.dat",beatMapFormatMajor:3,beatMapFormat:"v3",beatMapVersion:"3.3.0",notePalette:null,noteJumpMovementSpeed:10,noteJumpStartBeatOffset:0 }]),entries:Object.freeze([]),archiveBytes:0,expandedBytes:0 }), listEntryPaths() { return listedOverride ?? ["Info.dat", "Hard.dat", "song.ogg"]; }, readEntry(path) { const value=entries.get(path.toLowerCase()); if(!value)throw new Error("missing"); return value; } }); }
 /** @param {Uint8Array} difficultyBytes */
-async function workerRequest(difficultyBytes){const hash=await prefixedSha256(difficultyBytes),infoHash=await prefixedSha256(encoder.encode("{}"));return{schema:"aerobeat/authoring_worker_request",version:2,kind:"convert",jobId:"audit-job",manifest:{schemaId:"aerobeat.authoring-source.v2",infoFormat:"v2",infoVersion:"2.1.0",infoPath:"info.dat",infoHash,songName:"Audit",songAuthorName:"",levelAuthorName:"",bpm:120,audioPath:"",audioContentHash:"",selectedDifficulty:{difficulty:"Hard",path:"hard.dat",beatMapFormat:"v3",beatMapVersion:"3.3.0",contentHash:hash,notePalette:null},sourceProvider:"synthetic",sourceId:"audit",sourceVersionHash:"v1"},difficultyBytes,options:{...conversionOptions,sourceInfoHash:infoHash,sourceDifficultyHash:hash,notePalette:null,audioPath:"",audioContentHash:"",modifiers:[]}};}
+async function workerRequest(difficultyBytes){const hash=await prefixedSha256(difficultyBytes),infoHash=await prefixedSha256(encoder.encode("{}"));return{schema:"aerobeat/authoring_worker_request",version:2,kind:"convert",jobId:"audit-job",manifest:{schemaId:"aerobeat.authoring-source.v2",infoFormat:"v2",infoVersion:"2.1.0",infoPath:"info.dat",infoHash,songName:"Audit",songAuthorName:"",levelAuthorName:"",bpm:120,audioPath:"",audioContentHash:"",selectedDifficulty:{difficulty:"Hard",path:"hard.dat",beatMapFormat:"v3",beatMapVersion:"3.3.0",contentHash:hash,notePalette:null,noteJumpMovementSpeed:10,noteJumpStartBeatOffset:0,spawnTiming:deriveBeatSaberSpawnTiming(120,10,0)},sourceProvider:"synthetic",sourceId:"audit",sourceVersionHash:"v1"},difficultyBytes,options:{...conversionOptions,noteJumpMovementSpeed:10,noteJumpStartBeatOffset:0,spawnTiming:deriveBeatSaberSpawnTiming(120,10,0),sourceInfoHash:infoHash,sourceDifficultyHash:hash,notePalette:null,audioPath:"",audioContentHash:"",modifiers:[]}};}
 /** @param {Record<string, unknown>} event @param {string} sourceId */
 function eventHasSource(event,sourceId){return Array.isArray(event.sourceEventIds)&&event.sourceEventIds.includes(sourceId);}
 /** @param {Record<string, unknown>} trace */

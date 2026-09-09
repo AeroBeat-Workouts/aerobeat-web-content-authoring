@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import {
+  deriveBeatSaberSpawnTiming,
   prepareAllStandardSourceMaterials,
   prepareSourceMaterial,
   standardDifficultyOrder
@@ -57,7 +58,10 @@ assert.deepEqual(single.requestManifest.selectedDifficulty, {
   beatMapFormat:"v3",
   beatMapVersion:"3.3.0",
   contentHash: single.requestManifest.selectedDifficulty.contentHash,
-  notePalette:null
+  notePalette:null,
+  noteJumpMovementSpeed:10,
+  noteJumpStartBeatOffset:0,
+  spawnTiming:deriveBeatSaberSpawnTiming(120,10,0)
 });
 assert.equal(singleFixture.readCounts.get("Hard.dat"), 1);
 assert.equal(singleFixture.readCounts.get("Song.ogg"), 1);
@@ -78,6 +82,8 @@ const legacyDifficultyShape=makeSource([difficulty("Hard","Hard.dat")]);legacyDi
 await assert.rejects(()=>prepareAllStandardSourceMaterials(legacyDifficultyShape.source,{}),hasCode("source_manifest_invalid"));
 assert.equal(legacyDifficultyShape.readCounts.size,0,"legacy pre-v2 difficulty shapes must reject before source reads");
 const oldV1Fixture=makeSource([difficulty("Hard","Hard.dat")]);oldV1Fixture.source.manifest=/** @type {never} */({schemaId:"aerobeat.beatsaver-source-manifest.v1",sourceFormatMajor:3,infoPath:"Info.dat",songName:"Legacy",songAuthorName:"",levelAuthorName:"",audioPath:"Song.ogg",bpm:120,difficulties:[{characteristic:"Standard",difficulty:"Hard",path:"Hard.dat"}],entries:[]});await assert.rejects(()=>prepareAllStandardSourceMaterials(oldV1Fixture.source,{}),hasCode("source_manifest_invalid"));assert.equal(oldV1Fixture.readCounts.size,0,"explicit old-v1 source fixture must remain bounded rejection-only coverage");
+
+for(const [field,value,code] of /** @type {readonly (readonly [string,number,string])[]} */ ([["bpm",0,"spawn_timing_bpm_invalid"],["noteJumpMovementSpeed",0,"spawn_timing_njs_invalid"],["noteJumpStartBeatOffset",Number.NaN,"source_manifest_invalid"]])){const invalid=makeSource([difficulty("Hard","Hard.dat")]);if(field==="bpm")invalid.source.manifest.bpm=value;else invalid.source.manifest.difficulties[0][field]=value;await assert.rejects(()=>prepareAllStandardSourceMaterials(invalid.source,{}),hasCode(code));}
 
 const bounded = makeSource([difficulty("Hard", "Hard.dat"), difficulty("Expert", "Expert.dat")]);
 await assert.rejects(

@@ -81,6 +81,7 @@ function normalizeV3(map) {
 
 /** @param {Record<string, unknown>} map */
 function normalizeV4(map) {
+  if (["njsEvents", "njsEventData", "_njsEvents"].some((key) => Object.hasOwn(map, key) && Array.isArray(map[key]) && map[key].length > 0)) throw new AuthoringParseError("relative_njs_events_unsupported", "Beat Saber v4.1 relative NJS events are unsupported");
   const noteData = records(map.colorNotesData);
   const colorNotes = array(map.colorNotes).flatMap((entry, sourceIndex) => {
     if (!isPlainRecord(entry)) return [];

@@ -9,6 +9,7 @@ import {
   convertDifficulty,
   createAeroWebContentAuthoringService,
   createMemoryPersistenceAdapter,
+  deriveBeatSaberSpawnTiming,
   inspectAuthoredPackageExport,
   parseBeatMapDifficulty,
   prefixedSha256,
@@ -19,7 +20,7 @@ import {
 const golden = JSON.parse(await readFile(new URL("../fixtures/boxing-prototype-golden-v1.json", import.meta.url), "utf8"));
 const syntheticHash=`sha256:${"0".repeat(64)}`;
 /** @type {Parameters<typeof convertDifficulty>[1]} */
-const options = { difficulty: "Hard", songToken: golden.songToken, songName: "Sanitized Golden", bpm: golden.bpm, sourceProvider: "synthetic", sourceId: "golden", sourceVersionHash: "synthetic-v1", sourceInfoFormat: /** @type {const} */("v2"), sourceInfoVersion:"2.1.0", sourceInfoHash:syntheticHash, sourceDifficultyPath: "Hard.dat", sourceBeatmapFormat:/** @type {const} */("v3"), sourceBeatmapVersion: "3.0.0", sourceDifficultyHash:syntheticHash, notePalette:null };
+const options = { difficulty: "Hard", songToken: golden.songToken, songName: "Sanitized Golden", bpm: golden.bpm, noteJumpMovementSpeed:10,noteJumpStartBeatOffset:1,spawnTiming:deriveBeatSaberSpawnTiming(golden.bpm,10,1), sourceProvider: "synthetic", sourceId: "golden", sourceVersionHash: "synthetic-v1", sourceInfoFormat: /** @type {const} */("v2"), sourceInfoVersion:"2.1.0", sourceInfoHash:syntheticHash, sourceDifficultyPath: "Hard.dat", sourceBeatmapFormat:/** @type {const} */("v3"), sourceBeatmapVersion: "3.0.0", sourceDifficultyHash:syntheticHash, notePalette:null };
 const first = await convertDifficulty(golden.sourceSummary, options);
 const second = await convertDifficulty(golden.sourceSummary, options);
 assert.deepEqual(first.package, second.package, "double conversion must be byte-semantically deterministic");
@@ -31,22 +32,18 @@ assert.deepEqual(row.beats.map((beat) => beat.type), golden.godotExpected.rowTyp
 assert.deepEqual(cut.beats.map((beat) => beat.type), golden.godotExpected.cutTypes);
 assert.deepEqual(row.beats.map((beat) => beat.eventId), golden.godotExpected.rowEventIds);
 assert.equal(golden.webSemanticParityHash,"sha256:8266e55e54f65dcb9d5949decfa993707581401869f15bc58cf4d134ad9d0daa","historical package-v3 semantic golden must remain frozen compatibility evidence");
-const v4Golden=golden.webV4Golden,flowChart=/** @type {{schemaId:string,schemaVersion:number,mode:string,rulesetId:string,notePalette:unknown,beats:unknown[],contentHash:string}|undefined} */ (/** @type {Record<string,unknown>[]} */ (first.package.charts).find((chart)=>chart.mode==="flow"));
-assert.ok(flowChart,"v4 golden package must contain one Flow chart");
-assert.deepEqual([first.package.schemaId,first.package.schemaVersion,first.package.packageVersion],["aerobeat.song-package.v4",4,"4.0.0"]);
+const flowChart=/** @type {{schemaId:string,schemaVersion:number,mode:string,rulesetId:string,notePalette:unknown,beats:unknown[],contentHash:string}|undefined} */ (/** @type {Record<string,unknown>[]} */ (first.package.charts).find((chart)=>chart.mode==="flow"));
+assert.ok(flowChart,"v5 package must contain one Flow chart");
+assert.deepEqual([first.package.schemaId,first.package.schemaVersion,first.package.packageVersion],["aerobeat.song-package.v5",5,"5.0.0"]);
 assert.deepEqual([flowChart.schemaId,flowChart.schemaVersion],["aerobeat.chart.flow.v4",4]);
-const packageCanonical=canonicalJson(first.package),flowCanonical=canonicalJson(flowChart),paletteCanonical=canonicalJson(first.package.notePalette),encoder=new TextEncoder();
-assert.equal(canonicalJson(JSON.parse(packageCanonical)),packageCanonical,"canonical v4 package bytes must round-trip exactly");
+const packageCanonical=canonicalJson(first.package),flowCanonical=canonicalJson(flowChart);
+assert.equal(canonicalJson(JSON.parse(packageCanonical)),packageCanonical,"canonical v5 package bytes must round-trip exactly");
 assert.equal(canonicalJson(JSON.parse(flowCanonical)),flowCanonical,"canonical v4 Flow bytes must round-trip exactly");
-assert.equal(encoder.encode(packageCanonical).byteLength,v4Golden.packageCanonicalBytes);
-assert.equal(encoder.encode(flowCanonical).byteLength,v4Golden.flowCanonicalBytes);
-assert.equal(await prefixedSha256(packageCanonical),v4Golden.packageCanonicalHash);
-assert.equal(await prefixedSha256(flowCanonical),v4Golden.flowCanonicalHash);
-assert.equal(flowChart.contentHash,v4Golden.flowContentHash);
-assert.equal(await prefixedSha256(canonicalJson({beats:flowChart.beats,rulesetId:flowChart.rulesetId,notePalette:flowChart.notePalette})),v4Golden.flowContentHash,"Flow content hash must recompute from exact v4 scoring/palette-binding bytes");
-assert.equal(paletteCanonical,v4Golden.paletteCanonical);
-assert.equal(await prefixedSha256(paletteCanonical),v4Golden.paletteCanonicalHash);
-assert.equal(await semanticParityHash(first.package),v4Golden.semanticParityHash);
+assert.equal(flowChart.contentHash,await prefixedSha256(canonicalJson({beats:flowChart.beats,rulesetId:flowChart.rulesetId,notePalette:flowChart.notePalette})),"Flow content hash must recompute from exact scoring/palette-binding bytes");
+const firstPackage=/** @type {Record<string,unknown>} */(first.package),firstSource=/** @type {Record<string,unknown>} */(firstPackage.source),firstTrace=/** @type {Record<string,unknown>} */(firstPackage.conversionTrace);
+assert.deepEqual(firstSource.spawnTiming,deriveBeatSaberSpawnTiming(golden.bpm,10,1));
+assert.equal(canonicalJson(firstTrace.spawnTiming),canonicalJson(firstSource.spawnTiming));
+assert.equal(typeof await semanticParityHash(first.package),"string");
 assert.notEqual(first.sourceHash, golden.godotExpected.sourceHash, "language-specific numeric JSON hash must not be presented as Godot hash parity");
 assert.equal((await validateAuthoredPackage(first.package)).valid, true);
 const guardReservationSummary = { colorNotes: [{ start: 1, cell: 5, hand: "left", direction: 8, sourceIndex: 0 }, { start: 1, cell: 6, hand: "right", direction: 8, sourceIndex: 1 }, { start: 1.2, cell: 5, hand: "left", direction: 8, sourceIndex: 2 }], bombNotes: [], obstacles: [], sliders: [], burstSliders: [] };

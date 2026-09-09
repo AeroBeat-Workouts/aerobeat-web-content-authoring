@@ -24,6 +24,7 @@ export {
 } from "./persistence.js";
 export { createAeroWebContentAuthoringService } from "./service.js";
 export { prepareAllStandardSourceMaterials, prepareSourceMaterial, standardDifficultyOrder } from "./source-material.js";
+export { beatSaberSpawnTimingConstants, deriveBeatSaberSpawnTiming, verifyBeatSaberSpawnTiming } from "./spawn-timing.js";
 export { validateAuthoredPackage } from "./validator.js";
 export {
   authoringWorkerProtocolVersion,

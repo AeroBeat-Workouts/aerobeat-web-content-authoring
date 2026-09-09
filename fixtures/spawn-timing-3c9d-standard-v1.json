@@ -1,0 +1,18 @@
+{
+  "schema": "aerobeat/spawn_timing_fixture",
+  "version": 1,
+  "source": {
+    "provider": "beatsaver",
+    "mapId": "3C9D",
+    "versionHash": "5662f64a12c76a3dd11a5f6ee22611608cd06760",
+    "characteristic": "Standard",
+    "bpm": 150
+  },
+  "difficulties": [
+    { "difficulty": "Easy", "njs": 6, "offset": 1, "halfJumpDurationBeats": 5, "reactionTimeMs": 2000, "jumpDistanceMeters": 24 },
+    { "difficulty": "Normal", "njs": 8, "offset": 1, "halfJumpDurationBeats": 5, "reactionTimeMs": 2000, "jumpDistanceMeters": 32 },
+    { "difficulty": "Hard", "njs": 10, "offset": 1, "halfJumpDurationBeats": 5, "reactionTimeMs": 2000, "jumpDistanceMeters": 40 },
+    { "difficulty": "Expert", "njs": 11, "offset": 1, "halfJumpDurationBeats": 5, "reactionTimeMs": 2000, "jumpDistanceMeters": 44 },
+    { "difficulty": "ExpertPlus", "njs": 17, "offset": 1, "halfJumpDurationBeats": 3, "reactionTimeMs": 1200, "jumpDistanceMeters": 40.8 }
+  ]
+}
