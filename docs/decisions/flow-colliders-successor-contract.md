@@ -1,17 +1,19 @@
 # Flow Colliders successor-package contract
 
+**Amendment (2026-09-10):** Round-4 flow successor (`aerobeat-web-assembly-8tz4`) deleted the Flow Grid ruleset: new imports bind the sole `flow_colliders_v1` variant under the same exact ID, and pre-rename two-variant v6 packages become reimport-required for playback.
+
 ## Decision
 
 New imports produce only `aerobeat.song-package.v6` / `6.0.0`. Its sole Flow chart is `aerobeat.chart.flow.v5` and authors one `beats` array with this exact identity:
 
 ```json
 {
-  "rulesetId": "flow_grid_v2",
-  "rulesetVariants": ["flow_grid_v2", "flow_colliders_v1"]
+  "rulesetId": "flow_colliders_v1",
+  "rulesetVariants": ["flow_colliders_v1"]
 }
 ```
 
-`rulesetId` preserves Flow Grid as the stable default and historical fallback. `rulesetVariants` is a closed, ordered pair. It does not contain derived gameplay settings or collision geometry. A consumer selects scoring semantics by an explicitly present identity; it must not infer Colliders support from package age, chart mode, beats, bombs, walls, presentation, or runtime capability.
+`rulesetId` is the sole Flow ruleset (the canonical ID of the visible `Flow` mode). `rulesetVariants` is a closed single-element list. It does not contain derived gameplay settings or collision geometry. A consumer selects scoring semantics by an explicitly present identity; it must not infer ruleset support from package age, chart mode, beats, bombs, walls, presentation, or runtime capability. Historical bytes carrying the retired `flow_grid_v2` bind remain readable for historical reads only and require reimport before playback.
 
 ## Identity
 
@@ -26,12 +28,13 @@ The same pair and Flow content hash are copied into the Flow conversion trace. P
 ## Migration and fail-closed behavior
 
 - Package v1–v4 handling is unchanged and retains its existing earlier reimport errors.
-- Valid v5 packages remain historical Flow Grid packages for consumers that explicitly support that generation.
-- DB8 preserves v5 package bytes and package hashes. Management list/export/delete remains available.
+- Valid v5 packages remain historical predecessors for consumers that explicitly support that generation.
+- DB8 preserves v5 and legacy two-variant v6 package bytes and package hashes. Management list/export/delete remains available for both.
 - DB8 load and asset/play reads reject an otherwise loadable v5 row with `flow_colliders_reimport_required`.
-- Reimport from source creates v6 bytes. No migration appends `rulesetVariants`, rewrites a chart/hash, or promotes stored v5 bytes.
-- V6 validation requires the exact ordered pair in both chart and trace. Missing, partial, reordered, duplicated, unknown, or accessor-backed identities fail closed even if an attacker recomputes content/package/parity hashes.
-- Historical consumers reject v6 as an unsupported package schema. New consumers must reject v5 for Flow Colliders and may route it only through an explicit historical Flow Grid path.
+- Legacy two-variant (pre-rename) v6 rows are rejected on load with exact `flow_grid_reimport_required`; reimport regenerates them with the single colliders variant.
+- Reimport from source creates current v6 bytes. No migration appends or removes `rulesetVariants`, rewrites a chart/hash, or promotes stored v5 or legacy v6 bytes.
+- V6 validation requires the exact single variant in both chart and trace and accepts the historical two-variant bind for readability only. Missing, partial, reordered, duplicated, unknown, or accessor-backed identities fail closed even if an attacker recomputes content/package/parity hashes.
+- Historical consumers reject v6 as an unsupported package schema. New consumers must reject v5 and may route it only through an explicit historical path.
 
 ## Privacy
 

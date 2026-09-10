@@ -17,24 +17,134 @@
     "packageVersion": "6.0.0",
     "flowChartSchemaId": "aerobeat.chart.flow.v5",
     "flowChartSchemaVersion": 5,
-    "rulesetId": "flow_grid_v2",
-    "rulesetVariants": ["flow_grid_v2", "flow_colliders_v1"],
-    "flowContentHash": "sha256:329bf3af3435f309670a307748f70585cf4be15372d4a7b54a658fa28cfd6145",
-    "packageHash": "sha256:60e850b3a822b22f34ff1050e0f8531b5d34ce8e3bb3a01bd3208ae27a074b92",
-    "semanticParityHash": "sha256:978c9d7d1415e5597e1e2560b88090a05236088d117f422dae0222f21182cc99"
+    "rulesetId": "flow_colliders_v1",
+    "rulesetVariants": [
+      "flow_colliders_v1"
+    ],
+    "flowContentHash": "sha256:9c48a53b0fac85d3798756a38797fccf1f88360ac38e312a5b4d103d98d1d39d",
+    "packageHash": "sha256:b4e0d16058ceaa60fe118e2cbdbcf0d518eb37384bec4d1a5a3be658d351ebb1",
+    "semanticParityHash": "sha256:63fbd288ce7694528a83be4275a69fc176eda11b3d62c072694b865e0611b525"
   },
   "notes": [
-    { "sourceIndex": 0, "beat": 21, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 1, "canonicalCell": 11 },
-    { "sourceIndex": 1, "beat": 25, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 1, "canonicalCell": 8 },
-    { "sourceIndex": 2, "beat": 27, "x": 2, "y": 0, "cell": 2, "hand": "right", "direction": 1, "canonicalCell": 10 },
-    { "sourceIndex": 3, "beat": 28.5, "x": 1, "y": 0, "cell": 1, "hand": "left", "direction": 1, "canonicalCell": 9 },
-    { "sourceIndex": 4, "beat": 33, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 3, "canonicalCell": 11 },
-    { "sourceIndex": 5, "beat": 37, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 2, "canonicalCell": 8 },
-    { "sourceIndex": 6, "beat": 39, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 1, "canonicalCell": 11 },
-    { "sourceIndex": 7, "beat": 41, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 1, "canonicalCell": 8 },
-    { "sourceIndex": 8, "beat": 45, "x": 2, "y": 0, "cell": 2, "hand": "right", "direction": 1, "canonicalCell": 10 },
-    { "sourceIndex": 9, "beat": 49, "x": 1, "y": 0, "cell": 1, "hand": "left", "direction": 1, "canonicalCell": 9 },
-    { "sourceIndex": 10, "beat": 53, "x": 3, "y": 0, "cell": 3, "hand": "right", "direction": 3, "canonicalCell": 11 },
-    { "sourceIndex": 11, "beat": 55, "x": 0, "y": 0, "cell": 0, "hand": "left", "direction": 2, "canonicalCell": 8 }
+    {
+      "sourceIndex": 0,
+      "beat": 21,
+      "x": 3,
+      "y": 0,
+      "cell": 3,
+      "hand": "right",
+      "direction": 1,
+      "canonicalCell": 11
+    },
+    {
+      "sourceIndex": 1,
+      "beat": 25,
+      "x": 0,
+      "y": 0,
+      "cell": 0,
+      "hand": "left",
+      "direction": 1,
+      "canonicalCell": 8
+    },
+    {
+      "sourceIndex": 2,
+      "beat": 27,
+      "x": 2,
+      "y": 0,
+      "cell": 2,
+      "hand": "right",
+      "direction": 1,
+      "canonicalCell": 10
+    },
+    {
+      "sourceIndex": 3,
+      "beat": 28.5,
+      "x": 1,
+      "y": 0,
+      "cell": 1,
+      "hand": "left",
+      "direction": 1,
+      "canonicalCell": 9
+    },
+    {
+      "sourceIndex": 4,
+      "beat": 33,
+      "x": 3,
+      "y": 0,
+      "cell": 3,
+      "hand": "right",
+      "direction": 3,
+      "canonicalCell": 11
+    },
+    {
+      "sourceIndex": 5,
+      "beat": 37,
+      "x": 0,
+      "y": 0,
+      "cell": 0,
+      "hand": "left",
+      "direction": 2,
+      "canonicalCell": 8
+    },
+    {
+      "sourceIndex": 6,
+      "beat": 39,
+      "x": 3,
+      "y": 0,
+      "cell": 3,
+      "hand": "right",
+      "direction": 1,
+      "canonicalCell": 11
+    },
+    {
+      "sourceIndex": 7,
+      "beat": 41,
+      "x": 0,
+      "y": 0,
+      "cell": 0,
+      "hand": "left",
+      "direction": 1,
+      "canonicalCell": 8
+    },
+    {
+      "sourceIndex": 8,
+      "beat": 45,
+      "x": 2,
+      "y": 0,
+      "cell": 2,
+      "hand": "right",
+      "direction": 1,
+      "canonicalCell": 10
+    },
+    {
+      "sourceIndex": 9,
+      "beat": 49,
+      "x": 1,
+      "y": 0,
+      "cell": 1,
+      "hand": "left",
+      "direction": 1,
+      "canonicalCell": 9
+    },
+    {
+      "sourceIndex": 10,
+      "beat": 53,
+      "x": 3,
+      "y": 0,
+      "cell": 3,
+      "hand": "right",
+      "direction": 3,
+      "canonicalCell": 11
+    },
+    {
+      "sourceIndex": 11,
+      "beat": 55,
+      "x": 0,
+      "y": 0,
+      "cell": 0,
+      "hand": "left",
+      "direction": 2,
+      "canonicalCell": 8
+    }
   ]
 }

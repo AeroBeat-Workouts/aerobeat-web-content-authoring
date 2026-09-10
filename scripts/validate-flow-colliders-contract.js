@@ -28,33 +28,44 @@ const converted=await convertDifficulty(sourceSummary,options);
 const packageValue=/** @type {Record<string,unknown>} */(converted.package);
 const flow=/** @type {Record<string,unknown>} */(/** @type {Record<string,unknown>[]} */(packageValue.charts).find((chart)=>chart.mode==="flow"));
 const trace=/** @type {Record<string,unknown>} */(/** @type {Record<string,unknown>[]} */(/** @type {Record<string,unknown>} */(packageValue.conversionTrace).flow)[0]);
-assert.deepEqual(flowRulesetVariants,[flowGridRulesetId,flowCollidersRulesetId]);
+assert.deepEqual(flowRulesetVariants,[flowCollidersRulesetId]);
 assert.deepEqual(flow.rulesetVariants,flowRulesetVariants);
 assert.deepEqual(trace.rulesetVariants,flowRulesetVariants);
-assert.equal(trace.rulesetId,flowGridRulesetId);
+assert.equal(trace.rulesetId,flowCollidersRulesetId);
 assert.equal(trace.contentHash,flow.contentHash);
 assert.deepEqual(/** @type {Record<string,unknown>[]} */(flow.beats).map((beat)=>beat.type),["note","bomb","obstacle"],"successor must retain exact authored note/bomb/wall records once");
 assert.equal(Object.hasOwn(flow,"variants"),false,"successor must not duplicate mutable beat truth per variant");
 assert.equal((await validateAuthoredPackage(packageValue)).valid,true);
 
 const originalHash=converted.packageHash,originalParity=await semanticParityHash(packageValue);
-for(const variants of [undefined,[flowGridRulesetId],[flowCollidersRulesetId],[flowCollidersRulesetId,flowGridRulesetId],[flowGridRulesetId,flowCollidersRulesetId,flowCollidersRulesetId]]){
+for(const variants of [undefined,[flowGridRulesetId],[flowCollidersRulesetId,flowGridRulesetId],[flowGridRulesetId,flowCollidersRulesetId,flowCollidersRulesetId]]){
   const tampered=structuredClone(packageValue),tamperedCharts=/** @type {Record<string,unknown>[]} */(tampered.charts),tamperedFlow=/** @type {Record<string,unknown>} */(tamperedCharts.find((chart)=>chart.mode==="flow")),tamperedTrace=/** @type {Record<string,unknown>} */(/** @type {Record<string,unknown>[]} */(/** @type {Record<string,unknown>} */(tampered.conversionTrace).flow)[0]);
   if(variants===undefined){delete tamperedFlow.rulesetVariants;delete tamperedTrace.rulesetVariants;}else{tamperedFlow.rulesetVariants=variants;tamperedTrace.rulesetVariants=variants;}
   tamperedFlow.contentHash=await prefixedSha256(canonicalJson({beats:tamperedFlow.beats,rulesetId:tamperedFlow.rulesetId,...(variants===undefined?{}:{rulesetVariants:variants}),notePalette:tamperedFlow.notePalette}));tamperedTrace.contentHash=tamperedFlow.contentHash;
   const validation=await validateAuthoredPackage(tampered);
   assert.equal(validation.valid,false,"missing, partial, reordered or duplicated successor rulesets must fail closed even after attacker rehash");
-  assert.ok(validation.issues.some((issue)=>issue.code==="flow_chart_schema_invalid"||issue.code==="flow_trace_invalid"));
+  assert.ok(validation.issues.some((issue)=>issue.code==="flow_chart_schema_invalid"||issue.code==="flow_trace_invalid"||issue.code==="flow_content_hash_mismatch"));
 }
 
 const v5=structuredClone(packageValue),v5Charts=/** @type {Record<string,unknown>[]} */(v5.charts),v5Flow=/** @type {Record<string,unknown>} */(v5Charts.find((chart)=>chart.mode==="flow")),v5Trace=/** @type {Record<string,unknown>} */(/** @type {Record<string,unknown>[]} */(/** @type {Record<string,unknown>} */(v5.conversionTrace).flow)[0]);
-v5.schemaId="aerobeat.song-package.v5";v5.schemaVersion=5;v5.packageVersion="5.0.0";v5Flow.schemaId="aerobeat.chart.flow.v4";v5Flow.schemaVersion=4;delete v5Flow.rulesetVariants;delete v5Trace.rulesetVariants;
+v5.schemaId="aerobeat.song-package.v5";v5.schemaVersion=5;v5.packageVersion="5.0.0";v5Flow.schemaId="aerobeat.chart.flow.v4";v5Flow.schemaVersion=4;delete v5Flow.rulesetVariants;v5Flow.rulesetId="flow_grid_v2";delete v5Trace.rulesetVariants;v5Trace.rulesetId="flow_grid_v2";
 v5Flow.contentHash=await prefixedSha256(canonicalJson({beats:v5Flow.beats,rulesetId:v5Flow.rulesetId,notePalette:v5Flow.notePalette}));v5Trace.contentHash=v5Flow.contentHash;
 const v5Validation=await validateAuthoredPackage(v5);assert.ok(v5Validation.issues.some((issue)=>issue.code==="flow_colliders_reimport_required"),"a v5 package must require source reimport rather than promotion");
 const persistence=createMemoryPersistenceAdapter();await persistence.put({key:"v5",package:v5,packageHash:await prefixedSha256(canonicalJson(v5)),assets:[],sourceCache:[],createdAtMs:1,schemaVersion:7,writeToken:"v5"});assert.equal((await persistence.getForExport("v5"))?.package.schemaVersion,5);await assert.rejects(()=>persistence.get("v5"),(error)=>Boolean(error&&typeof error==="object"&&"code" in error&&error.code==="flow_colliders_reimport_required"));persistence.destroy();
 
 assert.notEqual(originalHash,await prefixedSha256(canonicalJson(v5)),"successor package identity must differ from its v5 predecessor projection");
 assert.notEqual(originalParity,await semanticParityHash(v5),"semantic parity identity must bind the successor rulesets");
+
+const legacyV6=structuredClone(packageValue),legacyV6Charts=/** @type {Record<string,unknown>[]} */(legacyV6.charts),legacyV6Flow=/** @type {Record<string,unknown>} */(legacyV6Charts.find((chart)=>chart.mode==="flow")),legacyV6Trace=/** @type {Record<string,unknown>} */(/** @type {Readonly<{flow:readonly Record<string,unknown>[]}>} */(legacyV6.conversionTrace).flow[0]);
+legacyV6Flow.rulesetId=flowGridRulesetId;legacyV6Flow.rulesetVariants=[flowGridRulesetId,flowCollidersRulesetId];legacyV6Trace.rulesetId=flowGridRulesetId;legacyV6Trace.rulesetVariants=[flowGridRulesetId,flowCollidersRulesetId];
+assert.equal((await validateAuthoredPackage(legacyV6)).valid,true,"pre-rename historical two-variant v6 bytes remain readable");
+const legacyPersistence=createMemoryPersistenceAdapter();await legacyPersistence.put({key:"legacy-v6",package:legacyV6,packageHash:await prefixedSha256(canonicalJson(legacyV6)),assets:[],sourceCache:[],createdAtMs:1,schemaVersion:8,writeToken:"legacy-v6"});
+assert.equal((await legacyPersistence.getForExport("legacy-v6"))?.package.schemaVersion,6,"legacy v6 stays manageable");
+await assert.rejects(()=>legacyPersistence.get("legacy-v6"),(error)=>Boolean(error&&typeof error==="object"&&"code" in error&&error.code==="flow_grid_reimport_required"),"legacy two-variant v6 requires reimport for playback");
+assert.equal(await legacyPersistence.delete("legacy-v6"),true);legacyPersistence.destroy();
+const renamedV6=structuredClone(packageValue),renamedV6Charts=/** @type {Record<string,unknown>[]} */(renamedV6.charts),renamedV6Flow=/** @type {Record<string,unknown>} */(renamedV6Charts.find((chart)=>chart.mode==="flow"));
+renamedV6Flow.rulesetId=flowGridRulesetId;
+assert.equal((await validateAuthoredPackage(renamedV6)).valid,false,"a grid-ruleset chart paired with the current single variant fails closed");
 const exported=await exportAuthoredPackage({package:packageValue,packageHash:originalHash,assets:[]}),inspected=await inspectAuthoredPackageExport(exported.bytes);assert.equal(inspected.packageHash,originalHash);assert.equal(inspected.packageId,packageValue.packageId);
 const forbiddenKeys=new Set(["colliderRadius","colliderCenter","trajectory","segmentEndpoint","distance","velocityVector","confidence","calibrationId","frameId","contactEpisode"]);deepScanKeys(packageValue,(key)=>assert.equal(forbiddenKeys.has(key),false,`private collision evidence ${key} must not enter package/export truth`));
 console.log(`Flow Colliders successor contract passed: package ${originalHash}, Flow ${flow.contentHash}, semantic ${originalParity}.`);

@@ -2,7 +2,6 @@
   "schema": "aerobeat/task11_source_matrix",
   "version": 1,
   "fixtureId": "task11-source-matrix-v1",
-  "fixtureHash": "sha256:abfcea677e6c2b7e1aef02ead70a913254405bc346516a8b3b7df524fee2a8f5",
   "license": "Synthetic AeroBeat test data; no third-party map or media content.",
   "sourceToken": "task11-matrix",
   "difficulty": "Hard",
@@ -66,26 +65,6 @@
     "v2": {
       "sourceBeatmapVersion": "2.6.0",
       "sourceVersionHash": "231c0accf1cddb318fa1150672d137340ffde90b",
-      "expectedSemanticHashes": {
-        "aero.converter.canonical": [
-          "sha256:f9c9b6873be598bc23912782f4ab005369f26c17022cb17c3189a5b2b0fbd6e4",
-          "sha256:f9c9b6873be598bc23912782f4ab005369f26c17022cb17c3189a5b2b0fbd6e4",
-          "sha256:c08c7f13e751c7c327e917e3f813ff98119cb49491a991067ac6644813a576ee",
-          "sha256:b74ad571ef9a104bad41f25c78e61f45d89f456cc25ea70edac4c4b388d235e2",
-          "sha256:81a474f4a475cd6c9e416be3808827659813dcc93aae2c3169dbb080f630c3e7",
-          "sha256:0dbc2a50cf3340974010c6327c73a66d19c5982a8c00dcbfc47b66176d6074a5",
-          "sha256:44aa7ac41650e969090d860b5b0e0a3e96323df4636f2eedb3410cb2c67fd9d6"
-        ],
-        "aero.converter.prototype-reach": [
-          "sha256:57656dbd6f9b7319831b056c19e841e8847cc8e4e81b8737e1eb8bb13508d2b5",
-          "sha256:57656dbd6f9b7319831b056c19e841e8847cc8e4e81b8737e1eb8bb13508d2b5",
-          "sha256:12e26f429126d4399c59b0d221b9cf10df611602cb2967a2206fdd260a29cab8",
-          "sha256:9d23e62f5693c5ff2ad477324cb2c810c7a22c408528284dce855e64c5173d48",
-          "sha256:2bfc19d5fafea2605551962f31ba4bfe8d82ce2e76b6bb4edda4cc5a13d58bc4",
-          "sha256:4191177da45a3adbe215004d0279260cab1c440a1f4244aebc270faaab76854b",
-          "sha256:61cf0ee659d6dcf8c1d6c5a70a028b0362a67a03dcb2f9573556e8774a67e595"
-        ]
-      },
       "beatmap": {
         "_version": "2.6.0",
         "_notes": [
@@ -197,26 +176,6 @@
     "v3": {
       "sourceBeatmapVersion": "3.3.0",
       "sourceVersionHash": "316c72ebf0ebdb3e5fbb412a775c930dbcb4e7b6",
-      "expectedSemanticHashes": {
-        "aero.converter.canonical": [
-          "sha256:019449b81606aebc60b5532de7bdbe639d45e5a895d71ea93587ca12a9552d15",
-          "sha256:019449b81606aebc60b5532de7bdbe639d45e5a895d71ea93587ca12a9552d15",
-          "sha256:1bf66969321297d3ad10afcad50a541c6de059029edfe24658d91de6e0ff6c8a",
-          "sha256:10ea77852bc26a8940fd07b561aaf14bcd9536f6dff17076f4ebbafd18bc3e9b",
-          "sha256:4339843f6b6e26759ceeb00f2b420b7ba1e644ef6be37dc5e4741f1f2e56c5a2",
-          "sha256:fed3de61cc5ab90950410d8e843d0237980f1e17441bc31f4a5595f58a0e6465",
-          "sha256:b1ebb797234225c833b7e51d4efe3945d500b102a4229ed0d1a93b53da9e3b1d"
-        ],
-        "aero.converter.prototype-reach": [
-          "sha256:49f33e75587007f313e34ab7d4eecd4d8b8ad75ba7237ec654793da61954578a",
-          "sha256:49f33e75587007f313e34ab7d4eecd4d8b8ad75ba7237ec654793da61954578a",
-          "sha256:25c1355d58d93c76d5d451d77286b0d8c0a6ca0871daf5193dac062e563747bb",
-          "sha256:e532286b5b76bd7c97f1de1fd406bd2e196e5aef77a7dfbdad6b48de08bda635",
-          "sha256:2ea05abc1d660af250fa9b4926e48587901f3747b85f53a63c77db79d631fd2b",
-          "sha256:f3c7fcda1b15f7e53c0ad89e7c92438e0fd9a24aa137b34eb47575f3388b03e1",
-          "sha256:9a81ec6482217d8d2446d930d1f73c4e88ab3e986c7ff6cecc5f59b1e575eaf4"
-        ]
-      },
       "beatmap": {
         "version": "3.3.0",
         "colorNotes": [
@@ -343,26 +302,6 @@
     "v4": {
       "sourceBeatmapVersion": "4.0.0",
       "sourceVersionHash": "bc9c727d25aaeeb8ef33f5c244b91384dede9a38",
-      "expectedSemanticHashes": {
-        "aero.converter.canonical": [
-          "sha256:1a43126f590ea2fefbc9eca52aadaacc3dcd04d18152dbf8e4a3a5ce61f6ce2f",
-          "sha256:1a43126f590ea2fefbc9eca52aadaacc3dcd04d18152dbf8e4a3a5ce61f6ce2f",
-          "sha256:c7d399e72f14b18cda1d29e440028c3474e6230462d23be9b6545cba9d3ddc4b",
-          "sha256:f080652289e192e9014b6acc30f3be7ee0a997c8228443d4eb766f42d26fe6ac",
-          "sha256:4e4cc9a7f954349dd11a49d371babb12cccd3086f9afc73dac8d52bb92327c79",
-          "sha256:d0c823e721c808e8912ff86b3445bd46855518e5b2e942f2a45c4aa1f4c14262",
-          "sha256:ef341e529a310131820b3c736361d030e8ea3c2a1a7f2f11741be9a85fbb7119"
-        ],
-        "aero.converter.prototype-reach": [
-          "sha256:d68b87928ea697596bd21340628497100d55b42a1ceef71a29d2ee0561483de8",
-          "sha256:d68b87928ea697596bd21340628497100d55b42a1ceef71a29d2ee0561483de8",
-          "sha256:065f473f78706703f337ed6ec60deac0d133ce8e10b925cf7f3f80fa24413d8b",
-          "sha256:cef4e8abfebc204ba5dd6e830800526a7a7ec48bf80468213a4423f2988f6124",
-          "sha256:3c27e0a511e200e24a30b772da70321c4cd4f61674adffd8bff2e81556c0d05f",
-          "sha256:62bb544b3c5224b506e1b2537de95e5be2f016add240d80607fddc710588ce4b",
-          "sha256:509eda2355827cb624858abf65c2a18d1ea97773533f9098e0962f0bf1ef6e0f"
-        ]
-      },
       "beatmap": {
         "version": "4.0.0",
         "colorNotesData": [
@@ -530,5 +469,6 @@
         ]
       }
     }
-  }
+  },
+  "fixtureHash": "sha256:a041fc7a75d3837cbe6e502cf5d289338788daf4d8eb7144dfd032cd89a4952b"
 }

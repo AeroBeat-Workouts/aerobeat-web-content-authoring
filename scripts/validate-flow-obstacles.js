@@ -18,7 +18,8 @@ const packageRecord = /** @type {Record<string, unknown>} */ (converted.package)
 assert.deepEqual([packageRecord.schemaId,packageRecord.schemaVersion,packageRecord.packageVersion],["aerobeat.song-package.v6",6,"6.0.0"]);
 assert.equal(/** @type {Record<string, unknown>} */ (packageRecord.source).obstacleContract,"normalized_obstacle_v2");
 const flow=/** @type {Record<string, unknown>[]} */(packageRecord.charts).find((chart)=>chart.mode==="flow");
-assert.deepEqual([flow.schemaId,flow.schemaVersion,flow.rulesetId],["aerobeat.chart.flow.v5",5,"flow_grid_v2"]);
+assert.deepEqual([flow.schemaId,flow.schemaVersion,flow.rulesetId],["aerobeat.chart.flow.v5",5,"flow_colliders_v1"]);
+assert.deepEqual(flow.rulesetVariants,["flow_colliders_v1"]);
 const obstacle=/** @type {Record<string, unknown>[]} */(flow.beats).find((beat)=>beat.type==="obstacle"&&beat.start===oracle.expected.startBeat);
 assert.deepEqual(obstacle,{start:oracle.expected.startBeat,end:oracle.expected.endBeat,type:"obstacle",sourceGeometry:oracle.expected.sourceGeometry,gameplayGeometry:oracle.expected.gameplayGeometry,gridMask:[1,5,9]});
 assert.equal((Number(obstacle.end)-Number(obstacle.start))*60_000/150,25);

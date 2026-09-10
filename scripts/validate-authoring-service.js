@@ -39,7 +39,8 @@ assert.deepEqual([flowChart.schemaId,flowChart.schemaVersion],["aerobeat.chart.f
 const packageCanonical=canonicalJson(first.package),flowCanonical=canonicalJson(flowChart);
 assert.equal(canonicalJson(JSON.parse(packageCanonical)),packageCanonical,"canonical v6 package bytes must round-trip exactly");
 assert.equal(canonicalJson(JSON.parse(flowCanonical)),flowCanonical,"canonical v5 Flow bytes must round-trip exactly");
-assert.deepEqual(flowChart.rulesetVariants,["flow_grid_v2","flow_colliders_v1"]);
+assert.deepEqual(flowChart.rulesetVariants,["flow_colliders_v1"]);
+assert.equal(flowChart.rulesetId,"flow_colliders_v1");
 assert.equal(flowChart.contentHash,await prefixedSha256(canonicalJson({beats:flowChart.beats,rulesetId:flowChart.rulesetId,rulesetVariants:flowChart.rulesetVariants,notePalette:flowChart.notePalette})),"Flow content hash must recompute from exact shared beats/ruleset-variant/palette bytes");
 const firstPackage=/** @type {Record<string,unknown>} */(first.package),firstSource=/** @type {Record<string,unknown>} */(firstPackage.source),firstTrace=/** @type {Record<string,unknown>} */(firstPackage.conversionTrace);
 assert.deepEqual(firstSource.spawnTiming,deriveBeatSaberSpawnTiming(golden.bpm,10,1));
