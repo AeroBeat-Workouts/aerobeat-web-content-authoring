@@ -44,7 +44,21 @@ function normalizeV2(map) {
       bombNotes.push({ start: number(entry._time ?? entry.b, 0), x, y, cell: cellFromXY(x, y) });
     }
   }
-  const obstacles = obstacleArray(map, "_obstacles", "obstacles").map((entry, sourceIndex) => normalizeV2Obstacle(entry, sourceIndex));
+  // t7sv — Legacy BeatSaber v2 `_obstacles` pairs a START entry (`_type:0`, whose
+  // `_duration` is authoritative) with a redundant END terminator (`_type:1`).
+  // Orphaned END markers (no preceding START on the same line) appear in real
+  // charts (e.g. BeatSaver 561f "Incomplete" Normal has 8 orphaned ENDs) and
+  // must not be parsed as independent obstacles. The parser skips every
+  // `_type:1` entry entirely; only START entries produce normalized obstacles.
+  const rawV2Obstacles = obstacleArray(map, "_obstacles", "obstacles");
+  const obstacles = [];
+  for (let sourceIndex = 0; sourceIndex < rawV2Obstacles.length; sourceIndex += 1) {
+    const entry = rawV2Obstacles[sourceIndex];
+    if (!isPlainRecord(entry)) continue;
+    const entryType = integer(entry._type ?? entry.type, -1);
+    if (entryType === 1) continue;
+    obstacles.push(normalizeV2Obstacle(entry, sourceIndex));
+  }
   const sliders = array(map._sliders ?? map.sliders).flatMap((entry) => isPlainRecord(entry) ? [{
     start: number(entry._headTime ?? entry.b, 0),
     end: number(entry._tailTime ?? entry.tb ?? entry._headTime ?? entry.b, 0),
@@ -119,12 +133,19 @@ function normalizeV2Obstacle(value, sourceIndex) {
   if (!isPlainRecord(value)) throw new AuthoringParseError("obstacle_shape_invalid", "v2 obstacle must be a plain record");
   const type = requiredInteger(value, ["_type", "type"], "obstacle_type_unsupported");
   if (type !== 0 && type !== 1) throw new AuthoringParseError("obstacle_type_unsupported", "v2 obstacle type must be 0 or 1");
+  // t7sv — classic BeatSaber legacy v2 `_width` semantics: `_width:2` means ONE
+  // cell and `_width:4` means TWO cells; values 1 and 3 pass through unchanged.
+  // The raw provider width is preserved in source geometry evidence via the
+  // normalized width after this explicit remap, so downstream consumers always
+  // see canonical grid columns rather than the legacy double-spacing encoding.
+  const rawWidth = requiredInteger(value, ["_width", "w"], "obstacle_geometry_invalid");
+  const width = rawWidth === 2 ? 1 : rawWidth === 4 ? 2 : rawWidth;
   return obstacleRecord(
     requiredFinite(value, ["_time", "b"], "obstacle_time_invalid"),
     requiredFinite(value, ["_duration", "d"], "obstacle_duration_invalid"),
     requiredInteger(value, ["_lineIndex", "x"], "obstacle_geometry_invalid"),
     type === 1 ? 2 : 0,
-    requiredInteger(value, ["_width", "w"], "obstacle_geometry_invalid"),
+    width,
     type === 1 ? 3 : 5,
     sourceIndex,
     type === 1 ? "v2_type_1" : "v2_type_0"
@@ -150,7 +171,10 @@ function normalizeInlineObstacle(value, sourceIndex) {
 /** @param {unknown} value @param {unknown[]} obstacleData @param {number} sourceIndex */
 function normalizeIndexedObstacle(value, obstacleData, sourceIndex) {
   if (!isPlainRecord(value)) throw new AuthoringParseError("obstacle_shape_invalid", "v4 obstacle must be a plain record");
-  const index = requiredInteger(value, ["i"], "obstacle_index_invalid");
+  // Beat Saber v4 spec: the entry-level metadata index `i` and the metadata x/y
+  // fields are OPTIONAL WITH DEFAULT 0. Absent values default to 0; present but
+  // invalid values still reject through the strict helpers below.
+  const index = optionalDefaultInteger(value, ["i"], 0, "obstacle_index_invalid");
   if (index < 0 || index >= obstacleData.length || !isPlainRecord(obstacleData[index])) throw new AuthoringParseError("obstacle_index_invalid", "v4 obstacle metadata index is missing or out of range");
   for (const field of ["d", "x", "y", "w", "h"]) if (Object.hasOwn(value, field)) throw new AuthoringParseError("obstacle_geometry_conflict", "v4 obstacle geometry must come only from obstaclesData");
   const metadata = /** @type {Record<string, unknown>} */ (obstacleData[index]);
@@ -159,8 +183,8 @@ function normalizeIndexedObstacle(value, obstacleData, sourceIndex) {
   return obstacleRecord(
     requiredFinite(value, ["b"], "obstacle_time_invalid"),
     requiredFinite(metadata, ["d"], "obstacle_duration_invalid"),
-    requiredInteger(metadata, ["x"], "obstacle_geometry_invalid"),
-    requiredInteger(metadata, ["y"], "obstacle_geometry_invalid"),
+    optionalDefaultInteger(metadata, ["x"], 0, "obstacle_geometry_invalid"),
+    optionalDefaultInteger(metadata, ["y"], 0, "obstacle_geometry_invalid"),
     requiredInteger(metadata, ["w"], "obstacle_geometry_invalid"),
     requiredInteger(metadata, ["h"], "obstacle_geometry_invalid"),
     sourceIndex,
@@ -210,6 +234,20 @@ function requiredInteger(value, keys, code) {
   const candidate = requiredFinite(value, keys, code);
   if (!Number.isInteger(candidate)) throw new AuthoringParseError(code, `Required integer obstacle field ${keys[0]} is invalid`);
   return candidate;
+}
+
+/** @param {Record<string, unknown>} value @param {string[]} keys @param {number} defaultValue @param {string} code */
+function optionalDefaultInteger(value, keys, defaultValue, code) {
+  for (const key of keys) if (Object.hasOwn(value, key)) {
+    const candidate = value[key];
+    // Spec: an OPTIONAL field that is ABSENT defaults to `defaultValue`, but a
+    // PRESENT-but-invalid value (non-finite number, non-integer, wrong type)
+    // must reject through the same strict path as requiredInteger so v4 charts
+    // cannot silently coerce malformed indices into out-of-bounds metadata lookups.
+    if (typeof candidate !== "number" || !Number.isFinite(candidate) || !Number.isInteger(candidate)) throw new AuthoringParseError(code, `Required integer obstacle field ${keys[0]} is invalid`);
+    return candidate;
+  }
+  return defaultValue;
 }
 
 /** @param {number} sourceIndex @param {number} start @param {number} x @param {number} y @param {number} color @param {number} direction @param {number} angleOffset @param {boolean} hasAngleOffset */

@@ -14,12 +14,21 @@ import {
 } from "../src/index.js";
 
 const cases = [
+  // t7sv parity update: BeatSaver 4858 (Standard Expert, legacy v2.0.0) carries
+  // `_type:1` END-marker obstacles whose `_duration` values include negatives
+  // (`-0.25`). Pre-t7sv, the parser reached `requiredFinite(_duration)` and
+  // rejected with `obstacle_duration_invalid`. Post-t7sv, every `_type:1` entry
+  // is skipped at parse time BEFORE any field-level validation, so those invalid
+  // terminators no longer reach the parser's strict helpers. The remaining 18
+  // legitimate `_type:0` START entries normalize successfully, the package
+  // converts, and the chart persists atomically. This is the intended new
+  // behavior for a legacy chart whose ONLY obstacle defect is a malformed
+  // terminator that must be ignored.
   {
     mapId: "4858",
     versionHash: "431ffaa53a1e45ffab6c81a895e456f6aad1e038",
     difficulty: "Expert",
     environment: "AEROBEAT_BEATSAVER_4858_ZIP",
-    expectedRejection: "obstacle_duration_invalid",
     expectedInfo:{format:"v2",version:"2.0.0",hash:"sha256:278548f453c0249a42a2c0bb3c3f5e1c726eedb63012aa931d9f90d22ef728a2"},expectedBeatmap:{format:"v2",version:"2.0.0",hash:"sha256:7a14673fcba05362c6a64f72a484d6057c8a67fe2bc1fc4b29198bd18b173c8e"},expectedPalette:null,
     paths: [
       "/home/derrick/.dsh/projects/aerobeat/aerobeat-vendor-beatsaver/.testbed/.artifacts/4858/431ffaa53a1e45ffab6c81a895e456f6aad1e038/4858-431ffaa53a1e.zip",
@@ -66,6 +75,10 @@ for (const fixture of cases) {
     expectedDifficultyContentHashes: { [selected.path]: expectedDifficultyContentHash }
   };
   if (fixture.expectedRejection) {
+    // Retained for completeness: any future real-chart pin that still expects a
+    // bounded parse-time rejection goes through this branch. As of the t7sv
+    // wave no case above declares expectedRejection because legacy END-marker
+    // terminators are skipped at parse time before field-level validation runs.
     await assert.rejects(() => firstService.convertAndPersist({ providerId: "beatsaver", sourceHash: fixture.versionHash, source }, request), (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === fixture.expectedRejection));
     assert.equal((await firstService.listPackages()).length, 0, `${fixture.mapId} malformed obstacle rejection must be atomic`);
     firstService.destroy();

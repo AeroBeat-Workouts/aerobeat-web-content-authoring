@@ -13,7 +13,13 @@ export const timingWindowMs = 180;
 export const freshnessMs = 150;
 export const straightQualificationMs = 100;
 export const punchMinSpacingMs = 360;
-export const guardPairs = deepFreeze([[0, 1], [1, 2], [2, 3], [4, 5], [5, 6], [6, 7], [8, 9], [9, 10], [10, 11]]);
+// z2tx — product rule: no punch or guard beat may appear outside the center
+// columns (columns 1-2 of the canonical 4-column grid). Punches are already
+// center-only via spatialTarget; this candidate list is restricted to the three
+// fully-center adjacent pairs so a guard whose only legal pair would be an edge
+// pair ([0,1]/[2,3] and their row siblings) drops through the existing
+// guard_no_legal_pair trace rather than emitting an edge-column target.
+export const guardPairs = deepFreeze([[1, 2], [5, 6], [9, 10]]);
 export const reachSubcellsPerBeat = deepFreeze({ Easy: 3, Normal: 3.5, Hard: 4, Expert: 5, ExpertPlus: 6 });
 
 export const recipeDefinitions = deepFreeze([

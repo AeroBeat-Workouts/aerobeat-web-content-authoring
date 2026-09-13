@@ -26,11 +26,14 @@ for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
   const flow = /** @type {{beats:Record<string,unknown>[]}} */ (converted.charts.find((chart) => chart.mode === "flow"));
   assert.deepEqual(flow.beats.filter((beat) => beat.type === "note").map((beat) => beat.placement), [8, 4, 0], `${format} note y=0/1/2 must emit bottom/middle/top`);
   assert.deepEqual(flow.beats.filter((beat) => beat.type === "bomb").map((beat) => beat.placement), [9, 5, 1], `${format} bomb y=0/1/2 must emit bottom/middle/top`);
-  const expectedObstacleCells = format === "v2" ? [[2, 6, 10], [2, 6, 10]] : [[10], [6], [2]];
+  // t7sv: legacy v2 END markers are skipped at parse time, so the paired
+  // terminator no longer contributes a second obstacle. The START keeps its
+  // classic full-height mapping and `_width:1` stays width-1 through the remap.
+  const expectedObstacleCells = format === "v2" ? [[2, 6, 10]] : [[10], [6], [2]];
   const flowObstacles = flow.beats.filter((beat) => beat.type === "obstacle");
   assert.deepEqual(flowObstacles.map((beat) => beat.gridMask), expectedObstacleCells, `${format} obstacle mask must derive bounded source rows exactly once`);
   assert.equal(flowObstacles.every((beat) => Object.hasOwn(beat,"sourceGeometry")&&Object.hasOwn(beat,"gameplayGeometry")&&!Object.hasOwn(beat,"cells")),true);
-  if(format==="v2"){assert.deepEqual(flowObstacles.map((beat)=>{const geometry=/** @type {Record<string,unknown>} */(beat.sourceGeometry);return[geometry.kind,geometry.y,geometry.height];}),[["v2_type_0",0,5],["v2_type_1",2,3]],"v2 type evidence remains exact");assert.deepEqual(flowObstacles.map((beat)=>{const geometry=/** @type {Record<string,unknown>} */(beat.gameplayGeometry);return[geometry.y,geometry.height];}),[[0,3],[0,3]],"fixture-defined v2 types normalize explicitly to downward canonical occupancy");}
+  if(format==="v2"){assert.deepEqual(flowObstacles.map((beat)=>{const geometry=/** @type {Record<string,unknown>} */(beat.sourceGeometry);return[geometry.kind,geometry.x,geometry.width];}),[["v2_type_0",2,1]],"v2 START-only source evidence remains exact after END-marker skip");assert.deepEqual(flowObstacles.map((beat)=>{const geometry=/** @type {Record<string,unknown>} */(beat.gameplayGeometry);return[geometry.y,geometry.height];}),[[0,3]],"v2 START normalizes to the fixture-defined downward full-height occupancy");}
   const arc = flow.beats.find((beat) => beat.type === "arc");
   assert.deepEqual([arc?.startPlacement, arc?.endPlacement], [8, 0], `${format} arc head/tail must emit canonical cells exactly once`);
   assert.equal(typeof arc?.startNoteRef, "string", `${format} canonical arc placement must preserve raw-source note linking`);
@@ -49,8 +52,66 @@ const guardSummary = {
 };
 const guardConversion = await convertDifficulty(guardSummary, { ...options, songToken: "boxing-orientation-regression" });
 for (const chart of /** @type {{mode:string,beats:Record<string,unknown>[]}[]} */ (guardConversion.charts).filter((entry) => entry.mode === "boxing")) {
-  const guard = /** @type {{guardTarget:{sourcePair:number[]}}} */ (chart.beats.find((beat) => beat.type === "guard"));
+  const guard = /** @type {{guardTarget:{sourcePair:number[],leftCell:number,rightCell:number}}} */ (chart.beats.find((beat) => beat.type === "guard"));
   assert.deepEqual(guard.guardTarget.sourcePair, [8, 11], "Boxing must retain its existing single bottom-left to top-left transform");
+  // z2tx: emitted guard target cells must never fall in columns 0 or 3 — the
+  // center-only pair restriction is enforced across all Boxing charts.
+  assert.equal(guard.guardTarget.leftCell % 4 === 0 || guard.guardTarget.leftCell % 4 === 3, false, "guard leftCell must be in a center column (1 or 2)");
+  assert.equal(guard.guardTarget.rightCell % 4 === 0 || guard.guardTarget.rightCell % 4 === 3, false, "guard rightCell must be in a center column (1 or 2)");
+}
+
+// z2tx hostile fixture — a chart whose source guard positions would force the
+// old edge-pair fallback: both hands are on far-edge columns at a time where no
+// obstacle blocks any of the three center pairs, so a legal center pair exists;
+// we assert every emitted guard lands in a center column AND that the same
+// input with the center pairs blocked drops through guard_no_legal_pair rather
+// than emitting an edge-column pair.
+{
+  const hostileEdgeGuardSummary = {
+    colorNotes: [
+      // Left hand forced onto source column 0; right hand onto source column 3.
+      { start: 1, x: 0, y: 0, cell: 0, hand: "left", direction: 8, sourceIndex: 0 },
+      { start: 1, x: 3, y: 0, cell: 3, hand: "right", direction: 8, sourceIndex: 1 }
+    ],
+    bombNotes: [], obstacles: [], sliders: [], burstSliders: []
+  };
+  const hostileConversion = await convertDifficulty(hostileEdgeGuardSummary, { ...options, songToken: "z2tx-hostile-guard" });
+  const hostileBoxingCharts = /** @type {Record<string, unknown>[]} */ (hostileConversion.charts).filter((entry) => String(entry.mode) === "boxing");
+  for (const rawChart of hostileBoxingCharts) {
+    const beats = /** @type {Record<string, unknown>[]} */ (rawChart.beats);
+    for (const guard of beats.filter((beat) => beat.type === "guard")) {
+      const target = /** @type {{leftCell:number,rightCell:number}} */ (/** @type {unknown} */ (guard.guardTarget));
+      assert.equal(Number(target.leftCell) % 4 === 0 || Number(target.leftCell) % 4 === 3, false, "z2tx: no emitted guard leftCell may sit in column 0 or 3");
+      assert.equal(Number(target.rightCell) % 4 === 0 || Number(target.rightCell) % 4 === 3, false, "z2tx: no emitted guard rightCell may sit in column 0 or 3");
+    }
+  }
+
+  // Blocked-center variant: fill every subcell of all three center pairs with
+  // obstacle windows so chooseGuardPair cannot pick a center pair; the guard
+  // must drop via guard_no_legal_pair rather than fall back to an edge pair.
+  const blockCentersSummary = {
+    colorNotes: [
+      { start: 5, x: 0, y: 0, cell: 0, hand: "left", direction: 8, sourceIndex: 0 },
+      { start: 5, x: 3, y: 0, cell: 3, hand: "right", direction: 8, sourceIndex: 1 }
+    ],
+    bombNotes: [],
+    obstacles: [
+      { start: 4.9, duration: 0.2, sourceGeometry: { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace: "beatsaber_v3_obstacle_rect", kind: "v3_rect", x: 1, y: 0, width: 2, height: 1 }, gameplayGeometry: { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 1, y: 0, width: 2, height: 1 }, sourceIndex: 0 },
+      { start: 4.9, duration: 0.2, sourceGeometry: { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace: "beatsaber_v3_obstacle_rect", kind: "v3_rect", x: 1, y: 1, width: 2, height: 1 }, gameplayGeometry: { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 1, y: 1, width: 2, height: 1 }, sourceIndex: 1 },
+      { start: 4.9, duration: 0.2, sourceGeometry: { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace: "beatsaber_v3_obstacle_rect", kind: "v3_rect", x: 1, y: 2, width: 2, height: 1 }, gameplayGeometry: { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 1, y: 2, width: 2, height: 1 }, sourceIndex: 2 }
+    ],
+    sliders: [], burstSliders: []
+  };
+  const blockedConversion = await convertDifficulty(blockCentersSummary, { ...options, songToken: "z2tx-blocked-centers" });
+  for (const rawTrace of /** @type {Record<string, unknown>[]} */ (blockedConversion.traces)) {
+    const events = /** @type {Record<string, unknown>[]} */ (rawTrace.events);
+    assert.ok(events.some((event) => String(event.action) === "drop" && String(event.reason) === "guard_no_legal_pair"), "z2tx: with all center pairs blocked, the guard must drop via guard_no_legal_pair");
+  }
+  const blockedBoxingCharts = /** @type {Record<string, unknown>[]} */ (blockedConversion.charts).filter((entry) => String(entry.mode) === "boxing");
+  for (const rawChart of blockedBoxingCharts) {
+    const beats = /** @type {Record<string, unknown>[]} */ (rawChart.beats);
+    assert.equal(beats.filter((beat) => beat.type === "guard").length, 0, "z2tx: no guard beats may be emitted when no center pair is legal");
+  }
 }
 
 const evidence = JSON.parse(await readFile(new URL("../fixtures/flow-orientation-3c9d-easy-v1.json", import.meta.url), "utf8"));
@@ -95,6 +156,8 @@ function orientationBeatmap(format) {
       { _time: 5, _lineIndex: 1, _lineLayer: 1, _type: 3, _cutDirection: 8 },
       { _time: 6, _lineIndex: 1, _lineLayer: 2, _type: 3, _cutDirection: 8 }
     ],
+    // t7sv: legacy v2 obstacle STARTs only; `_type:1` END markers are skipped at
+    // parse time so the paired terminator at beat 8 produces no obstacle.
     _obstacles: [
       { _time: 7, _duration: 1, _lineIndex: 2, _type: 0, _width: 1 },
       { _time: 8, _duration: 1, _lineIndex: 2, _type: 1, _width: 1 }
