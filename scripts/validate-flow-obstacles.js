@@ -29,7 +29,7 @@ assert.deepEqual([flow.schemaId,flow.schemaVersion,flow.rulesetId],["aerobeat.ch
 assert.deepEqual(flow.rulesetVariants,["flow_colliders_v1"]);
 assert.equal(/** @type {Record<string, unknown>[]} */(flow.beats).filter((beat)=>beat.type==="obstacle").length, 0, "Flow chart must contain zero obstacles because every source obstacle was an END marker");
 assert.equal((await validateAuthoredPackage(converted.package)).valid,true);
-const boxingCharts=packageRecord.charts.filter((chart)=>chart.mode==="boxing");assert.equal(boxingCharts.length,4);
+const boxingCharts=packageRecord.charts.filter((chart)=>chart.mode==="boxing");assert.equal(boxingCharts.length,1);
 for(const chart of boxingCharts){assert.equal(/** @type {Record<string,unknown>[]} */(chart.beats).some((beat)=>String(beat.type??"").startsWith("weave_") || String(beat.type??"")==="squat"), false, "Boxing charts must contain no weave/squat beats because there are no source obstacles");}
 
 // t7sv note on the `v2_type_1` shape: the contracts obstacle contract still accepts

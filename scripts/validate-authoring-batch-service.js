@@ -41,7 +41,7 @@ assert.equal("converterProfileHash" in /** @type {object} */ (publicCollection),
 assert.equal("writeToken" in /** @type {object} */ (publicCollection), false);
 for (const entry of result.packages) {
   const loaded = await service.loadPackage(entry.handle);
-  assert.equal((/** @type {{charts: unknown[]}} */ (loaded.package)).charts.length, 5);
+  assert.equal((/** @type {{charts: unknown[]}} */ (loaded.package)).charts.length, 2);
   assert.deepEqual(await service.readAsset(entry.handle, "song.ogg"), new Uint8Array([1, 2, 3, 4]));
   const exported = await service.exportPackage(entry.handle);
   const inspected = await inspectAuthoredPackageExport(exported.bytes);

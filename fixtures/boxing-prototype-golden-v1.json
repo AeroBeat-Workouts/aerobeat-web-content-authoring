@@ -64,14 +64,23 @@
         "start": 6,
         "duration": 1,
         "sourceGeometry": {
-          "schema": "aerobeat/obstacle_source_geometry", "version": 1,
-          "coordinateSpace": "beatsaber_v3_obstacle_rect", "kind": "v3_rect",
-          "x": 0, "y": 0, "width": 1, "height": 3
+          "schema": "aerobeat/obstacle_source_geometry",
+          "version": 1,
+          "coordinateSpace": "beatsaber_v3_obstacle_rect",
+          "kind": "v3_rect",
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 3
         },
         "gameplayGeometry": {
-          "schema": "aerobeat/obstacle_gameplay_geometry", "version": 1,
+          "schema": "aerobeat/obstacle_gameplay_geometry",
+          "version": 1,
           "coordinateSpace": "aerobeat_top_left_grid",
-          "x": 0, "y": 0, "width": 1, "height": 3
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 3
         },
         "sourceIndex": 0
       }
@@ -117,13 +126,13 @@
   },
   "webSemanticParityHash": "sha256:8266e55e54f65dcb9d5949decfa993707581401869f15bc58cf4d134ad9d0daa",
   "webV4Golden": {
-    "packageCanonicalBytes": 35574,
-    "flowCanonicalBytes": 1454,
-    "packageCanonicalHash": "sha256:9dd97c023c56a47e6134b71353f85bc75a64fcb6f434ece0cf4dfaab0f93167d",
-    "flowCanonicalHash": "sha256:744a7d109aca585fe3c2632e95f920b6a8d61004fc31394f71efe0e7954c8325",
-    "flowContentHash": "sha256:3fa76fa8637beb50fd360134fcdc99bb8a649bfcae1e23594052e12aa51fdc09",
+    "packageCanonicalBytes": 16244,
+    "flowCanonicalBytes": 1499,
+    "packageCanonicalHash": "sha256:535e167ad51277a4db6e767f809a935f13252e9c5a6cd3f1c430a09fda5dbdad",
+    "flowCanonicalHash": "sha256:874d2d0b9c467b2e51ddf09113ac9a939b439ed0b490fb045e961d77deb1220d",
+    "flowContentHash": "sha256:ba895ffe7637ae7e0ac4800da279741eb32fc5d2034de086dc769eb55d16f374",
     "paletteCanonical": "null",
     "paletteCanonicalHash": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-    "semanticParityHash": "sha256:a48c7d1765dc23af5e177fe5f706b34835609e50d8aa911d3ce9647abdff7f21"
+    "semanticParityHash": "sha256:ec71c20b3cacd57287da2a6338ffa7bd9b88d56dd5426b497eb75c0a69a2277c"
   }
 }

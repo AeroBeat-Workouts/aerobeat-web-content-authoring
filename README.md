@@ -14,12 +14,7 @@ Provider-neutral browser conversion, local authoring persistence, and determinis
 }
 ```
 
-It adapts one explicit Standard difficulty, or prepares every exact Standard difficulty in canonical Easy → Normal → Hard → Expert → ExpertPlus order, using only required entry copies and one shared audio read/hash. Worker conversion remains one difficulty per request and emits one Flow chart with shared immutable beat truth for the sole ruleset variant `flow_colliders_v1` (the visible `Flow` mode; the retired Flow Grid ruleset is deleted), plus the four frozen Boxing prototype combinations:
-
-- Semantic Track · Row Family
-- Spatial Grid · Row Family
-- Semantic Track · Cut Family
-- Spatial Grid · Cut Family
+It adapts one explicit Standard difficulty, or prepares every exact Standard difficulty in canonical Easy → Normal → Hard → Expert → ExpertPlus order, using only required entry copies and one shared audio read/hash. Worker conversion remains one difficulty per request and emits one Flow chart with shared immutable beat truth for the sole ruleset variant `flow_colliders_v1` (the visible `Flow` mode; the retired Flow Grid ruleset is deleted), plus exactly one Boxing chart for new imports: the single collider variant `boxing_collider_v1` (z7nw). The collider variant carries no conversion recipe identity (`prototype.recipeId` absent) over the row-family Balanced Height authored beats — the same beat set the Lanes/Grid conversions carried; its `recipeHash` remains as generation provenance only. Legacy stored packages keep their stored four-chart Lanes/Grid matrix (two recipes × two rulesets); both package shapes remain valid, with no data migration.
 
 The package does not call BeatSaver APIs, inspect ZIP structures, depend on provider DTOs, choose playlists, render UI, play media, score gameplay, or select a production Boxing winner.
 

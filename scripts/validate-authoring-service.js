@@ -24,13 +24,15 @@ const options = { difficulty: "Hard", songToken: golden.songToken, songName: "Sa
 const first = await convertDifficulty(golden.sourceSummary, options);
 const second = await convertDifficulty(golden.sourceSummary, options);
 assert.deepEqual(first.package, second.package, "double conversion must be byte-semantically deterministic");
+// z7nw — new imports emit exactly one Boxing chart: the sole collider variant
+// (row-family balanced-height authored rows; no conversion recipe identity).
 const boxing = /** @type {{prototype: Record<string, unknown>, beats: Record<string, unknown>[]}[]} */ (first.charts.filter((chart) => chart.mode === "boxing"));
-assert.equal(boxing.length, 4);
-const row = boxing.find((chart) => chart.prototype.recipeId === "row_family_balanced_height_v1" && chart.prototype.rulesetId === "boxing_semantic_track_v1");
-const cut = boxing.find((chart) => chart.prototype.recipeId === "cut_family_source_height_v1" && chart.prototype.rulesetId === "boxing_semantic_track_v1");
-assert.deepEqual(row.beats.map((beat) => beat.type), golden.godotExpected.rowTypes);
-assert.deepEqual(cut.beats.map((beat) => beat.type), golden.godotExpected.cutTypes);
-assert.deepEqual(row.beats.map((beat) => beat.eventId), golden.godotExpected.rowEventIds);
+assert.equal(boxing.length, 1);
+const collider = boxing[0];
+assert.equal(collider.prototype.rulesetId, "boxing_collider_v1");
+assert.equal(Object.hasOwn(collider.prototype, "recipeId"), false, "collider prototype carries no conversion recipe identity");
+assert.deepEqual(collider.beats.map((beat) => beat.type), golden.godotExpected.rowTypes);
+assert.deepEqual(collider.beats.map((beat) => beat.eventId), golden.godotExpected.rowEventIds);
 assert.equal(golden.webSemanticParityHash,"sha256:8266e55e54f65dcb9d5949decfa993707581401869f15bc58cf4d134ad9d0daa","historical package-v3 semantic golden must remain frozen compatibility evidence");
 const flowChart=/** @type {{schemaId:string,schemaVersion:number,mode:string,rulesetId:string,rulesetVariants:string[],notePalette:unknown,beats:unknown[],contentHash:string}|undefined} */ (/** @type {Record<string,unknown>[]} */ (first.package.charts).find((chart)=>chart.mode==="flow"));
 assert.ok(flowChart,"v6 package must contain one Flow chart");
@@ -74,7 +76,7 @@ service.subscribe((snapshot) => { snapshots.push(snapshot); });
 const authored = await service.convertAndPersist({ providerId: "synthetic", sourceHash: "synthetic-v1", source }, { difficulty: "Hard", sourceId: "synthetic-map", sourceVersionHash: "synthetic-v1", includeAudio: true, cacheSourceEntries: true });
 assert.equal(isContentImportJobSnapshot(authored.job), true);
 assert.equal(isPersistenceHandle(authored.handle), true);
-assert.equal((/** @type {{charts: unknown[]}} */ (authored.package)).charts.length, 5);
+assert.equal((/** @type {{charts: unknown[]}} */ (authored.package)).charts.length, 2);
 assert.equal((await service.listPackages()).length, 1);
 const loaded = await service.loadPackage(authored.handle);
 assert.deepEqual(loaded.package, authored.package);

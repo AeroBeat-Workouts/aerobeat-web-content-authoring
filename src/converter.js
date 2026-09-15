@@ -18,12 +18,15 @@ import {
   rowFamilyRecipeId,
   rulesetDefinitions,
   rulesetVersion,
-  semanticTrackRulesetId,
-  spatialGridRulesetId,
   straightQualificationMs,
   supportedModifiers,
   timingWindowMs
 } from "./definitions.js";
+
+// z7nw — New imports emit exactly one Boxing variant: the collider ruleset
+// (the sole newly-created Boxing option per the 2026-09-11 design doc §5/§6).
+// It carries no conversion recipe identity; legacy stored Lanes/Grid matrices remain readable.
+const colliderRulesetId = "boxing_collider_v1";
 
 /** @typedef {"Easy" | "Normal" | "Hard" | "Expert" | "ExpertPlus"} Difficulty */
 /** @typedef {Record<string, unknown>} DataRecord */
@@ -52,36 +55,33 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const notePalette = await createAuthoredNotePalette(verifiedSourcePalette);
   const charts = [];
   const traces = [];
-  let matrixIndex = 0;
-  for (const recipe of recipeDefinitions) {
-    const generated = await generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings);
-    for (const rulesetId of [semanticTrackRulesetId, spatialGridRulesetId]) {
-      const chart = await chartFor(generated, difficulty, songToken, recipe, rulesetId, sourceHash, modifiers, options.presentationSuggestion, converterProfile);
-      charts.push(chart);
-      traces.push({
-        chartId: chart.chartId,
-        difficulty,
-        bpm,
-        recipeId: recipe.recipeId,
-        rulesetId,
-        sourceHash,
-        contentHash: chart.prototype.contentHash,
-        sourceInfoFormat: options.sourceInfoFormat,
-        sourceInfoVersion: options.sourceInfoVersion,
-        sourceInfoHash: options.sourceInfoHash,
-        sourceDifficultyPath: options.sourceDifficultyPath,
-        sourceBeatmapFormat: options.sourceBeatmapFormat,
-        sourceBeatmapVersion: options.sourceBeatmapVersion,
-        sourceDifficultyHash,
-        spawnTiming: cloneData(spawnTiming),
-        ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
-        optimizer: cloneData(generated.optimizer),
-        events: cloneData(generated.trace)
-      });
-      matrixIndex += 1;
-      onProgress(0.15 + matrixIndex * 0.15, "converting");
-    }
-  }
+  // z7nw — the collider variant is single-variant and reach mapping happens at render/judge
+  // time, so its authored rows come from the row-family "Balanced Height" generation
+  // (balance_generated_rows, the first frozen recipe definition). The cut-family call was dropped.
+  const rowRecipe = /** @type {DataRecord} */ (recipeDefinitions.find((recipe) => String(recipe.recipeId) === rowFamilyRecipeId) ?? recipeDefinitions[0]);
+  const generated = await generateEvents(sourceSummary, difficulty, bpm, rowRecipe, modifiers, converterSettings);
+  const chart = await colliderChartFor(generated, rowRecipe, difficulty, songToken, sourceHash, modifiers, options.presentationSuggestion, converterProfile);
+  charts.push(chart);
+  traces.push({
+    chartId: chart.chartId,
+    difficulty,
+    bpm,
+    rulesetId: colliderRulesetId,
+    sourceHash,
+    contentHash: chart.prototype.contentHash,
+    sourceInfoFormat: options.sourceInfoFormat,
+    sourceInfoVersion: options.sourceInfoVersion,
+    sourceInfoHash: options.sourceInfoHash,
+    sourceDifficultyPath: options.sourceDifficultyPath,
+    sourceBeatmapFormat: options.sourceBeatmapFormat,
+    sourceBeatmapVersion: options.sourceBeatmapVersion,
+    sourceDifficultyHash,
+    spawnTiming: cloneData(spawnTiming),
+    ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
+    optimizer: cloneData(generated.optimizer),
+    events: cloneData(generated.trace)
+  });
+  onProgress(0.45, "converting");
   const flow = await convertFlowChart(sourceSummary, difficulty, songToken, notePalette);
   Object.assign(flow.trace, { sourceHash, sourceInfoFormat: options.sourceInfoFormat, sourceInfoVersion: options.sourceInfoVersion, sourceInfoHash: options.sourceInfoHash, sourceDifficultyPath: options.sourceDifficultyPath, sourceBeatmapFormat: options.sourceBeatmapFormat, sourceBeatmapVersion: options.sourceBeatmapVersion, sourceDifficultyHash, spawnTiming: cloneData(spawnTiming) });
   charts.push(flow.chart);
@@ -136,16 +136,14 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   return deepFreeze({ package: packageRecord, packageHash, sourceHash, charts, traces, flowTrace: flow.trace });
 }
 
-/** @param {DataRecord} generated @param {Difficulty} difficulty @param {string} songToken @param {DataRecord} recipe @param {string} rulesetId @param {string} sourceHash @param {readonly string[]} modifiers @param {Readonly<Record<string, unknown>> | undefined} suggestion @param {Readonly<Record<string, unknown>> | null} converterProfile */
-async function chartFor(generated, difficulty, songToken, recipe, rulesetId, sourceHash, modifiers, suggestion, converterProfile) {
-  const recipeId = String(recipe.recipeId);
-  const recipeShort = recipeId === rowFamilyRecipeId ? "row-family" : "cut-family";
-  const rulesetShort = rulesetId === semanticTrackRulesetId ? "semantic-track" : "spatial-grid";
+/** @param {DataRecord} generated @param {DataRecord} recipe @param {Difficulty} difficulty @param {string} songToken @param {string} sourceHash @param {readonly string[]} modifiers @param {Readonly<Record<string, unknown>> | undefined} suggestion @param {Readonly<Record<string, unknown>> | null} converterProfile */
+async function colliderChartFor(generated, recipe, difficulty, songToken, sourceHash, modifiers, suggestion, converterProfile) {
   const beats = cloneData(generated.beats);
+  // Provenance only: recipeHash identifies which generation produced the authored rows.
+  // The single collider variant carries no conversion-recipe identity, so recipeId is absent from the prototype and its content hash.
   const recipeHash = await prefixedSha256(canonicalJson(recipe));
-  const ruleset = rulesetDefinitions.find((candidate) => candidate.rulesetId === rulesetId) ?? rulesetDefinitions[0];
-  const rulesetHash = await prefixedSha256(canonicalJson(ruleset));
-  const contentHash = await prefixedSha256(canonicalJson({ beats, recipeId, rulesetId, sourceHash, ...(converterProfile ? { converterProfile } : {}) }));
+  const rulesetHash = await prefixedSha256(canonicalJson({ contractId: boxingPrototypeContractId, rulesetId: colliderRulesetId, version: rulesetVersion }));
+  const contentHash = await prefixedSha256(canonicalJson({ beats, sourceHash, rulesetId: colliderRulesetId, ...(converterProfile ? { converterProfile } : {}) }));
   const allModifiers = [...modifiers];
   for (const beat of /** @type {DataRecord[]} */ (beats)) {
     if (typeof beat.modifier === "string" && !allModifiers.includes(beat.modifier)) allModifiers.push(beat.modifier);
@@ -153,10 +151,10 @@ async function chartFor(generated, difficulty, songToken, recipe, rulesetId, sou
   allModifiers.sort();
   const chart = {
     schemaId: "aerobeat.chart.boxing.v1", schemaVersion: 1, recordVersion: 1,
-    chartId: `ab-chart-${songToken}-boxing-${difficulty.toLowerCase()}-${rulesetShort}-${recipeShort}`,
-    chartName: `${titleize(songToken)} ${difficulty} Boxing - ${titleize(rulesetShort)} / ${titleize(recipeShort)}`,
+    chartId: `ab-chart-${songToken}-boxing-collider-${difficulty.toLowerCase()}`,
+    chartName: `${titleize(songToken)} ${difficulty} Boxing - Collider`,
     mode: "boxing", difficulty,
-    prototype: { contractId: boxingPrototypeContractId, recipeId, recipeVersion, rulesetId, rulesetVersion, sourceHash, recipeHash, rulesetHash, contentHash, modifiers: allModifiers, ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}), regenerationRequiredFor: ["punchMinSpacingMs", "reachSubcellsPerBeat", "familyBalance", "guardRelocation"] },
+    prototype: { contractId: boxingPrototypeContractId, recipeVersion, rulesetId: colliderRulesetId, rulesetVersion, sourceHash, recipeHash, rulesetHash, contentHash, modifiers: allModifiers, ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}), regenerationRequiredFor: ["punchMinSpacingMs", "reachSubcellsPerBeat", "familyBalance", "guardRelocation"] },
     beats
   };
   if (suggestion) Object.assign(chart, { presentationSuggestion: cloneData(suggestion) });

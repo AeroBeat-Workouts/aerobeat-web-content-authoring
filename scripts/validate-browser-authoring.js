@@ -136,7 +136,8 @@ try {
     }):null;
     if(db7CurrentV3Collection)assert.deepEqual(db7CurrentV3Collection,{hostile:"storage_record_invalid",hostileExportPreserved:true,malformedV4:"spawn_timing_reimport_required",malformedV4ExportPreserved:true,listed:["derrick-import-v3"],collections:["derrick-import-collection"],hashPreserved:true,stale:"spawn_timing_reimport_required",packageSchema:3,assets:[["cover.bin",[9,8]],["song.ogg",[4,3,2,1]]],sourceCache:[["Info.dat",[7,6]]],exported:true,after:[0,0]},"real Chromium DB7 must reject hostile current-contract generations as storage-invalid while preserving management access and keeping Derrick-like v3 palette migration exact");
     const result = await page.evaluate(() => globalThis.runAuthoringHarness());
-    assert.equal(result.chartCount, 5);
+    // z7nw — new imports convert to Flow + the sole collider chart.
+    assert.equal(result.chartCount, 2);
     assert.equal(result.listCount, 1);
     assert.deepEqual(result.audioBytes, [4, 3, 2, 1]);
     assert.equal(result.loadedPackageId, result.exportPackageId);
