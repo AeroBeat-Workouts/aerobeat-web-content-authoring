@@ -216,6 +216,10 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     const blockedCells = [...window.blockedCells]; const type = obstacleType(blockedCells); const sourceId = `obstacle-${String(window.sourceIndex).padStart(3, "0")}`;
     if ((type === "squat" && modifiers.includes("no_squats")) || (type.startsWith("weave_") && modifiers.includes("no_weaves"))) { trace.push({ sourceEventIds: [sourceId], start: window.startBeat, action: "drop", reason: "disabled_by_modifier", type }); continue; }
     const safeCells = Array.from({ length: 12 }, (_, index) => index).filter((cell) => !blockedCells.includes(cell));
+    // 2dh7 — feasibility gate: an obstacle with no reachable safe cell is undodgeable.
+    // Drop it with a trace parallel to the punch drops (spatial_target_blocked /
+    // unreachable_after_optimizer) instead of emitting an infeasible checkpoint.
+    if (!safeCells.length) { trace.push({ sourceEventIds: [sourceId], start: window.startBeat, end: window.endBeat, action: "drop", reason: type === "squat" ? "squat_no_reachable_safe_cell" : "weave_no_reachable_safe_cell", type, gridMask: [...window.gridMask], blockedCells, noseSafeCells: [] }); continue; }
     const emitted = { start: window.startBeat, end: window.endBeat, type, eventId: await eventId(String(recipe.recipeId), sourceId, type), sourceEventIds: [sourceId], sourceGeometry: cloneData(window.sourceGeometry), gameplayGeometry: cloneData(window.gameplayGeometry), gridMask: [...window.gridMask], checkpoint: { kind: "instantaneous", freshnessMs, timingWindowMs, noseSafeCells: safeCells }, blockedCells };
     beats.push(emitted); trace.push({ sourceEventIds: [sourceId], start: window.startBeat, end: window.endBeat, action: "emit", kind: "obstacle_checkpoint", type, sourceGeometry: cloneData(window.sourceGeometry), gameplayGeometry: cloneData(window.gameplayGeometry), gridMask: [...window.gridMask], blockedCells, noseSafeCells: safeCells });
   }

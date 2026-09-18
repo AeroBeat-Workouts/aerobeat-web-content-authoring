@@ -100,7 +100,12 @@ for (const format of ["v2", "v3", "v4"]) {
         assertUniqueLineage(chart.beats);
         const types = new Set(chart.beats.map((beat) => beat.type));
         for (const type of ["straight_left", "straight_right", "hook_left", "hook_right", "uppercut_left", "uppercut_right", "guard"]) assert.equal(types.has(type), true, `${format} must cover ${type}`);
-        if (!modifierSet.includes("no_squats") && !modifierSet.includes("no_weaves")) assert.ok([...types].some((type) => String(type).startsWith("weave_") || type === "squat"));
+        // 2dh7 — the v2/v3/v4 source obstacles all normalize to a single-lane full-height
+        // gameplay rect {x:0,y:0,w:1,h:3} (v2 `_width:2` remaps to canonical width 1),
+        // gridMask [0,4,8] → weave_right with nine reachable safe cells, so the feasibility
+        // gate does not fire and the weave is still emitted (unchanged from pre-gate).
+        if (!modifierSet.includes("no_weaves")) assert.equal(types.has("weave_right"), true, `${format} source obstacle must still emit weave_right (feasibility unaffected for a single-lane full-height mask)`);
+        else assert.equal(types.has("weave_right"), false, `${format} no_weaves must drop the source obstacle`);
       }
       const parity = await semanticParityHash(authored.package);
       semanticHashes.push(parity);
