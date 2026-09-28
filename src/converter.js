@@ -47,7 +47,9 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const songToken = sanitizeToken(options.songToken || options.sourceId || "imported");
   const modifiers = normalizeModifiers(options.modifiers ?? []);
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
-  const converterSettings = converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 0, reachAllowanceSubcells: 0, profileApplied: false };
+  // B3.2: opposite-lane booleans default ON — uppercuts and any-beats render in
+  // the opposite hand's lane (like hooks). A converter profile may override.
+  const converterSettings = { uppercutOppositeLane: true, anyOppositeLane: true, ...(converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 0, reachAllowanceSubcells: 0, profileApplied: false }) };
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const sourceDifficultyHash = options.sourceDifficultyHash;
   const spawnTiming = verifyBeatSaberSpawnTiming(options.spawnTiming);
@@ -162,7 +164,7 @@ async function colliderChartFor(generated, recipe, difficulty, songToken, source
   return chart;
 }
 
-/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} converterSettings */
+/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
 async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings) {
   const trace = [];
   const obstacleWindows = obstaclesFor(sourceSummary.obstacles ?? [], bpm);
@@ -199,7 +201,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     }
     if (!optimizer.selected.has(String(candidate.stableId))) { trace.push(dropTrace(candidate, optimizer.infeasible.get(String(candidate.stableId)) ?? "spacing_optimizer_rejected", { priorityOrder: optimizerPriority })); continue; }
     const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const family = String(candidate.family);
-    const spatial = spatialTarget(family, hand, Number(candidate.targetRow)); const blocked = blockedSubcellsAt(startMs, obstacleWindows);
+    const spatial = spatialTarget(family, hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane, anyOppositeLane: converterSettings.anyOppositeLane, anyPunch: modifiers.includes("any_punch") }); const blocked = blockedSubcellsAt(startMs, obstacleWindows);
     const safe = /** @type {number[]} */ (spatial.acceptedSubcells).filter((subcell) => !blocked.has(subcell));
     if (!safe.length) { trace.push(dropTrace(candidate, "spatial_target_blocked")); continue; }
     spatial.acceptedSubcells = safe;
@@ -244,9 +246,9 @@ function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty, c
   return { selected: new Map(best.at(-1).map((candidate) => [String(candidate.stableId), true])), infeasible };
 }
 
-/** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} converterSettings */
+/** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
 function staticInfeasibility(candidate, bpm, obstacles, difficulty, converterSettings) {
-  const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const spatial = spatialTarget(String(candidate.family), hand, Number(candidate.targetRow)); const blocked = blockedSubcellsAt(beatToMs(Number(candidate.start), bpm), obstacles);
+  const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const spatial = spatialTarget(String(candidate.family), hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane ?? true, anyOppositeLane: converterSettings.anyOppositeLane ?? true, anyPunch: false }); const blocked = blockedSubcellsAt(beatToMs(Number(candidate.start), bpm), obstacles);
   let safe = false; let reach = false; const seed = hand === "left" ? 5 : 6;
   for (const subcell of /** @type {number[]} */ (spatial.acceptedSubcells)) { if (blocked.has(subcell)) continue; safe = true; if (reachable(seedSubcell(seed), subcell, Number(candidate.start), reachSubcellsPerBeat[difficulty] + converterSettings.reachAllowanceSubcells, blocked)) { reach = true; break; } }
   return !safe ? "spatial_target_blocked_before_optimizer" : !reach ? "unreachable_before_optimizer" : "";
@@ -309,7 +311,7 @@ async function emitGuard(candidate, obstacles, wristSubcell, wristBeat, difficul
 function chooseGuardPair(sourcePair, crossed, blocked, start, wristSubcell, wristBeat, difficulty, converterSettings) { const sourceSorted = [...sourcePair].sort((a,b)=>a-b); const candidates = []; for (const pair of guardPairs) { const generatedLeftCell=crossed?pair[1]:pair[0],generatedRightCell=crossed?pair[0]:pair[1];if(converterSettings.profileApplied&&Math.max(subcellManhattan(seedSubcell(sourcePair[0]),seedSubcell(generatedLeftCell)),subcellManhattan(seedSubcell(sourcePair[1]),seedSubcell(generatedRightCell)))>converterSettings.guardRelocationRadius)continue;const subcells = [seedSubcell(pair[0]), seedSubcell(pair[1])]; if (blocked.has(subcells[0]) || blocked.has(subcells[1])) continue; const leftTarget = crossed ? subcells[1] : subcells[0]; const rightTarget = crossed ? subcells[0] : subcells[1]; const rate = reachSubcellsPerBeat[difficulty]+converterSettings.reachAllowanceSubcells; if (!reachable(wristSubcell.left, leftTarget, Math.max(start-wristBeat.left,0), rate, blocked) || !reachable(wristSubcell.right, rightTarget, Math.max(start-wristBeat.right,0), rate, blocked)) continue; const sourceRow = Math.floor(sourceSorted[0]/4) === Math.floor(sourceSorted[1]/4) ? Math.floor(sourceSorted[0]/4) : 1; const pairRow = Math.floor(pair[0]/4); const sourceMid=(sourceSorted[0]+sourceSorted[1])/2; const pairMid=(pair[0]+pair[1])/2; candidates.push({pair:[...pair],row:Math.abs(pairRow-sourceRow),mid:Math.abs(pairMid-sourceMid),center:Math.abs(pairMid-5.5),id:pair[0]}); } candidates.sort((a,b)=>a.row-b.row||a.mid-b.mid||a.center-b.center||a.id-b.id); return candidates[0]?.pair ?? []; }
 
 /** @param {string} family @param {string} hand @param {number} row */
-function spatialTarget(family, hand, row) { let column = hand === "left" ? 1 : 2; let targetRow = clamp(row,0,2); let direction=""; let sourceCell=-1; if (family === "hook") { column=hand==="left"?2:1; direction=hand==="left"?"right":"left"; sourceCell=targetRow*4+(hand==="left"?1:2); } else if (family === "uppercut") { targetRow=Math.min(targetRow,1); direction="up"; sourceCell=(targetRow+1)*4+column; } const targetCell=targetRow*4+column; const result={targetCell,acceptedSubcells:acceptedSubcells(targetCell,family,hand),sourceCell}; if(direction) Object.assign(result,{entryDirection:direction}); if(family==="straight") Object.assign(result,{qualificationMs:straightQualificationMs,semanticQualification:"straight"}); return result; }
+function spatialTarget(family, hand, row, settings = { uppercutOppositeLane: true, anyOppositeLane: true, anyPunch: false }) { let column = hand === "left" ? 1 : 2; let targetRow = clamp(row,0,2); let direction=""; let sourceCell=-1; if (family === "hook") { column=hand==="left"?2:1; direction=hand==="left"?"right":"left"; sourceCell=targetRow*4+(hand==="left"?1:2); } else if (family === "uppercut") { targetRow=Math.min(targetRow,1); direction="up"; if (settings.uppercutOppositeLane) column=hand==="left"?2:1; sourceCell=(targetRow+1)*4+column; } else if (family === "straight" && settings.anyPunch && settings.anyOppositeLane) { column=hand==="left"?2:1; } const targetCell=targetRow*4+column; const result={targetCell,acceptedSubcells:acceptedSubcells(targetCell,family,hand),sourceCell}; if(direction) Object.assign(result,{entryDirection:direction}); if(family==="straight") Object.assign(result,{qualificationMs:straightQualificationMs,semanticQualification:"straight"}); return result; }
 /** @param {number} cell @param {string} family @param {string} hand */
 function acceptedSubcells(cell,family,hand){const row=Math.floor(cell/4),column=cell%4,result=[];for(const subRow of [row*2,row*2+1]){result.push(subRow*8+column*2,subRow*8+column*2+1);if(family==="straight"){const margin=hand==="left"?column*2+2:column*2-1;if(margin>=0&&margin<8)result.push(subRow*8+margin);}}return result.sort((a,b)=>a-b);}
 /** @param {number} start @param {number} target @param {number} deltaBeats @param {number} rate @param {Set<number>} blocked */
