@@ -128,7 +128,15 @@ function narrowRequest(request) {
 }
 
 /** @param {unknown} value */
-function converterProfileShape(value){if(!hasExactDataKeys(value,["schema","version","profileId","profileVersion","class","label","experimental","settings","contentHash"]))return false;const profile=/** @type {Record<string,unknown>} */(value);if(profile.schema!=="aerobeat/prototype_profile"||profile.version!==1||profile.class!=="converter_regeneration"||profile.experimental!==true||!boundedString(profile.profileId,128)||!profile.profileId||!boundedString(profile.profileVersion,64)||!profile.profileVersion||!boundedString(profile.label,256)||!profile.label||typeof profile.contentHash!=="string"||!(/^[0-9a-f]{64}$/u).test(profile.contentHash))return false;if(!hasExactDataKeys(profile.settings,["guardRelocationRadius","reachAllowanceSubcells"])&&!hasExactDataKeys(profile.settings,["guardRelocationRadius","reachAllowanceSubcells","guardSpacing"]))return false;const settings=/** @type {Record<string,unknown>} */(profile.settings);return Number.isInteger(settings.guardRelocationRadius)&&Number(settings.guardRelocationRadius)>=0&&Number(settings.guardRelocationRadius)<=8&&Number.isInteger(settings.reachAllowanceSubcells)&&Number(settings.reachAllowanceSubcells)>=0&&Number(settings.reachAllowanceSubcells)<=8&&(!Object.hasOwn(settings,"guardSpacing")||(Number.isInteger(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2));}
+function converterProfileShape(value){
+  if(!hasExactDataKeys(value,["schema","version","profileId","profileVersion","class","label","experimental","settings","contentHash"]))return false;
+  const profile=/** @type {Record<string,unknown>} */(value);
+  if(profile.schema!=="aerobeat/prototype_profile"||profile.version!==1||profile.class!=="converter_regeneration"||profile.experimental!==true||!boundedString(profile.profileId,128)||!profile.profileId||!boundedString(profile.profileVersion,64)||!profile.profileVersion||!boundedString(profile.label,256)||!profile.label||typeof profile.contentHash!=="string"||!(/^[0-9a-f]{64}$/u).test(profile.contentHash))return false;
+  const required=["guardRelocationRadius","reachAllowanceSubcells"];
+  if(!hasOnlyDataKeys(profile.settings,required,["guardSpacing","uppercutOppositeLane","anyOppositeLane"])||!required.every((key)=>Object.hasOwn(/** @type {object} */(profile.settings),key)))return false;
+  const settings=/** @type {Record<string,unknown>} */(profile.settings);
+  return Number.isInteger(settings.guardRelocationRadius)&&Number(settings.guardRelocationRadius)>=0&&Number(settings.guardRelocationRadius)<=8&&Number.isInteger(settings.reachAllowanceSubcells)&&Number(settings.reachAllowanceSubcells)>=0&&Number(settings.reachAllowanceSubcells)<=8&&(!Object.hasOwn(settings,"guardSpacing")||(Number.isInteger(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2))&&(!Object.hasOwn(settings,"uppercutOppositeLane")||typeof settings.uppercutOppositeLane==="boolean")&&(!Object.hasOwn(settings,"anyOppositeLane")||typeof settings.anyOppositeLane==="boolean");
+}
 
 /** @param {unknown} value @param {string} expectedJobId */
 function narrowWorkerMessage(value, expectedJobId) {

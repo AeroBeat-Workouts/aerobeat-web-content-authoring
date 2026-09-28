@@ -47,9 +47,9 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const songToken = sanitizeToken(options.songToken || options.sourceId || "imported");
   const modifiers = normalizeModifiers(options.modifiers ?? []);
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
-  // B3.2: opposite-lane booleans default ON — uppercuts and any-beats render in
-  // the opposite hand's lane (like hooks). A converter profile may override.
-  const converterSettings = { uppercutOppositeLane: true, anyOppositeLane: true, guardSpacing: 1, ...(converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 0, reachAllowanceSubcells: 0, profileApplied: false }) };
+  // B3.2: uppercuts default to the same lane; any-beats default to the opposite lane.
+  // Converter profiles may override either default.
+  const converterSettings = { uppercutOppositeLane: false, anyOppositeLane: true, guardSpacing: 1, ...(converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 0, reachAllowanceSubcells: 0, profileApplied: false }) };
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const sourceDifficultyHash = options.sourceDifficultyHash;
   const spawnTiming = verifyBeatSaberSpawnTiming(options.spawnTiming);
@@ -248,7 +248,7 @@ function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty, c
 
 /** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
 function staticInfeasibility(candidate, bpm, obstacles, difficulty, converterSettings) {
-  const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const spatial = spatialTarget(String(candidate.family), hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane ?? true, anyOppositeLane: converterSettings.anyOppositeLane ?? true, anyPunch: false }); const blocked = blockedSubcellsAt(beatToMs(Number(candidate.start), bpm), obstacles);
+  const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const spatial = spatialTarget(String(candidate.family), hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane ?? false, anyOppositeLane: converterSettings.anyOppositeLane ?? true, anyPunch: false }); const blocked = blockedSubcellsAt(beatToMs(Number(candidate.start), bpm), obstacles);
   let safe = false; let reach = false; const seed = hand === "left" ? 5 : 6;
   for (const subcell of /** @type {number[]} */ (spatial.acceptedSubcells)) { if (blocked.has(subcell)) continue; safe = true; if (reachable(seedSubcell(seed), subcell, Number(candidate.start), reachSubcellsPerBeat[difficulty] + converterSettings.reachAllowanceSubcells, blocked)) { reach = true; break; } }
   return !safe ? "spatial_target_blocked_before_optimizer" : !reach ? "unreachable_before_optimizer" : "";
