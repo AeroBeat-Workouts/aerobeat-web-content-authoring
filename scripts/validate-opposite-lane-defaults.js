@@ -35,6 +35,21 @@ assert.equal(targetCell(overridden, "uppercut_left") % 4, 2, "profile overrides 
 assert.equal(targetCell(overridden, "straight_right") % 4, 2, "profile overrides any-beat lane");
 assert.equal((await validateAuthoredPackage(overridden.package)).valid, true);
 
+// Game Setup supplies converterSettings (not a converter profile) at import time.
+// Compare emitted chart cells, not merely the private spatialTarget helper.
+for (const [field, type, ownColumn, oppositeColumn] of [
+  /** @type {const} */ (["uppercutOppositeLane", "uppercut_left", 1, 2]),
+  /** @type {const} */ (["anyOppositeLane", "straight_right", 2, 1])
+]) {
+  const same = await convertDifficulty(summary, { ...options, modifiers: ["any_punch"], converterSettings: { [field]: false } });
+  const opposite = await convertDifficulty(summary, { ...options, modifiers: ["any_punch"], converterSettings: { [field]: true } });
+  assert.equal(targetCell(same, type) % 4, ownColumn, `${field}=false keeps ${type} in its own lane`);
+  assert.equal(targetCell(opposite, type) % 4, oppositeColumn, `${field}=true moves ${type} to the opposite lane`);
+  assert.notEqual(targetCell(same, type), targetCell(opposite, type), `${field} must change the authored targetCell`);
+  assert.equal((await validateAuthoredPackage(same.package)).valid, true);
+  assert.equal((await validateAuthoredPackage(opposite.package)).valid, true);
+}
+
 for (const invalid of [{ uppercutOppositeLane: "false" }, { anyOppositeLane: 1 }, { guardSpacing: 3 }, { unknownSetting: true }]) {
   await assert.rejects(() => profileFor(invalid), /** @type {(error:unknown)=>boolean} */ ((error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "converter_profile_settings_invalid")));
 }
@@ -49,4 +64,22 @@ const request = { schema: "aerobeat/authoring_worker_request", version: 2, kind:
 const workerResult = await executeWorkerConversion(request);
 assert.equal(workerResult.schema, "aerobeat/authoring_worker_result");
 assert.equal(workerResult.packageHash.length, 71);
-console.log("B3.2 opposite-lane defaults, profile overrides, and worker profile guard passed");
+for (const [field, type] of [
+  /** @type {const} */ (["uppercutOppositeLane", "uppercut_left"]),
+  /** @type {const} */ (["anyOppositeLane", "straight_right"])
+]) {
+  const cells = [];
+  for (const value of [false, true]) {
+    const { converterProfile: ignoredProfile, ...unprofiledOptions } = workerOptions;
+    void ignoredProfile;
+    const result = await executeWorkerConversion({ ...request, options: { ...unprofiledOptions, converterSettings: { [field]: value } } });
+    const authoredPackage = /** @type {{charts:{mode:string,beats:{type:string,spatialTarget?:{targetCell:number}}[]}[]}} */ (/** @type {unknown} */ (result.package));
+    const chart = authoredPackage.charts.find((entry) => entry.mode === "boxing");
+    assert.ok(chart, "worker must author a boxing chart");
+    const beat = chart.beats.find((entry) => entry.type === type);
+    assert.ok(beat?.spatialTarget, `worker must emit ${type}`);
+    cells.push(beat.spatialTarget.targetCell);
+  }
+  assert.notEqual(cells[0], cells[1], `worker converterSettings.${field} must reach the authored ${type} targetCell`);
+}
+console.log("B3.2 import-time converter settings change authored uppercut/any-punch cells through the worker");
