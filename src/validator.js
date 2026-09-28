@@ -1,6 +1,7 @@
 // @ts-check
 
-import { isObstacleGameplayGeometry, isObstacleGridMask, isObstacleSourceGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
+import { isObstacleGameplayGeometry, isObstacleGridMask, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
+import { isAuthoredObstacleSourceGeometry } from "./obstacle-source-geometry.js";
 import { isAuthoredNotePalette } from "@aerobeat/web-contracts/note-palette-contracts";
 import { canonicalJson, isPlainRecord, prefixedSha256 } from "./canonical.js";
 import { normalizeConverterProfile } from "./converter-profile.js";
@@ -124,7 +125,7 @@ function validateBeat(beat, path, issue) {
     if (!isPlainRecord(beat.spatialTarget) || !integerRange(beat.spatialTarget.targetCell, 0, 11) || !Array.isArray(beat.spatialTarget.acceptedSubcells) || beat.spatialTarget.acceptedSubcells.some((entry) => !integerRange(entry, 0, 47))) issue("spatial_target_invalid", `${path}.spatialTarget`, "Punch spatial target must use athlete grid/subgrid IDs");
   }
   if (/^(squat|weave_)/u.test(String(beat.type))) {
-    const geometryValid = Number.isFinite(beat.end) && Number(beat.end) > Number(beat.start) && Number(beat.end) <= 144000 && isObstacleSourceGeometry(beat.sourceGeometry) && isObstacleGameplayGeometry(beat.gameplayGeometry) && isObstacleGridMask(beat.gridMask, /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */ (beat.gameplayGeometry));
+    const geometryValid = Number.isFinite(beat.end) && Number(beat.end) > Number(beat.start) && Number(beat.end) <= 144000 && isAuthoredObstacleSourceGeometry(beat.sourceGeometry) && isObstacleGameplayGeometry(beat.gameplayGeometry) && isObstacleGridMask(beat.gridMask, /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */ (beat.gameplayGeometry));
     if (!geometryValid) issue("boxing_obstacle_geometry_invalid", path, "Boxing obstacle source/gameplay geometry, interval, and derived grid mask must match exactly");
     const blockedCells = Array.isArray(beat.blockedCells) ? beat.blockedCells : [];
     if (!geometryValid || canonicalJson(blockedCells) !== canonicalJson(beat.gridMask) || obstacleActionForCells(blockedCells) !== String(beat.type)) issue("blocked_cells_invalid", `${path}.blockedCells`, "Obstacle action and blocked cells must exactly match the normalized derived grid mask");
@@ -139,7 +140,7 @@ function validateFlowBeat(beat,path,issue){
   if(["note","bomb"].includes(String(beat.type))&&!integerRange(beat.placement,0,11))issue("flow_placement_invalid",`${path}.placement`,"Flow placement must be 0..11");
   if(String(beat.type)==="obstacle"){
     const keys=["start","end","type","sourceGeometry","gameplayGeometry","gridMask"];
-    if(Reflect.ownKeys(beat).length!==keys.length||!keys.every((key)=>Object.hasOwn(beat,key))||!Number.isFinite(beat.end)||Number(beat.end)<=Number(beat.start)||Number(beat.end)>144000||!isObstacleSourceGeometry(beat.sourceGeometry)||!isObstacleGameplayGeometry(beat.gameplayGeometry)||!isObstacleGridMask(beat.gridMask,/** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */(beat.gameplayGeometry)))issue("flow_obstacle_invalid",path,"Obstacle source evidence, normalized gameplay geometry, interval, and derived grid mask must match exactly");
+    if(Reflect.ownKeys(beat).length!==keys.length||!keys.every((key)=>Object.hasOwn(beat,key))||!Number.isFinite(beat.end)||Number(beat.end)<=Number(beat.start)||Number(beat.end)>144000||!isAuthoredObstacleSourceGeometry(beat.sourceGeometry)||!isObstacleGameplayGeometry(beat.gameplayGeometry)||!isObstacleGridMask(beat.gridMask,/** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */(beat.gameplayGeometry)))issue("flow_obstacle_invalid",path,"Obstacle source evidence, normalized gameplay geometry, interval, and derived grid mask must match exactly");
   }
   if(String(beat.type)==="arc"&&(!Number.isFinite(beat.end)||!integerRange(beat.startPlacement,0,11)||!integerRange(beat.endPlacement,0,11)||!Number.isInteger(beat.startDirection)||!Number.isInteger(beat.endDirection)))issue("flow_arc_invalid",path,"Flow arc is invalid");
   if(String(beat.type)==="burst"&&(!Number.isFinite(beat.end)||!integerRange(beat.placement,0,11)||!integerRange(beat.tailPlacement,0,11)||!Number.isInteger(beat.checkpointCount)||Number(beat.checkpointCount)<1))issue("flow_burst_invalid",path,"Flow burst is invalid");
