@@ -3,8 +3,8 @@
 import { canonicalJson, deepFreeze, isPlainRecord, sha256Hex } from "./canonical.js";
 
 export const converterProfileClass = "converter_regeneration";
-export const canonicalConverterProfile = deepFreeze({ schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.canonical", profileVersion: "1.0.0", class: converterProfileClass, label: "Canonical Converter (Experimental)", experimental: true, settings: { guardRelocationRadius: 1, reachAllowanceSubcells: 0 }, contentHash: "a43b53a39c13c9e9efe59854aee0fa16efdcd3c6a29bc09f678d94b3fd8f0202" });
-export const prototypeReachConverterProfile = deepFreeze({ schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.prototype-reach", profileVersion: "1.0.0", class: converterProfileClass, label: "Prototype Reach Converter (Experimental)", experimental: true, settings: { guardRelocationRadius: 2, reachAllowanceSubcells: 1 }, contentHash: "e37f8b527ed5ce86738ce22007fc963f83bccd737893fb4728d3b83eaa044eea" });
+export const canonicalConverterProfile = deepFreeze({ schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.canonical", profileVersion: "1.0.0", class: converterProfileClass, label: "Canonical Converter (Experimental)", experimental: true, settings: { guardRelocationRadius: 1, reachAllowanceSubcells: 0, guardSpacing: 1, uppercutOppositeLane: false, anyOppositeLane: true }, contentHash: "30428615e19b695e31b2b7ce931f692d541bfb5daf73c46c5db77ee9c76b4895" });
+export const prototypeReachConverterProfile = deepFreeze({ schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.prototype-reach", profileVersion: "1.0.0", class: converterProfileClass, label: "Prototype Reach Converter (Experimental)", experimental: true, settings: { guardRelocationRadius: 2, reachAllowanceSubcells: 1, guardSpacing: 1, uppercutOppositeLane: false, anyOppositeLane: true }, contentHash: "152e8d9a5c208605dcd36521d4befbc8c7868cdaac66ed4d552025feb560c56c" });
 
 /**
  * Normalize and cryptographically verify one exact experimental converter profile.

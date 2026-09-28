@@ -42,9 +42,12 @@
       "experimental": true,
       "settings": {
         "guardRelocationRadius": 1,
-        "reachAllowanceSubcells": 0
+        "reachAllowanceSubcells": 0,
+        "guardSpacing": 1,
+        "uppercutOppositeLane": false,
+        "anyOppositeLane": true
       },
-      "contentHash": "a43b53a39c13c9e9efe59854aee0fa16efdcd3c6a29bc09f678d94b3fd8f0202"
+      "contentHash": "30428615e19b695e31b2b7ce931f692d541bfb5daf73c46c5db77ee9c76b4895"
     },
     {
       "schema": "aerobeat/prototype_profile",
@@ -56,9 +59,12 @@
       "experimental": true,
       "settings": {
         "guardRelocationRadius": 2,
-        "reachAllowanceSubcells": 1
+        "reachAllowanceSubcells": 1,
+        "guardSpacing": 1,
+        "uppercutOppositeLane": false,
+        "anyOppositeLane": true
       },
-      "contentHash": "e37f8b527ed5ce86738ce22007fc963f83bccd737893fb4728d3b83eaa044eea"
+      "contentHash": "152e8d9a5c208605dcd36521d4befbc8c7868cdaac66ed4d552025feb560c56c"
     }
   ],
   "formats": {
@@ -470,5 +476,5 @@
       }
     }
   },
-  "fixtureHash": "sha256:a041fc7a75d3837cbe6e502cf5d289338788daf4d8eb7144dfd032cd89a4952b"
+  "fixtureHash": "sha256:9c90b652ac17a8465c0f3ad730fc1738187847fd979c50e0e5dbd018ce8e3243"
 }
