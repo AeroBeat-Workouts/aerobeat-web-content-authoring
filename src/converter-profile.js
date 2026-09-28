@@ -19,9 +19,9 @@ export async function normalizeConverterProfile(value) {
   const profileId = boundedString(record.profileId, "profileId", 128);
   const profileVersion = boundedString(record.profileVersion, "profileVersion", 64);
   const label = boundedString(record.label, "label", 256);
-  if (!exactKeys(record.settings, ["guardRelocationRadius", "reachAllowanceSubcells"])) throw profileError("converter_profile_settings_invalid", "Converter profile settings must contain the exact supported fields");
+  if (!exactKeys(record.settings, ["guardRelocationRadius", "reachAllowanceSubcells"]) && !exactKeys(record.settings, ["guardRelocationRadius", "reachAllowanceSubcells", "guardSpacing"])) throw profileError("converter_profile_settings_invalid", "Converter profile settings must contain only supported fields");
   const sourceSettings = /** @type {Record<string, unknown>} */ (record.settings);
-  const settings = deepFreeze({ guardRelocationRadius: boundedInteger(sourceSettings.guardRelocationRadius, "guardRelocationRadius", 0, 8), reachAllowanceSubcells: boundedInteger(sourceSettings.reachAllowanceSubcells, "reachAllowanceSubcells", 0, 8) });
+  const settings = deepFreeze({ guardRelocationRadius: boundedInteger(sourceSettings.guardRelocationRadius, "guardRelocationRadius", 0, 8), reachAllowanceSubcells: boundedInteger(sourceSettings.reachAllowanceSubcells, "reachAllowanceSubcells", 0, 8), ...(Object.hasOwn(sourceSettings, "guardSpacing") ? { guardSpacing: boundedInteger(sourceSettings.guardSpacing, "guardSpacing", 0, 2) } : {}) });
   const hashBody = deepFreeze({ schema: "aerobeat/prototype_profile", version: 1, profileId, profileVersion, class: converterProfileClass, settings });
   const contentHash = await sha256Hex(canonicalJson(hashBody));
   if (record.contentHash !== contentHash) throw profileError("converter_profile_hash_mismatch", "Converter profile content hash does not match its canonical identity and settings");
