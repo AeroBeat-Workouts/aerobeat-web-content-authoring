@@ -1,6 +1,7 @@
 // @ts-check
 
-import { isObstacleGameplayGeometry, isObstacleGridMask, isObstacleSourceGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
+import { isObstacleGameplayGeometry, isObstacleGridMask, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
+import { isAuthoredObstacleSourceGeometry } from "./obstacle-source-geometry.js";
 import { isAuthoredNotePalette } from "@aerobeat/web-contracts/note-palette-contracts";
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord } from "./canonical.js";
 import { flowChartSchemaId, flowChartSchemaVersion, flowCollidersRulesetId, flowGridRulesetId, hasExactFlowRulesetVariants } from "./flow-contract.js";
@@ -268,7 +269,7 @@ function obstacleContractForPackage(packageValue){
   const flowRulesetId=valueFor(flow,"rulesetId");const rulesetOk=currentV6?flowRulesetId===flowCollidersRulesetId:flowRulesetId===flowGridRulesetId;const schemaOk=valueFor(flow,"schemaId")===expectedFlowSchema&&valueFor(flow,"schemaVersion")===expectedFlowVersion;if(!schemaOk||!rulesetOk)return legacyObstacleContract;
   const beats=denseDataArray(valueFor(flow,"beats"),500000);if(!beats)return legacyObstacleContract;
   let obstacleCount=0;
-  for(const beat of beats){if(!isPlainRecord(beat)||valueFor(beat,"type")!=="obstacle")continue;obstacleCount+=1;if(obstacleCount>maximumObstaclesPerChart)return legacyObstacleContract;const keys=["start","end","type","sourceGeometry","gameplayGeometry","gridMask"];if(Reflect.ownKeys(beat).length!==keys.length||!keys.every((key)=>Object.hasOwn(beat,key)))return legacyObstacleContract;const start=valueFor(beat,"start"),end=valueFor(beat,"end"),sourceGeometry=valueFor(beat,"sourceGeometry"),gameplayGeometry=valueFor(beat,"gameplayGeometry"),gridMask=valueFor(beat,"gridMask");if(typeof start!=="number"||!Number.isFinite(start)||start<0||typeof end!=="number"||!Number.isFinite(end)||end<=start||end>144000||!isObstacleSourceGeometry(sourceGeometry)||!isObstacleGameplayGeometry(gameplayGeometry)||!isObstacleGridMask(gridMask,gameplayGeometry))return legacyObstacleContract;}
+  for(const beat of beats){if(!isPlainRecord(beat)||valueFor(beat,"type")!=="obstacle")continue;obstacleCount+=1;if(obstacleCount>maximumObstaclesPerChart)return legacyObstacleContract;const keys=["start","end","type","sourceGeometry","gameplayGeometry","gridMask"];if(Reflect.ownKeys(beat).length!==keys.length||!keys.every((key)=>Object.hasOwn(beat,key)))return legacyObstacleContract;const start=valueFor(beat,"start"),end=valueFor(beat,"end"),sourceGeometry=valueFor(beat,"sourceGeometry"),gameplayGeometry=valueFor(beat,"gameplayGeometry"),gridMask=valueFor(beat,"gridMask");if(typeof start!=="number"||!Number.isFinite(start)||start<0||typeof end!=="number"||!Number.isFinite(end)||end<=start||end>144000||!isAuthoredObstacleSourceGeometry(sourceGeometry)||!isObstacleGameplayGeometry(gameplayGeometry)||!isObstacleGridMask(gridMask,gameplayGeometry))return legacyObstacleContract;}
   return currentObstacleContract;
 }
 /** Derive the exact package-generation palette disposition without mutating rows or performing cryptographic verification. @param {Record<string,unknown>} packageValue @returns {NotePaletteContract} */

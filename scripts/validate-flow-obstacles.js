@@ -73,9 +73,9 @@ for(const [format,document,expected] of fixtures){const entry=parseBeatMapDiffic
     { obstacles: [{ b: 1, i: 1 }], obstaclesData: [{ d: 1, x: 0, y: 0, w: 1, h: 1 }] },
     { obstacles: [{ b: 1, i: 1.5 }], obstaclesData: [{ d: 1, x: 0, y: 0, w: 1, h: 1 }] },
     { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: 0.5, y: 0, w: 1, h: 1 }] },
-    { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: 0, y: -1, w: 1, h: 1 }] },
-    { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: 4, y: 0, w: 1, h: 1 }] },
-    { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: 0, y: 0, w: 1, h: 6 }] }
+    { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: "bad", y: 0, w: 1, h: 1 }] },
+    { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: 0.5, y: 0, w: 1, h: 1 }] },
+    { obstacles: [{ b: 1, i: 0 }], obstaclesData: [{ d: 1, x: 0, y: 0, w: 1, h: "bad" }] }
   ]) {
     assert.throws(() => parseBeatMapDifficulty(JSON.stringify(invalid), "v4"), error => /AuthoringParseError/u.test(String(error?.name ?? "")), `present-but-invalid v4 ${JSON.stringify(invalid)} must reject`);
   }
@@ -122,8 +122,24 @@ for(const [format,document,expected] of fixtures){const entry=parseBeatMapDiffic
   );
 }
 
+// 5v7j — Preserve original evidence while clipping the playable intersection.
+// x=-1/4 are real Unshatter side walls; x=-3/6 are Golden's farther-out decorations.
+// These entirely off-lane walls disappear; partially overlapping walls remain visible.
+for (const [format, document, source, gameplay, sourceIndex] of [
+  ["v2", { _obstacles: [{ _time: 1, _duration: 1, _lineIndex: -1, _type: 0, _width: 4 }, { _time: 2, _duration: 1, _lineIndex: 4, _type: 0, _width: 1 }] }, [-1, 0, 2, 5], [0, 0, 1, 3], 0],
+  ["v3", { obstacles: [{ b: 1, d: 1, x: -1, y: -1, w: 3, h: 7 }, { b: 2, d: 1, x: -3, y: 2, w: 1, h: 1 }, { b: 3, d: 1, x: 4, y: 0, w: 1, h: 5 }, { b: 4, d: 1, x: 1, y: 3, w: 1, h: 2 }] }, [-1, -1, 3, 7], [0, 0, 2, 3], 0],
+  ["v4", { obstacles: [{ b: 1, i: 0 }, { b: 2, i: 1 }], obstaclesData: [{ d: 1, x: 3, y: 1, w: 4, h: 6 }, { d: 1, x: 6, y: 2, w: 1, h: 1 }] }, [3, 1, 4, 6], [3, 0, 1, 2], 0]
+]) {
+  const parsed = parseBeatMapDifficulty(JSON.stringify(document), format).obstacles;
+  assert.equal(parsed.length, 1, `${format} zero-area obstacles must be dropped`);
+  const only = parsed[0];
+  assert.deepEqual([only.sourceGeometry.x, only.sourceGeometry.y, only.sourceGeometry.width, only.sourceGeometry.height], source, `${format} source provenance stays original`);
+  assert.deepEqual([only.gameplayGeometry.x, only.gameplayGeometry.y, only.gameplayGeometry.width, only.gameplayGeometry.height], gameplay, `${format} gameplay clips to grid`);
+  assert.equal(only.sourceIndex, sourceIndex, `${format} source index survives filtering`);
+}
+
 for(const [format,field] of [["v2","_obstacles"],["v3","obstacles"],["v4","obstacles"]])for(const malformed of [{},null,"invalid",0])assert.throws(()=>parseBeatMapDifficulty(JSON.stringify({[field]:malformed,...(format==="v4"?{obstaclesData:[]}:{})}),/** @type {"v2"|"v3"|"v4"} */(format)),error=>error?.code==="obstacle_container_invalid");
-for(const [format,document,code] of [["v2",{_obstacles:[{_time:1,_lineIndex:1,_type:2,_duration:1,_width:1}]},"obstacle_type_unsupported"],["v3",{obstacles:[{b:1,d:1,x:3,y:0,w:2,h:5}]},"obstacle_geometry_invalid"],["v4",{obstacles:[{b:1,i:0,x:1}],obstaclesData:[{d:1,x:1,y:0,w:1,h:5}]},"obstacle_geometry_conflict"],["v4",{obstacles:[{b:1,i:0,r:15}],obstaclesData:[{d:1,x:1,y:0,w:1,h:5}]},"obstacle_rotation_unsupported"]])assert.throws(()=>parseBeatMapDifficulty(JSON.stringify(document),/** @type {"v2"|"v3"|"v4"} */(format)),error=>error?.code===code);
+for(const [format,document,code] of [["v2",{_obstacles:[{_time:1,_lineIndex:1,_type:2,_duration:1,_width:1}]},"obstacle_type_unsupported"],["v3",{obstacles:[{b:1,d:1,x:3,y:0,w:"bad",h:5}]},"obstacle_geometry_invalid"],["v4",{obstacles:[{b:1,i:0,x:1}],obstaclesData:[{d:1,x:1,y:0,w:1,h:5}]},"obstacle_geometry_conflict"],["v4",{obstacles:[{b:1,i:0,r:15}],obstaclesData:[{d:1,x:1,y:0,w:1,h:5}]},"obstacle_rotation_unsupported"]])assert.throws(()=>parseBeatMapDifficulty(JSON.stringify(document),/** @type {"v2"|"v3"|"v4"} */(format)),error=>error?.code===code);
 
 // t7sv — Legacy v2 END-marker skip + provenance from BeatSaver map 561f
 // (Backstreet Boys - Incomplete, Normal, legacy v2.0.0, version hash

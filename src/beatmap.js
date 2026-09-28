@@ -57,7 +57,8 @@ function normalizeV2(map) {
     if (!isPlainRecord(entry)) continue;
     const entryType = integer(entry._type ?? entry.type, -1);
     if (entryType === 1) continue;
-    obstacles.push(normalizeV2Obstacle(entry, sourceIndex));
+    const obstacle = normalizeV2Obstacle(entry, sourceIndex);
+    if (obstacle) obstacles.push(obstacle);
   }
   const sliders = array(map._sliders ?? map.sliders).flatMap((entry) => isPlainRecord(entry) ? [{
     start: number(entry._headTime ?? entry.b, 0),
@@ -82,7 +83,10 @@ function normalizeV3(map) {
     return [noteRecord(sourceIndex, number(entry.b, 0), x, y, color, integer(entry.d, 8), number(entry.a, 0), Object.hasOwn(entry, "a"))];
   });
   const bombNotes = array(map.bombNotes).flatMap((entry) => isPlainRecord(entry) ? [{ start: number(entry.b, 0), x: integer(entry.x, 0), y: integer(entry.y, 0), cell: cellFromXY(integer(entry.x, 0), integer(entry.y, 0)) }] : []);
-  const obstacles = obstacleArray(map, "obstacles").map((entry, sourceIndex) => normalizeInlineObstacle(entry, sourceIndex));
+  const obstacles = obstacleArray(map, "obstacles").flatMap((entry, sourceIndex) => {
+    const obstacle = normalizeInlineObstacle(entry, sourceIndex);
+    return obstacle ? [obstacle] : [];
+  });
   const sliders = array(map.sliders).flatMap((entry) => isPlainRecord(entry) ? [{ start: number(entry.b, 0), end: number(entry.tb ?? entry.b, 0), cell: cellFromXY(integer(entry.x, 0), integer(entry.y, 0)), tailCell: cellFromXY(integer(entry.tx, 0), integer(entry.ty, 0)), hand: handFromColor(integer(entry.c, 0)), direction: integer(entry.d, 8), tailDirection: integer(entry.tc ?? entry.d, 8), headCurveMultiplier: number(entry.mu, 1), tailCurveMultiplier: number(entry.tmu, 1), midAnchorMode: integer(entry.m, 0) }] : []);
   const burstSliders = array(map.burstSliders).flatMap((entry) => {
     if (!isPlainRecord(entry)) return [];
@@ -110,7 +114,10 @@ function normalizeV4(map) {
     return [{ start: number(entry.b, 0), x, y, cell: cellFromXY(x, y) }];
   });
   const obstacleData = array(map.obstaclesData);
-  const obstacles = obstacleArray(map, "obstacles").map((entry, sourceIndex) => normalizeIndexedObstacle(entry, obstacleData, sourceIndex));
+  const obstacles = obstacleArray(map, "obstacles").flatMap((entry, sourceIndex) => {
+    const obstacle = normalizeIndexedObstacle(entry, obstacleData, sourceIndex);
+    return obstacle ? [obstacle] : [];
+  });
   const arcData = records(map.arcsData);
   const sliders = array(map.arcs).flatMap((entry) => {
     if (!isPlainRecord(entry)) return [];
@@ -201,21 +208,26 @@ function rejectObstacleRotation(value) {
 function obstacleRecord(start, duration, x, y, width, height, sourceIndex, kind) {
   if (start < 0) throw new AuthoringParseError("obstacle_time_invalid", "Obstacle start must be non-negative");
   if (!(duration > 0) || !Number.isFinite(start + duration)) throw new AuthoringParseError("obstacle_duration_invalid", "Obstacle duration must be finite and positive");
-  if (x < 0 || x > 3 || y < 0 || y > 2 || width < 1 || width > 4 || height < 1 || height > 5 || x + width > 4 || y + height > 5) throw new AuthoringParseError("obstacle_geometry_invalid", "Obstacle geometry is outside Beat Saber lane/layer bounds");
+  if (!Number.isSafeInteger(x + width) || !Number.isSafeInteger(y + height)) throw new AuthoringParseError("obstacle_geometry_invalid", "Obstacle extent must be a safe integer");
   const coordinateSpace = kind.startsWith("v2_") ? "beatsaber_v2_legacy_obstacle" : kind === "v3_rect" ? "beatsaber_v3_obstacle_rect" : "beatsaber_v4_obstacle_rect";
   const sourceGeometry = { schema: "aerobeat/obstacle_source_geometry", version: 1, coordinateSpace, kind, x, y, width, height };
+  // Intersect the source rectangle with Beat Saber's 4×5 lane/layer extent.
+  // Off-lane decorative walls are legal map data, but have no collision footprint here.
+  const clippedX = Math.max(0, x); const clippedY = Math.max(0, y);
+  const clippedRight = Math.min(4, x + width); const clippedTop = Math.min(5, y + height);
+  if (clippedRight <= clippedX || clippedTop <= clippedY) return null;
   let gameplayY; let gameplayHeight;
   if (kind === "v2_type_0" || kind === "v2_type_1") {
     // Legacy type conversion is fixture-defined, not inferred from its intermediate Y/H rectangle.
     gameplayY = 0; gameplayHeight = 3;
   } else {
-    // V3 and V4 rectangles explicitly intersect source layers 0..2, then map that footprint once to top-left rows.
-    const sourceTopExclusive = Math.min(y + height, 3);
+    // V3 and V4 rectangles intersect the playable source layers 0..2 before top-left mapping.
+    const sourceTopExclusive = Math.min(clippedTop, 3);
     gameplayY = 3 - sourceTopExclusive;
-    gameplayHeight = sourceTopExclusive - y;
+    gameplayHeight = sourceTopExclusive - clippedY;
   }
-  if (gameplayHeight < 1) throw new AuthoringParseError("obstacle_geometry_invalid", "Obstacle does not occupy the canonical gameplay grid");
-  const gameplayGeometry = { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x, y: gameplayY, width, height: gameplayHeight };
+  if (gameplayHeight < 1) return null;
+  const gameplayGeometry = { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: clippedX, y: gameplayY, width: clippedRight - clippedX, height: gameplayHeight };
   return { start, duration, sourceGeometry, gameplayGeometry, sourceIndex };
 }
 
