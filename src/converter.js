@@ -1,7 +1,6 @@
 // @ts-check
 
-import { deriveObstacleGridMask, isObstacleGameplayGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
-import { isAuthoredObstacleSourceGeometry } from "./obstacle-source-geometry.js";
+import { deriveObstacleGridMask, isObstacleGameplayGeometry, isObstacleSourceGeometry, maximumObstaclesPerChart } from "@aerobeat/web-contracts/obstacle-contracts";
 import { canonicalJson, cloneData, deepFreeze, prefixedSha256 } from "./canonical.js";
 import { normalizeConverterProfile } from "./converter-profile.js";
 import { createAuthoredNotePalette, flowPaletteReference, verifySourceNotePalette } from "./note-palette.js";
@@ -282,7 +281,7 @@ function obstaclesFor(obstacles, bpm) {
 function normalizedGeometryForObstacle(obstacle) {
   const sourceGeometry = obstacle.sourceGeometry;
   const gameplayGeometry = obstacle.gameplayGeometry;
-  if (!isAuthoredObstacleSourceGeometry(sourceGeometry) || !isObstacleGameplayGeometry(gameplayGeometry)) throw new Error("obstacle_geometry_invalid");
+  if (!isObstacleSourceGeometry(sourceGeometry) || !isObstacleGameplayGeometry(gameplayGeometry)) throw new Error("obstacle_geometry_invalid");
   return { sourceGeometry: /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleSourceGeometry} */ (cloneData(sourceGeometry)), gameplayGeometry: /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */ (cloneData(gameplayGeometry)) };
 }
 /** @param {Readonly<Record<string, unknown>>} obstacle */
