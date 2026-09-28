@@ -349,7 +349,10 @@ export function swapCrossedFlowNotes(beats, events = []) {
     for (let index = 0; index < count; index += 1) {
       const left = leftOnRight[index];
       const right = rightOnLeft[index];
-      if (left.placement === right.placement) throw new Error("flow_x_corner_same_cell_collision");
+      // Same-cell collision (degenerate): do NOT throw — skip the swap so the
+      // song stays playable. The notes keep their original hands (the X remains
+      // unreachable, but the chart is valid). This is the heuristic fallback.
+      if (left.placement === right.placement) continue;
       left.hand = "right";
       right.hand = "left";
       const leftTrace = /** @type {DataRecord | undefined} */ (traceFor.get(left));
