@@ -36,7 +36,7 @@ const colliderRulesetId = "boxing_collider_v1";
  * Convert one normalized difficulty into Flow plus four Boxing charts.
  *
  * @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary
- * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, noteJumpMovementSpeed: number, noteJumpStartBeatOffset: number, spawnTiming: unknown, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceInfoFormat: "v2"|"v4", sourceInfoVersion: string|null, sourceInfoHash: string, sourceDifficultyPath: string, sourceBeatmapFormat: "v2"|"v3"|"v4", sourceBeatmapVersion: string|null, sourceDifficultyHash: string, notePalette: unknown, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>}} options
+ * @param {{difficulty: Difficulty, songToken: string, songName: string, bpm: number, noteJumpMovementSpeed: number, noteJumpStartBeatOffset: number, spawnTiming: unknown, sourceProvider: string, sourceId: string, sourceVersionHash: string, sourceInfoFormat: "v2"|"v4", sourceInfoVersion: string|null, sourceInfoHash: string, sourceDifficultyPath: string, sourceBeatmapFormat: "v2"|"v3"|"v4", sourceBeatmapVersion: string|null, sourceDifficultyHash: string, notePalette: unknown, audioPath?: string, audioContentHash?: string, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, converterSettings?: Readonly<Record<string, unknown>>}} options
  * @param {(progress: number, phase: string) => void} [onProgress]
  * @returns {Promise<Readonly<{package: DataRecord, packageHash: string, sourceHash: string, charts: DataRecord[], traces: DataRecord[], flowTrace: DataRecord}>>}
  */
@@ -48,8 +48,10 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const modifiers = normalizeModifiers(options.modifiers ?? []);
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
   // B3.2: uppercuts default to the same lane; any-beats default to the opposite lane.
-  // Converter profiles may override either default.
-  const converterSettings = { uppercutOppositeLane: false, anyOppositeLane: true, guardSpacing: 1, ...(converterProfile ? { .../** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings), profileApplied: true } : { guardRelocationRadius: 0, reachAllowanceSubcells: 0, profileApplied: false }) };
+  // Profile defaults yield to Game Setup's three runtime-only settings; profile reach/relocation remain authoritative.
+  const profileSettings = converterProfile ? /** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings) : null;
+  const requestedSettings = /** @type {{guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (options.converterSettings ?? {});
+  const converterSettings = { uppercutOppositeLane: requestedSettings.uppercutOppositeLane ?? profileSettings?.uppercutOppositeLane ?? false, anyOppositeLane: requestedSettings.anyOppositeLane ?? profileSettings?.anyOppositeLane ?? true, guardSpacing: requestedSettings.guardSpacing ?? profileSettings?.guardSpacing ?? 1, guardRelocationRadius: profileSettings?.guardRelocationRadius ?? 0, reachAllowanceSubcells: profileSettings?.reachAllowanceSubcells ?? 0, profileApplied: converterProfile !== null };
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const sourceDifficultyHash = options.sourceDifficultyHash;
   const spawnTiming = verifyBeatSaberSpawnTiming(options.spawnTiming);

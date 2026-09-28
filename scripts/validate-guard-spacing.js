@@ -28,6 +28,18 @@ for (const spacing of [0, 1, 2]) {
   const rerun = await convertDifficulty(summary, { ...options, converterProfile: profile });
   assert.equal(result.packageHash, rerun.packageHash, `spacing ${spacing} must be deterministic`);
 }
+const overrideProfile = await profileFor(1);
+for (const spacing of [0, 2]) {
+  const overridden = await convertDifficulty(summary, { ...options, converterProfile: overrideProfile, converterSettings: { guardSpacing: spacing } });
+  const boxing = overridden.charts.find((entry) => entry.mode === "boxing");
+  const guard = /** @type {{guardTarget:{spacing:number}}} */ (/** @type {unknown} */ ((/** @type {Record<string,unknown>[]} */ (boxing?.beats ?? [])).find((entry) => entry.type === "guard")));
+  assert.equal(guard.guardTarget.spacing, spacing, "runtime spacing must override profile spacing");
+  assert.equal(/** @type {{guardRelocationRadius:number}} */ (overridden.traces[0].optimizer).guardRelocationRadius, 8, "profile relocation must remain authoritative");
+  assert.equal((await validateAuthoredPackage(overridden.package)).valid, true);
+}
+const noProfileOverride = await convertDifficulty(summary, { ...options, converterSettings: { guardSpacing: 2 } });
+const noProfileGuard = /** @type {{guardTarget:{spacing:number}}} */ (/** @type {unknown} */ ((/** @type {Record<string,unknown>[]} */ (noProfileOverride.charts[0].beats)).find((entry) => entry.type === "guard")));
+assert.equal(noProfileGuard.guardTarget.spacing, 2, "runtime settings apply without a converter profile");
 for (const invalid of [-1, 3, 0.5, "1", null]) {
   const body = { schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.guard-spacing-invalid", profileVersion: "1.0.0", class: "converter_regeneration", settings: { guardRelocationRadius: 8, reachAllowanceSubcells: 8, guardSpacing: invalid } };
   await assert.rejects(() => normalizeConverterProfile({ ...body, label: "Invalid guard spacing", experimental: true, contentHash: "0".repeat(64) }), /** @type {(error:unknown)=>boolean} */ ((error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "converter_profile_settings_invalid")));

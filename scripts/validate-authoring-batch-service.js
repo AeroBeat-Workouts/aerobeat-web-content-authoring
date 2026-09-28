@@ -23,7 +23,7 @@ let time = 100;
 const service = createAeroWebContentAuthoringService({ persistence, worker, now: () => ++time });
 const snapshots = [];
 service.subscribe((snapshot) => snapshots.push(snapshot));
-const result = await service.convertAllStandardAndPersist(acquired, { sourceProvider: "synthetic", sourceId: "batch-map", sourceVersionHash: "batch-v1", includeAudio: true, cacheSourceEntries: true });
+const result = await service.convertAllStandardAndPersist(acquired, { sourceProvider: "synthetic", sourceId: "batch-map", sourceVersionHash: "batch-v1", includeAudio: true, cacheSourceEntries: true, converterSettings: { guardSpacing: 2, uppercutOppositeLane: true, anyOppositeLane: false } });
 assert.equal(conversions, 2);
 assert.equal(maximumWorkers, 1, "batch conversion must remain sequential");
 assert.equal(putCollectionCalls, 1, "validated packages must commit through one collection transaction");
@@ -52,9 +52,13 @@ assert.equal(snapshots.some((snapshot) => containsBinary(snapshot)), false);
 
 const singlePersistence = createMemoryPersistenceAdapter();
 const single = createAeroWebContentAuthoringService({ persistence: singlePersistence });
-const expert = await single.convertAndPersist(acquired, { difficulty: "Expert", sourceProvider: "synthetic", sourceId: "batch-map", sourceVersionHash: "batch-v1", includeAudio: true, cacheSourceEntries: true });
+const expert = await single.convertAndPersist(acquired, { difficulty: "Expert", sourceProvider: "synthetic", sourceId: "batch-map", sourceVersionHash: "batch-v1", includeAudio: true, cacheSourceEntries: true, converterSettings: { guardSpacing: 2, uppercutOppositeLane: true, anyOppositeLane: false } });
 const batchExpert = result.packages.find((entry) => entry.difficultyId === "Expert");
 assert.deepEqual(batchExpert?.handle.packageHash, expert.handle.packageHash, "batching must not alter one-difficulty package hashes");
+for (const invalidSettings of [{ guardSpacing: 3 }, { guardSpacing: 0.5 }, { anyOppositeLane: 1 }, { uppercutOppositeLane: "true" }, { guardRelocationRadius: 8 }, []]) {
+  await assert.rejects(() => single.convertAndPersist(acquired, { difficulty: "Expert", converterSettings: /** @type {never} */ (invalidSettings) }), hasCode("request_invalid"));
+  await assert.rejects(() => service.convertAllStandardAndPersist(acquired, { converterSettings: /** @type {never} */ (invalidSettings) }), hasCode("request_invalid"));
+}
 single.destroy();
 
 assert.equal(await service.deleteCollection(result.collection.collectionId), true);

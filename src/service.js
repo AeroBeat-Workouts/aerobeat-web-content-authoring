@@ -14,7 +14,7 @@ import { verifyBeatSaberSpawnTiming } from "./spawn-timing.js";
 
 /** @typedef {ReturnType<typeof createMemoryPersistenceAdapter> | ReturnType<typeof createIndexedDbPersistenceAdapter>} PersistenceAdapter */
 /** @typedef {{kind: string, convert: (request: unknown, runtime?: {signal?: AbortSignal, onProgress?: (progress: number, phase: string) => void}) => Promise<unknown>, destroy: () => void}} WorkerAdapter */
-/** @typedef {{difficulty:string,modifiers:string[],sourceProvider?:string,sourceId?:string,sourceVersionHash?:string,expectedAudioContentHash?:string,expectedDifficultyContentHashes?:Record<string,string>,presentationSuggestion?:Record<string,unknown>,converterProfile?:Record<string,unknown>,limits?:Record<string,number>,cacheSourceEntries?:boolean,includeAudio?:boolean,signal?:AbortSignal}} NormalizedRequestOptions */
+/** @typedef {{difficulty:string,modifiers:string[],sourceProvider?:string,sourceId?:string,sourceVersionHash?:string,expectedAudioContentHash?:string,expectedDifficultyContentHashes?:Record<string,string>,presentationSuggestion?:Record<string,unknown>,converterProfile?:Record<string,unknown>,converterSettings?:Record<string,unknown>,limits?:Record<string,number>,cacheSourceEntries?:boolean,includeAudio?:boolean,signal?:AbortSignal}} NormalizedRequestOptions */
 
 /**
  * Create one reconnectable browser content-authoring service instance.
@@ -38,7 +38,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
      * Convert, validate and atomically persist one selected source difficulty.
      *
      * @param {unknown} acquired Provider-neutral vendor acquisition/source bundle.
-     * @param {{difficulty: string, sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
+     * @param {{difficulty: string, sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, converterSettings?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
      */
     async convertAndPersist(acquired, requestOptions) {
       assertOpen();
@@ -67,6 +67,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
             sourceDifficultyHash: manifest.selectedDifficulty.contentHash, notePalette: cloneData(manifest.selectedDifficulty.notePalette), audioPath: normalizedOptions.includeAudio === false ? "" : manifest.audioPath, audioContentHash: normalizedOptions.includeAudio === false ? "" : manifest.audioContentHash,
             modifiers: [...normalizedOptions.modifiers],
             ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
+            ...(normalizedOptions.converterSettings ? { converterSettings: cloneData(normalizedOptions.converterSettings) } : {}),
             ...(normalizedOptions.presentationSuggestion ? { presentationSuggestion: cloneData(normalizedOptions.presentationSuggestion) } : {})
           }
         };
@@ -99,7 +100,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
     /**
      * Convert every exact Standard difficulty sequentially and atomically persist one collection.
      * @param {unknown} acquired
-     * @param {{sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
+     * @param {{sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, converterSettings?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
      */
     async convertAllStandardAndPersist(acquired, requestOptions) {
       assertOpen();
@@ -131,6 +132,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
               sourceDifficultyHash: manifest.selectedDifficulty.contentHash, notePalette: cloneData(manifest.selectedDifficulty.notePalette), audioPath: manifest.audioPath, audioContentHash: manifest.audioContentHash,
               modifiers: [...normalizedOptions.modifiers],
               ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
+              ...(normalizedOptions.converterSettings ? { converterSettings: cloneData(normalizedOptions.converterSettings) } : {}),
               ...(normalizedOptions.presentationSuggestion ? { presentationSuggestion: cloneData(normalizedOptions.presentationSuggestion) } : {})
             }
           };
@@ -248,7 +250,7 @@ async function workerResultMatchesManifestFinal(packageValue,manifest,includeAud
 /** @param {unknown} value @returns {Readonly<NormalizedRequestOptions>} */
 function normalizeRequestOptions(value){
   if(!isPlainRecord(value))throw authoringError("request_invalid","Authoring options must be a plain record");
-  const allowed=new Set(["difficulty","sourceProvider","sourceId","sourceVersionHash","expectedAudioContentHash","expectedDifficultyContentHashes","modifiers","presentationSuggestion","converterProfile","cacheSourceEntries","includeAudio","limits","signal"]);
+  const allowed=new Set(["difficulty","sourceProvider","sourceId","sourceVersionHash","expectedAudioContentHash","expectedDifficultyContentHashes","modifiers","presentationSuggestion","converterProfile","converterSettings","cacheSourceEntries","includeAudio","limits","signal"]);
   for(const key of Reflect.ownKeys(value)){if(typeof key!=="string"||!allowed.has(key)){throw authoringError("request_invalid","Authoring options contain an unknown field");}const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable||descriptor.value===undefined)throw authoringError("request_invalid","Authoring options must contain enumerable data properties");}
   const difficulty=dataProperty(value,"difficulty");if(typeof difficulty!=="string"||!difficulty||difficulty.length>64)throw authoringError("request_invalid","Difficulty must be a bounded string");
   /** @type {NormalizedRequestOptions} */
@@ -256,14 +258,16 @@ function normalizeRequestOptions(value){
   for(const field of ["sourceProvider","sourceId","sourceVersionHash","expectedAudioContentHash"]){const entry=dataProperty(value,field);if(entry!==undefined){if(typeof entry!=="string"||entry.length>512)throw authoringError("request_invalid",`${field} must be a bounded string`);Object.assign(result,{[field]:entry});}}
   for(const field of ["cacheSourceEntries","includeAudio"]){const entry=dataProperty(value,field);if(entry!==undefined){if(typeof entry!=="boolean")throw authoringError("request_invalid",`${field} must be a boolean`);Object.assign(result,{[field]:entry});}}
   const modifiers=arrayStrings(dataProperty(value,"modifiers")??[],supportedModifiers.length,"modifiers");for(const modifier of modifiers){if(!supportedModifiers.includes(modifier))throw authoringError("request_invalid",`Unsupported modifier ${modifier}`);}result.modifiers=[...new Set(modifiers)].sort();
-  for(const field of ["expectedDifficultyContentHashes","limits","presentationSuggestion","converterProfile"]){const entry=dataProperty(value,field);if(entry!==undefined){if(!isPlainRecord(entry))throw authoringError("request_invalid",`${field} must be a plain record`);let encoded;try{encoded=canonicalJson(entry);}catch{throw authoringError("request_invalid",`${field} must contain plain data only`);}if(new TextEncoder().encode(encoded).byteLength>64*1024)throw authoringError("request_invalid",`${field} exceeds the size limit`);Object.assign(result,{[field]:cloneData(entry)});}}
+  for(const field of ["expectedDifficultyContentHashes","limits","presentationSuggestion","converterProfile","converterSettings"]){const entry=dataProperty(value,field);if(entry!==undefined){if(!isPlainRecord(entry))throw authoringError("request_invalid",`${field} must be a plain record`);let encoded;try{encoded=canonicalJson(entry);}catch{throw authoringError("request_invalid",`${field} must contain plain data only`);}if(new TextEncoder().encode(encoded).byteLength>64*1024)throw authoringError("request_invalid",`${field} exceeds the size limit`);Object.assign(result,{[field]:cloneData(entry)});}}
+  const converterSettings=dataProperty(result,"converterSettings");
+  if(converterSettings!==undefined){const allowedSettings=new Set(["guardSpacing","uppercutOppositeLane","anyOppositeLane"]);for(const key of Reflect.ownKeys(converterSettings)){if(typeof key!=="string"||!allowedSettings.has(key))throw authoringError("request_invalid","converterSettings contains an unknown field");const descriptor=Object.getOwnPropertyDescriptor(converterSettings,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable||(key==="guardSpacing"?(!Number.isInteger(descriptor.value)||descriptor.value<0||descriptor.value>2):typeof descriptor.value!=="boolean"))throw authoringError("request_invalid",`converterSettings.${key} is invalid`);}}
   const signal=dataProperty(value,"signal");if(signal!==undefined){if(typeof AbortSignal==="undefined"||!(signal instanceof AbortSignal))throw authoringError("request_invalid","signal must be an AbortSignal");Object.assign(result,{signal});}
   return Object.freeze(result);
 }
 /** @param {unknown} value @returns {Readonly<NormalizedRequestOptions>} */
 function normalizeBatchRequestOptions(value){
   if(!isPlainRecord(value))throw authoringError("request_invalid","Batch authoring options must be a plain record");
-  const allowed=new Set(["sourceProvider","sourceId","sourceVersionHash","expectedAudioContentHash","expectedDifficultyContentHashes","modifiers","presentationSuggestion","converterProfile","cacheSourceEntries","includeAudio","limits","signal"]);
+  const allowed=new Set(["sourceProvider","sourceId","sourceVersionHash","expectedAudioContentHash","expectedDifficultyContentHashes","modifiers","presentationSuggestion","converterProfile","converterSettings","cacheSourceEntries","includeAudio","limits","signal"]);
   /** @type {Record<string, unknown>} */ const narrowed={difficulty:"Easy"};
   for(const key of Reflect.ownKeys(value)){if(typeof key!=="string"||!allowed.has(key))throw authoringError("request_invalid","Batch authoring options contain an unknown field");const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable||descriptor.value===undefined)throw authoringError("request_invalid","Batch authoring options must contain enumerable data properties");narrowed[key]=descriptor.value;}
   return normalizeRequestOptions(narrowed);
