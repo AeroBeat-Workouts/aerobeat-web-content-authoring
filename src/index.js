@@ -2,7 +2,7 @@
 
 export { parseBeatMapDifficulty, AuthoringParseError } from "./beatmap.js";
 export { canonicalJson, prefixedSha256, sha256Hex } from "./canonical.js";
-export { convertDifficulty } from "./converter.js";
+export { convertDifficulty, reprocessBoxingChart } from "./converter.js";
 export { canonicalConverterProfile, converterProfileClass, normalizeConverterProfile, prototypeReachConverterProfile } from "./converter-profile.js";
 export {
   boxingPrototypeContractId,

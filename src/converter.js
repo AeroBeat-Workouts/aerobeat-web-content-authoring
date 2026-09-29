@@ -47,11 +47,6 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const songToken = sanitizeToken(options.songToken || options.sourceId || "imported");
   const modifiers = normalizeModifiers(options.modifiers ?? []);
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
-  // B3.2: uppercuts default to the same lane; any-beats default to the opposite lane.
-  // Profile defaults yield to Game Setup's three runtime-only settings; profile reach/relocation remain authoritative.
-  const profileSettings = converterProfile ? /** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings) : null;
-  const requestedSettings = /** @type {{guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (options.converterSettings ?? {});
-  const converterSettings = { uppercutOppositeLane: requestedSettings.uppercutOppositeLane ?? profileSettings?.uppercutOppositeLane ?? false, anyOppositeLane: requestedSettings.anyOppositeLane ?? profileSettings?.anyOppositeLane ?? true, guardSpacing: requestedSettings.guardSpacing ?? profileSettings?.guardSpacing ?? 1, guardRelocationRadius: profileSettings?.guardRelocationRadius ?? 0, reachAllowanceSubcells: profileSettings?.reachAllowanceSubcells ?? 0, profileApplied: converterProfile !== null };
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const sourceDifficultyHash = options.sourceDifficultyHash;
   const spawnTiming = verifyBeatSaberSpawnTiming(options.spawnTiming);
@@ -63,29 +58,11 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   // z7nw — the collider variant is single-variant and reach mapping happens at render/judge
   // time, so its authored rows come from the row-family "Balanced Height" generation
   // (balance_generated_rows, the first frozen recipe definition). The cut-family call was dropped.
-  const rowRecipe = /** @type {DataRecord} */ (recipeDefinitions.find((recipe) => String(recipe.recipeId) === rowFamilyRecipeId) ?? recipeDefinitions[0]);
-  const generated = await generateEvents(sourceSummary, difficulty, bpm, rowRecipe, modifiers, converterSettings);
-  const chart = await colliderChartFor(generated, rowRecipe, difficulty, songToken, sourceHash, modifiers, options.presentationSuggestion, converterProfile);
+  const boxing = await reprocessBoxingChart(sourceSummary, options);
+  const chart = boxing.chart;
   charts.push(chart);
-  traces.push({
-    chartId: chart.chartId,
-    difficulty,
-    bpm,
-    rulesetId: colliderRulesetId,
-    sourceHash,
-    contentHash: chart.prototype.contentHash,
-    sourceInfoFormat: options.sourceInfoFormat,
-    sourceInfoVersion: options.sourceInfoVersion,
-    sourceInfoHash: options.sourceInfoHash,
-    sourceDifficultyPath: options.sourceDifficultyPath,
-    sourceBeatmapFormat: options.sourceBeatmapFormat,
-    sourceBeatmapVersion: options.sourceBeatmapVersion,
-    sourceDifficultyHash,
-    spawnTiming: cloneData(spawnTiming),
-    ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
-    optimizer: cloneData(generated.optimizer),
-    events: cloneData(generated.trace)
-  });
+  traces.push(boxing.trace);
+
   onProgress(0.45, "converting");
   const flow = await convertFlowChart(sourceSummary, difficulty, songToken, notePalette);
   Object.assign(flow.trace, { sourceHash, sourceInfoFormat: options.sourceInfoFormat, sourceInfoVersion: options.sourceInfoVersion, sourceInfoHash: options.sourceInfoHash, sourceDifficultyPath: options.sourceDifficultyPath, sourceBeatmapFormat: options.sourceBeatmapFormat, sourceBeatmapVersion: options.sourceBeatmapVersion, sourceDifficultyHash, spawnTiming: cloneData(spawnTiming) });
@@ -139,6 +116,42 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   const packageHash = await prefixedSha256(canonicalJson(packageRecord));
   onProgress(0.8, "validating");
   return deepFreeze({ package: packageRecord, packageHash, sourceHash, charts, traces, flowTrace: flow.trace });
+}
+
+/** Regenerate only the selected difficulty's Boxing chart and trace from normalized source. */
+export async function reprocessBoxingChart(sourceSummary, options) {
+  const difficulty = normalizeDifficulty(options.difficulty);
+  const bpm = options.bpm;
+  if (!Number.isFinite(bpm) || bpm <= 0) throw new Error("spawn_timing_bpm_invalid");
+  const spawnTiming = verifyBeatSaberSpawnTiming(options.spawnTiming);
+  if (spawnTiming.bpm !== bpm || spawnTiming.noteJumpMovementSpeed !== options.noteJumpMovementSpeed || spawnTiming.noteJumpStartBeatOffset !== options.noteJumpStartBeatOffset) throw new Error("spawn_timing_mismatch");
+  const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
+  const profileSettings = converterProfile ? /** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings) : null;
+  const settings = /** @type {{guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (options.converterSettings ?? {});
+  const converterSettings = {
+    uppercutOppositeLane: settings.uppercutOppositeLane ?? profileSettings?.uppercutOppositeLane ?? false,
+    anyOppositeLane: settings.anyOppositeLane ?? profileSettings?.anyOppositeLane ?? true,
+    guardSpacing: settings.guardSpacing ?? profileSettings?.guardSpacing ?? 1,
+    guardRelocationRadius: profileSettings?.guardRelocationRadius ?? 0,
+    reachAllowanceSubcells: profileSettings?.reachAllowanceSubcells ?? 0,
+    profileApplied: converterProfile !== null
+  };
+  const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
+  const rowRecipe = /** @type {DataRecord} */ (recipeDefinitions.find((recipe) => String(recipe.recipeId) === rowFamilyRecipeId) ?? recipeDefinitions[0]);
+  const modifiers = normalizeModifiers(options.modifiers ?? []);
+  const generated = await generateEvents(sourceSummary, difficulty, bpm, rowRecipe, modifiers, converterSettings);
+  const chart = await colliderChartFor(generated, rowRecipe, difficulty, sanitizeToken(options.songToken || options.sourceId || "imported"), sourceHash, modifiers, options.presentationSuggestion, converterProfile);
+  const trace = {
+    chartId: chart.chartId, difficulty, bpm, rulesetId: colliderRulesetId, sourceHash,
+    contentHash: chart.prototype.contentHash,
+    sourceInfoFormat: options.sourceInfoFormat, sourceInfoVersion: options.sourceInfoVersion,
+    sourceInfoHash: options.sourceInfoHash, sourceDifficultyPath: options.sourceDifficultyPath,
+    sourceBeatmapFormat: options.sourceBeatmapFormat, sourceBeatmapVersion: options.sourceBeatmapVersion,
+    sourceDifficultyHash: options.sourceDifficultyHash, spawnTiming: cloneData(spawnTiming),
+    ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}),
+    optimizer: cloneData(generated.optimizer), events: cloneData(generated.trace)
+  };
+  return deepFreeze({ chart, trace, sourceHash });
 }
 
 /** @param {DataRecord} generated @param {DataRecord} recipe @param {Difficulty} difficulty @param {string} songToken @param {string} sourceHash @param {readonly string[]} modifiers @param {Readonly<Record<string, unknown>> | undefined} suggestion @param {Readonly<Record<string, unknown>> | null} converterProfile */

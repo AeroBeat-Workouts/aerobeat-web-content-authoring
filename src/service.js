@@ -2,6 +2,8 @@
 
 import { canonicalJson, cloneData, deepFreeze, isPlainRecord, prefixedSha256 } from "./canonical.js";
 import { normalizeConverterProfile } from "./converter-profile.js";
+import { reprocessBoxingChart } from "./converter.js";
+import { parseBeatMapDifficulty } from "./beatmap.js";
 import { supportedModifiers } from "./definitions.js";
 import { exportAuthoredPackage } from "./export.js";
 import { authoringPersistenceNamespace, createIndexedDbPersistenceAdapter, createMemoryPersistenceAdapter } from "./persistence.js";
@@ -170,6 +172,51 @@ export function createAeroWebContentAuthoringService(options = {}) {
         if (isCurrent(generation)) { publish(failed); active = null; }
         throw cause;
       } finally { normalizedOptions.signal?.removeEventListener("abort", externalAbort); }
+    },
+    /** Reprocess a stored difficulty from its local source cache; never fetch or reauthor Flow/audio. */
+    async reprocessBoxing(handle, converterSettings) {
+      assertOpen();
+      const record = await requireRecord(handle);
+      const existing = record.package;
+      const validation = await validateAuthoredPackage(existing);
+      if (!validation.valid || validation.packageHash !== record.packageHash) throw authoringError("package_invalid", "Stored package failed validation");
+      const source = existing.source;
+      const options = normalizeRequestOptions({ difficulty: source.difficulty, converterSettings });
+      const difficultyCache = record.sourceCache.find((entry) => entry.path === source.sourceDifficultyPath);
+      if (!difficultyCache) throw authoringError("source_cache_unavailable", "Original difficulty is not cached; reimport this song to enable live lane changes");
+      if (await prefixedSha256(difficultyCache.bytes) !== source.sourceDifficultyHash) throw authoringError("source_hash_mismatch", "Cached difficulty hash does not match package provenance");
+      const summary = parseBeatMapDifficulty(difficultyCache.bytes, source.sourceBeatmapFormat);
+      if (await prefixedSha256(canonicalJson(summary)) !== source.sourceHash) throw authoringError("source_hash_mismatch", "Cached difficulty does not match package source hash");
+      const boxingBefore = existing.charts.filter((chart) => chart.mode === "boxing");
+      if (boxingBefore.length !== 1 || existing.conversionTrace.boxing.length !== 1) throw authoringError("boxing_reprocess_unsupported", "Only current single-collider Boxing packages can be reprocessed");
+      const oldChart = boxingBefore[0];
+      const oldTrace = existing.conversionTrace.boxing[0];
+      const suffix = `-boxing-collider-${source.difficulty.toLowerCase()}`;
+      if (!oldChart.chartId.startsWith("ab-chart-") || !oldChart.chartId.endsWith(suffix)) throw authoringError("boxing_reprocess_unsupported", "Stored Boxing chart identity is inconsistent");
+      const songToken = oldChart.chartId.slice("ab-chart-".length, -suffix.length);
+      const regenerated = await reprocessBoxingChart(summary, {
+        difficulty: source.difficulty, songToken, songName: existing.songName,
+        bpm: source.spawnTiming.bpm, noteJumpMovementSpeed: source.spawnTiming.noteJumpMovementSpeed,
+        noteJumpStartBeatOffset: source.spawnTiming.noteJumpStartBeatOffset, spawnTiming: source.spawnTiming,
+        sourceProvider: source.provider, sourceId: source.sourceId, sourceVersionHash: source.sourceVersionHash,
+        sourceInfoFormat: source.sourceInfoFormat, sourceInfoVersion: source.sourceInfoVersion,
+        sourceInfoHash: source.sourceInfoHash, sourceDifficultyPath: source.sourceDifficultyPath,
+        sourceBeatmapFormat: source.sourceBeatmapFormat, sourceBeatmapVersion: source.sourceBeatmapVersion,
+        sourceDifficultyHash: source.sourceDifficultyHash, converterProfile: source.converterProfile,
+        converterSettings: options.converterSettings,
+        modifiers: oldChart.prototype.modifiers.filter((modifier) => supportedModifiers.includes(modifier)),
+        presentationSuggestion: oldChart.presentationSuggestion
+      });
+      if (regenerated.chart.chartId !== oldChart.chartId || regenerated.trace.chartId !== oldTrace.chartId) throw authoringError("boxing_reprocess_unsupported", "Stored Boxing chart identity is inconsistent");
+      const updated = /** @type {{charts:Record<string,unknown>[],conversionTrace:{boxing:unknown[]},packageId:string}} */ (cloneData(existing));
+      updated.charts = updated.charts.map((chart) => chart.mode === "boxing" ? /** @type {Record<string,unknown>} */ (cloneData(regenerated.chart)) : chart);
+      updated.conversionTrace.boxing = [cloneData(regenerated.trace)];
+      const verified = await validateAuthoredPackage(updated);
+      if (!verified.valid || !verified.packageHash) throw authoringError("boxing_reprocess_invalid", "Regenerated Boxing chart failed package validation");
+      assertOpen();
+      // Preserve original package and collection references. This is a private, ephemeral
+      // preview for the current song: no persistence mutation or audio duplication.
+      return deepFreeze({ package: updated, packageHash: verified.packageHash });
     },
     /** @param {string} [jobId] */
     cancel(jobId) { if (active && (!jobId || active.jobId === jobId)) { active.abort.abort(); return true; } return false; },
