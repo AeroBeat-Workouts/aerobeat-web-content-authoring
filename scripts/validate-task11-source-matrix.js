@@ -99,7 +99,8 @@ for (const format of ["v2", "v3", "v4"]) {
         assert.deepEqual(prototype.modifiers, expectedModifiers, "chart identity is requested + emitted modifier union");
         assertUniqueLineage(chart.beats);
         const types = new Set(chart.beats.map((beat) => beat.type));
-        for (const type of ["straight_left", "straight_right", "hook_left", "hook_right", "uppercut_left", "uppercut_right", "guard"]) assert.equal(types.has(type), true, `${format} must cover ${type}`);
+        for (const type of ["straight_left", "straight_right", "hook_left", "hook_right", "uppercut_left", "uppercut_right"]) assert.equal(types.has(type), true, `${format} must cover ${type}`);
+        assert.equal(types.has("guard"), converterProfile.settings.guardRelocationRadius >= 2, `${format} guard coverage must respect the profile relocation radius`);
         // 2dh7 — the v2/v3/v4 source obstacles all normalize to a single-lane full-height
         // gameplay rect {x:0,y:0,w:1,h:3} (v2 `_width:2` remaps to canonical width 1),
         // gridMask [0,4,8] → weave_right with nine reachable safe cells, so the feasibility
@@ -247,7 +248,7 @@ async function assertGuardRadiusSubcellDifference() {
   const guards=(result)=>result.charts.filter((chart)=>chart.mode==="boxing").reduce((count,chart)=>count+(/** @type {Record<string,unknown>[]} */(chart.beats)).filter((beat)=>beat.type==="guard").length,0);
   assert.equal(guards(legacy),1,"no-profile conversion must preserve unrestricted legacy guard relocation");
   assert.equal(guards(canonical),0,"radius 1 subcell must reject an adjacent 4x3-cell relocation because its center displacement is 2 subcells");
-  assert.equal(guards(reach),1,"radius 2 subcells must allow the same independently paired per-hand relocation");
+  assert.equal(guards(reach),0,"radius 2 subcells must reject a row 1 to fixed bottom-row relocation of 4 subcells");
 }
 
 async function assertMaterialProfileDifference() {

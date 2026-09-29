@@ -86,9 +86,8 @@ for (const chart of /** @type {{mode:string,beats:Record<string,unknown>[]}[]} *
     }
   }
 
-  // Blocked-center variant: fill every subcell of all three center pairs with
-  // obstacle windows so chooseGuardPair cannot pick a center pair; the guard
-  // must drop via guard_no_legal_pair rather than fall back to an edge pair.
+  // Blocked-center variant: obstacles cover all center pairs, but guards are
+  // special notes and must still target the bottom-row center pair.
   const blockCentersSummary = {
     colorNotes: [
       { start: 5, x: 0, y: 0, cell: 0, hand: "left", direction: 8, sourceIndex: 0 },
@@ -105,12 +104,12 @@ for (const chart of /** @type {{mode:string,beats:Record<string,unknown>[]}[]} *
   const blockedConversion = await convertDifficulty(blockCentersSummary, { ...options, songToken: "z2tx-blocked-centers" });
   for (const rawTrace of /** @type {Record<string, unknown>[]} */ (blockedConversion.traces)) {
     const events = /** @type {Record<string, unknown>[]} */ (rawTrace.events);
-    assert.ok(events.some((event) => String(event.action) === "drop" && String(event.reason) === "guard_no_legal_pair"), "z2tx: with all center pairs blocked, the guard must drop via guard_no_legal_pair");
+    assert.ok(events.some((event) => String(event.action) === "emit" && String(event.kind) === "guard" && JSON.stringify(event.generatedPair) === JSON.stringify([9, 10])), "z2tx: blocked center pairs must still emit a bottom-row guard");
   }
   const blockedBoxingCharts = /** @type {Record<string, unknown>[]} */ (blockedConversion.charts).filter((entry) => String(entry.mode) === "boxing");
   for (const rawChart of blockedBoxingCharts) {
     const beats = /** @type {Record<string, unknown>[]} */ (rawChart.beats);
-    assert.equal(beats.filter((beat) => beat.type === "guard").length, 0, "z2tx: no guard beats may be emitted when no center pair is legal");
+    assert.equal(beats.filter((beat) => beat.type === "guard").length, 1, "z2tx: bottom-row guard must emit despite blocked center pair");
   }
 }
 
