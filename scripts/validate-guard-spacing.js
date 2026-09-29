@@ -24,9 +24,9 @@ for (const spacing of [0, 0.5, 1, 2]) {
   // At spacing 0 the guards overlap (same cell); at 1+ they are distinct.
   if (spacing > 0) assert.notEqual(guard.guardTarget.leftCell, guard.guardTarget.rightCell, "hands must occupy distinct cells when spacing > 0");
   assert.ok([guard.guardTarget.leftCell, guard.guardTarget.rightCell].every((cell) => Number.isInteger(cell) && cell >= 0 && cell <= 11));
-  // Linear interpolation: leftCol = round(1.5 - s*0.5), rightCol = round(1.5 + s*0.5).
-  // Source is bottom row (cells 8/11), so the chosen row is the bottom (row 2).
-  assert.deepEqual([guard.guardTarget.leftCell, guard.guardTarget.rightCell], spacing === 0 ? [2, 2] : spacing < 1.5 ? [1, 2] : [0, 3]);
+  // Linear interpolation: leftCol = round(1.5 - s*0.75), rightCol = round(1.5 + s*0.75).
+  // Guards are always on row 2 (bottom row, cells 8-11).
+  assert.deepEqual([guard.guardTarget.leftCell, guard.guardTarget.rightCell], spacing === 0 ? [10, 10] : spacing < 1.5 ? [9, 10] : [8, 11]);
   assert.equal((await validateAuthoredPackage(result.package)).valid, true, `spacing ${spacing} package must validate`);
   const rerun = await convertDifficulty(summary, { ...options, converterProfile: profile });
   assert.equal(result.packageHash, rerun.packageHash, `spacing ${spacing} must be deterministic`);
