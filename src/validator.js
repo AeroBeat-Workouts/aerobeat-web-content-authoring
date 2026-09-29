@@ -117,7 +117,7 @@ function validateBeat(beat, path, issue) {
   if (!nonEmpty(beat.eventId) || !Array.isArray(beat.sourceEventIds) || beat.sourceEventIds.some((entry) => !nonEmpty(entry))) issue("beat_lineage_invalid", path, "Boxing beat event/source IDs are required");
   if (String(beat.type) === "guard") {
     if (beat.timingWindowMs !== timingWindowMs || beat.evidenceFreshnessMs !== freshnessMs) issue("beat_timing_invalid", path, "Guard timing/freshness must match the frozen contract");
-    if (!isPlainRecord(beat.guardTarget) || !integerRange(beat.guardTarget.leftCell, 0, 11) || !integerRange(beat.guardTarget.rightCell, 0, 11) || beat.guardTarget.leftCell === beat.guardTarget.rightCell || (Object.hasOwn(beat.guardTarget, "spacing") && !integerRange(beat.guardTarget.spacing, 0, 2))) issue("guard_target_invalid", `${path}.guardTarget`, "Guard cells must be distinct athlete 0..11 IDs with optional spacing 0..2");
+    if (!isPlainRecord(beat.guardTarget) || !integerRange(beat.guardTarget.leftCell, 0, 11) || !integerRange(beat.guardTarget.rightCell, 0, 11) || (beat.guardTarget.leftCell === beat.guardTarget.rightCell && beat.guardTarget.spacing !== 0) || (Object.hasOwn(beat.guardTarget, "spacing") && !numberRange(beat.guardTarget.spacing, 0, 2))) issue("guard_target_invalid", `${path}.guardTarget`, "Guard cells must be distinct athlete 0..11 IDs (same cell allowed at spacing 0) with spacing 0..2");
     if (!isPlainRecord(beat.checkpoint) || beat.checkpoint.kind !== "instantaneous" || beat.checkpoint.timingWindowMs !== timingWindowMs || beat.checkpoint.freshnessMs !== freshnessMs) issue("guard_checkpoint_invalid", `${path}.checkpoint`, "Guard checkpoint must use frozen instantaneous timing");
   }
   if (/^(straight|hook|uppercut)_/u.test(String(beat.type))) {
@@ -159,3 +159,4 @@ function nonEmpty(value) { return typeof value === "string" && value.trim().leng
 function validHash(value) { return typeof value === "string" && /^sha256:[0-9a-f]{64}$/u.test(value); }
 /** @param {unknown} value @param {number} minimum @param {number} maximum */
 function integerRange(value, minimum, maximum) { return Number.isInteger(value) && Number(value) >= minimum && Number(value) <= maximum; }
+function numberRange(value, minimum, maximum) { return Number.isFinite(value) && Number(value) >= minimum && Number(value) <= maximum; }

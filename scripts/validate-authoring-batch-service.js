@@ -55,7 +55,7 @@ const single = createAeroWebContentAuthoringService({ persistence: singlePersist
 const expert = await single.convertAndPersist(acquired, { difficulty: "Expert", sourceProvider: "synthetic", sourceId: "batch-map", sourceVersionHash: "batch-v1", includeAudio: true, cacheSourceEntries: true, converterSettings: { guardSpacing: 2, uppercutOppositeLane: true, anyOppositeLane: false } });
 const batchExpert = result.packages.find((entry) => entry.difficultyId === "Expert");
 assert.deepEqual(batchExpert?.handle.packageHash, expert.handle.packageHash, "batching must not alter one-difficulty package hashes");
-for (const invalidSettings of [{ guardSpacing: 3 }, { guardSpacing: 0.5 }, { anyOppositeLane: 1 }, { uppercutOppositeLane: "true" }, { guardRelocationRadius: 8 }, []]) {
+for (const invalidSettings of [{ guardSpacing: 3 }, { guardSpacing: -0.5 }, { anyOppositeLane: 1 }, { uppercutOppositeLane: "true" }, { guardRelocationRadius: 8 }, []]) {
   await assert.rejects(() => single.convertAndPersist(acquired, { difficulty: "Expert", converterSettings: /** @type {never} */ (invalidSettings) }), hasCode("request_invalid"));
   await assert.rejects(() => service.convertAllStandardAndPersist(acquired, { converterSettings: /** @type {never} */ (invalidSettings) }), hasCode("request_invalid"));
 }

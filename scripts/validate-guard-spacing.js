@@ -13,7 +13,7 @@ async function profileFor(spacing) {
   return normalizeConverterProfile({ ...body, label: `Guard spacing ${spacing}`, experimental: true, contentHash: await sha256Hex(canonicalJson(body)) });
 }
 
-for (const spacing of [0, 1, 2]) {
+for (const spacing of [0, 0.5, 1, 2]) {
   const profile = await profileFor(spacing);
   const result = await convertDifficulty(summary, { ...options, converterProfile: profile });
   const chart = result.charts.find((entry) => entry.mode === "boxing");
@@ -21,9 +21,12 @@ for (const spacing of [0, 1, 2]) {
   const guard = /** @type {{guardTarget:{leftCell:number,rightCell:number,spacing:number}}} */ (/** @type {unknown} */ ((/** @type {Record<string, unknown>[]} */ (chart.beats)).find((entry) => entry.type === "guard")));
   assert.ok(guard, `spacing ${spacing} must emit a guard`);
   assert.equal(guard.guardTarget.spacing, spacing);
-  assert.notEqual(guard.guardTarget.leftCell, guard.guardTarget.rightCell, "hands must occupy distinct cells");
+  // At spacing 0 the guards overlap (same cell); at 1+ they are distinct.
+  if (spacing > 0) assert.notEqual(guard.guardTarget.leftCell, guard.guardTarget.rightCell, "hands must occupy distinct cells when spacing > 0");
   assert.ok([guard.guardTarget.leftCell, guard.guardTarget.rightCell].every((cell) => Number.isInteger(cell) && cell >= 0 && cell <= 11));
-  assert.deepEqual([guard.guardTarget.leftCell, guard.guardTarget.rightCell], spacing === 0 ? [5, 6] : spacing === 1 ? [1, 2] : [0, 3]);
+  // Linear interpolation: leftCol = round(1.5 - s*0.5), rightCol = round(1.5 + s*0.5).
+  // Source is bottom row (cells 8/11), so the chosen row is the bottom (row 2).
+  assert.deepEqual([guard.guardTarget.leftCell, guard.guardTarget.rightCell], spacing === 0 ? [2, 2] : spacing < 1.5 ? [1, 2] : [0, 3]);
   assert.equal((await validateAuthoredPackage(result.package)).valid, true, `spacing ${spacing} package must validate`);
   const rerun = await convertDifficulty(summary, { ...options, converterProfile: profile });
   assert.equal(result.packageHash, rerun.packageHash, `spacing ${spacing} must be deterministic`);
@@ -40,7 +43,7 @@ for (const spacing of [0, 2]) {
 const noProfileOverride = await convertDifficulty(summary, { ...options, converterSettings: { guardSpacing: 2 } });
 const noProfileGuard = /** @type {{guardTarget:{spacing:number}}} */ (/** @type {unknown} */ ((/** @type {Record<string,unknown>[]} */ (noProfileOverride.charts[0].beats)).find((entry) => entry.type === "guard")));
 assert.equal(noProfileGuard.guardTarget.spacing, 2, "runtime settings apply without a converter profile");
-for (const invalid of [-1, 3, 0.5, "1", null]) {
+for (const invalid of [-1, 3, -0.5, "1", null]) {
   const body = { schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.guard-spacing-invalid", profileVersion: "1.0.0", class: "converter_regeneration", settings: { guardRelocationRadius: 8, reachAllowanceSubcells: 8, guardSpacing: invalid } };
   await assert.rejects(() => normalizeConverterProfile({ ...body, label: "Invalid guard spacing", experimental: true, contentHash: "0".repeat(64) }), /** @type {(error:unknown)=>boolean} */ ((error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "converter_profile_settings_invalid")));
 }

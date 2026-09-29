@@ -132,7 +132,7 @@ function narrowRequest(request) {
 function converterSettingsShape(value){
   if(!hasOnlyDataKeys(value,[],["guardSpacing","uppercutOppositeLane","anyOppositeLane"]))return false;
   const settings=/** @type {Record<string,unknown>} */(value);
-  return (!Object.hasOwn(settings,"guardSpacing")||(Number.isInteger(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2))&&(!Object.hasOwn(settings,"uppercutOppositeLane")||typeof settings.uppercutOppositeLane==="boolean")&&(!Object.hasOwn(settings,"anyOppositeLane")||typeof settings.anyOppositeLane==="boolean");
+  return (!Object.hasOwn(settings,"guardSpacing")||(Number.isFinite(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2))&&(!Object.hasOwn(settings,"uppercutOppositeLane")||typeof settings.uppercutOppositeLane==="boolean")&&(!Object.hasOwn(settings,"anyOppositeLane")||typeof settings.anyOppositeLane==="boolean");
 }
 
 /** @param {unknown} value */
@@ -143,7 +143,7 @@ function converterProfileShape(value){
   const required=["guardRelocationRadius","reachAllowanceSubcells"];
   if(!hasOnlyDataKeys(profile.settings,required,["guardSpacing","uppercutOppositeLane","anyOppositeLane"])||!required.every((key)=>Object.hasOwn(/** @type {object} */(profile.settings),key)))return false;
   const settings=/** @type {Record<string,unknown>} */(profile.settings);
-  return Number.isInteger(settings.guardRelocationRadius)&&Number(settings.guardRelocationRadius)>=0&&Number(settings.guardRelocationRadius)<=8&&Number.isInteger(settings.reachAllowanceSubcells)&&Number(settings.reachAllowanceSubcells)>=0&&Number(settings.reachAllowanceSubcells)<=8&&(!Object.hasOwn(settings,"guardSpacing")||(Number.isInteger(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2))&&(!Object.hasOwn(settings,"uppercutOppositeLane")||typeof settings.uppercutOppositeLane==="boolean")&&(!Object.hasOwn(settings,"anyOppositeLane")||typeof settings.anyOppositeLane==="boolean");
+  return Number.isInteger(settings.guardRelocationRadius)&&Number(settings.guardRelocationRadius)>=0&&Number(settings.guardRelocationRadius)<=8&&Number.isInteger(settings.reachAllowanceSubcells)&&Number(settings.reachAllowanceSubcells)>=0&&Number(settings.reachAllowanceSubcells)<=8&&(!Object.hasOwn(settings,"guardSpacing")||(Number.isFinite(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2))&&(!Object.hasOwn(settings,"uppercutOppositeLane")||typeof settings.uppercutOppositeLane==="boolean")&&(!Object.hasOwn(settings,"anyOppositeLane")||typeof settings.anyOppositeLane==="boolean");
 }
 
 /** @param {unknown} value @param {string} expectedJobId */
