@@ -386,7 +386,10 @@ function resolveBoxingObstacles(windows, settings, classify) {
   const cooldownBeats = Math.max(settings.obstacleCooldownMs, 0) / msPerBeat;
 
   // (1) Clamp duration.
-  const clamped = windows.map((window) => ({ ...window, endBeat: Math.min(window.endBeat, window.startBeat + maxBeats) }));
+  const clamped = windows.map((window) => {
+    const endBeat = Math.min(window.endBeat, window.startBeat + maxBeats);
+    return { ...window, endBeat, endMs: Math.min(window.endMs, endBeat * msPerBeat + timingWindowMs) };
+  });
 
   // (2) One obstacle at a time.
   const groups = [];
