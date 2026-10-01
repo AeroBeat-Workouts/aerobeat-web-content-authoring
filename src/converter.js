@@ -230,8 +230,9 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     beats.push(beat); lastPunchMs = startMs; previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = target; wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
     trace.push({ sourceEventIds: beat.sourceEventIds, eventId: generatedEventId, start, action: "emit", kind: "punch", family, hand, sourceDirection: Number(note.direction ?? 8), generatedDirection: spatial.entryDirection ?? "semantic_straight", target: cloneData(spatial) });
   }
-  for (const window of obstacleWindows) {
-    const blockedCells = [...window.blockedCells]; const type = obstacleType(blockedCells); const sourceId = `obstacle-${String(window.sourceIndex).padStart(3, "0")}`;
+  for (const mergedWindow of mergeSimultaneousLeanPairs(obstacleWindows)) {
+    const window = /** @type {ObstacleWindow & {forcedType?:string}} */ (/** @type {unknown} */ (mergedWindow));
+    const blockedCells = [...window.blockedCells]; const type = window.forcedType ?? obstacleType(blockedCells); const sourceId = `obstacle-${String(window.sourceIndex).padStart(3, "0")}`;
     if ((type === "squat" && modifiers.includes("no_squats")) || (type.startsWith("weave_") && modifiers.includes("no_weaves"))) { trace.push({ sourceEventIds: [sourceId], start: window.startBeat, action: "drop", reason: "disabled_by_modifier", type }); continue; }
     const safeCells = Array.from({ length: 12 }, (_, index) => index).filter((cell) => !blockedCells.includes(cell));
     // 2dh7 — feasibility gate: an obstacle with no reachable safe cell is undodgeable.
@@ -310,6 +311,57 @@ function gridMaskForObstacle(obstacle) {
 /** @param {number} timeMs @param {ObstacleWindow[]} windows */
 function blockedSubcellsAt(timeMs, windows) { const blocked = new Set(); for (const window of windows) if (timeMs >= window.startMs && timeMs <= window.endMs) for (const cell of window.blockedCells) for (const subcell of acceptedSubcells(cell, "cell", "left")) blocked.add(subcell); return blocked; }
 /** @param {number[]} cells */
+
+/**
+ * 0.0.88 (Derrick): a map that puts leans on BOTH sides at the same instant leaves
+ * the player no safe lane — the two full-height walls together cover the whole
+ * grid, which is the unavoidable "full screen" boxing obstacle. Those
+ * simultaneous left+right pairs are therefore merged into ONE obstacle.
+ *
+ * To stop that being repetitive, the replacement cycles
+ * squat -> weave_left -> weave_right -> squat ... in occurrence order within the
+ * song, so consecutive both-sides moments differ.
+ *
+ * The merged obstacle does NOT union the two walls' blocked cells: that would
+ * re-block the entire grid and reintroduce the undodgeable case. A squat blocks
+ * only the top row (duck under it); a weave keeps its own side's cells.
+ */
+const simultaneousLeanCycle = Object.freeze(["squat", "weave_left", "weave_right"]);
+const topRowCells = Object.freeze([0, 1, 2, 3]);
+/** @param {ReadonlyArray<ObstacleWindow>} windows @returns {DataRecord[]} */
+function mergeSimultaneousLeanPairs(windows) {
+  /** @type {{startBeat:number,endBeat:number,entries:ReadonlyArray<{window:DataRecord,type:string}>}[]} */
+  const groups = [];
+  for (const window of windows) {
+    const entry = { window, type: String(obstacleType([.../** @type {readonly number[]} */ (window.blockedCells)])) };
+    const existing = groups.find((group) => group.startBeat === window.startBeat && group.endBeat === window.endBeat);
+    if (existing) existing.entries = [...existing.entries, entry];
+    else groups.push({ startBeat: window.startBeat, endBeat: window.endBeat, entries: [entry] });
+  }
+  let occurrence = 0;
+  /** @type {DataRecord[]} */
+  const merged = [];
+  for (const group of groups) {
+    const hasLeft = group.entries.some((entry) => entry.type === "weave_left");
+    const hasRight = group.entries.some((entry) => entry.type === "weave_right");
+    if (group.entries.length < 2 || !hasLeft || !hasRight) { for (const entry of group.entries) merged.push(entry.window); continue; }
+    const type = simultaneousLeanCycle[occurrence % simultaneousLeanCycle.length];
+    occurrence += 1;
+    const left = group.entries.find((entry) => entry.type === "weave_left");
+    const right = group.entries.find((entry) => entry.type === "weave_right");
+    const kept = type === "weave_left" ? left.window : type === "weave_right" ? right.window : group.entries[0].window;
+    const blockedCells = type === "squat" ? [...topRowCells] : [.../** @type {readonly number[]} */ (kept.blockedCells)].sort((a, b) => a - b);
+    // The emitted gameplayGeometry must agree with the new blockedCells or the
+    // package validator rejects it as boxing_obstacle_geometry_invalid. A squat is
+    // a full-width TOP row; a weave keeps the side it inherited.
+    const gameplayGeometry = type === "squat"
+      ? { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 0, y: 0, width: 4, height: 1 }
+      : kept.gameplayGeometry;
+    merged.push(/** @type {DataRecord} */ ({ ...kept, gameplayGeometry, blockedCells, gridMask: blockedCells, forcedType: type }));
+  }
+  return merged;
+}
+
 function obstacleType(cells) { let left = 0; let right = 0; for (const cell of cells) cell % 4 <= 1 ? left += 1 : right += 1; return left > right ? "weave_right" : right > left ? "weave_left" : "squat"; }
 
 /** @param {DataRecord} candidate @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty @param {string} recipeIdValue @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean}} converterSettings */
