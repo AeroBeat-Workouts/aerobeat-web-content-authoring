@@ -273,7 +273,11 @@ async function assertMaterialProfileDifference() {
     legacyTotal += legacy.charts.filter((chart) => chart.mode === "boxing").reduce((count, chart) => count + (/** @type {Record<string,unknown>[]} */ (chart.beats)).filter((beat) => String(beat.type).startsWith("hook_")).length, 0);
     reachTotal += reach.charts.filter((chart) => chart.mode === "boxing").reduce((count, chart) => count + (/** @type {Record<string,unknown>[]} */ (chart.beats)).filter((beat) => String(beat.type).startsWith("hook_")).length, 0);
   }
-  assert.ok(reachTotal > legacyTotal, `reachAllowanceSubcells must materially increase emitted hooks (${legacyTotal} legacy vs ${reachTotal} reach)`);
+  // 0.0.89 (Derrick): subcell reachability was REMOVED, so reachAllowanceSubcells no
+  // longer influences emitted notes. The reach profile must now be behaviourally
+  // identical to legacy rather than materially different. Asserting the old
+  // "must increase" property would test a feature that no longer exists.
+  assert.equal(reachTotal, legacyTotal, `reachAllowanceSubcells no longer gates emission (${legacyTotal} legacy vs ${reachTotal} reach)`);
 }
 
 /** @param {string} format @param {string} version @param {Uint8Array} difficultyBytes @param {Uint8Array} audio */

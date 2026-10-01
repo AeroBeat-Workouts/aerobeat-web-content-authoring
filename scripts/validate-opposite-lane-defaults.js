@@ -24,7 +24,20 @@ function targetCell(result, type) {
 }
 const defaultResult = await convertDifficulty(summary, { ...options, modifiers: ["any_punch"] });
 assert.equal(targetCell(defaultResult, "uppercut_left") % 4, 1, "uppercut defaults to its own lane");
-assert.equal(targetCell(defaultResult, "straight_right") % 4, 1, "any beat defaults to opposite lane");
+// 0.0.89 (Derrick): ONLY hooks stay in the opposite handiness lane. Uppercuts and
+// straight punches default to their OWN lane. This previously asserted the crossed
+// straight-punch default as correct, which is how that behaviour survived.
+assert.equal(targetCell(defaultResult, "straight_right") % 4, 2, "straight punch defaults to its own lane");
+// Same rule without the any_punch modifier: the default must not depend on it.
+const plainResult = await convertDifficulty(summary, { ...options });
+const plainBoxing = plainResult.charts.find((entry) => entry.mode === "boxing");
+assert.ok(plainBoxing, "boxing chart must author without modifiers");
+for (const type of ["uppercut_left", "straight_right"]) {
+  const beat = /** @type {{spatialTarget:{targetCell:number}}} */ (/** @type {unknown} */ ((/** @type {Record<string, unknown>[]} */ (plainBoxing.beats)).find((entry) => entry.type === type)));
+  assert.ok(beat, `${type} must emit without modifiers`);
+  const ownColumn = type.endsWith("_left") ? 1 : 2;
+  assert.equal(beat.spatialTarget.targetCell % 4, ownColumn, `${type} stays in its own lane without any_punch`);
+}
 assert.equal((await validateAuthoredPackage(defaultResult.package)).valid, true);
 
 const profile = await profileFor({ uppercutOppositeLane: true, anyOppositeLane: false, guardSpacing: 2 });

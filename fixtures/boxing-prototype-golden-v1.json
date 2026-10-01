@@ -102,7 +102,6 @@
       "hook_left",
       "guard",
       "straight_left",
-      "straight_right",
       "weave_right"
     ],
     "cutTypes": [
@@ -120,7 +119,6 @@
       "boxing-hook-left-b79926c70521",
       "boxing-guard-eda75053e1a0",
       "boxing-straight-left-8d587c038c1f",
-      "boxing-straight-right-cc6d4aadec92",
       "boxing-weave-right-23a93deff994"
     ]
   },

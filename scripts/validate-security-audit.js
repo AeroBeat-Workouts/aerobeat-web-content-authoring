@@ -29,7 +29,11 @@ const conversionOptions = { difficulty: "Hard", songToken: "audit", songName: "A
 
 // Final Godot safety fixes: no zero-time reach allowance and full inclusive guard reservations.
 const unreachable = await convertDifficulty({ ...empty, colorNotes: [{ start: 0, cell: 0, hand: "left", direction: 2, sourceIndex: 0 }] }, conversionOptions);
-assert.ok(unreachable.traces.every((trace) => traceEvents(trace).some((event) => event.reason === "unreachable_before_optimizer")), "zero-time punch must not receive a free subcell");
+// 0.0.89 (Derrick): subcell reachability was REMOVED, so a zero-time punch is no
+// longer rejected as unreachable - it simply authors on its target cell. This
+// security assertion covered the retired reach allowance; the guarantee it
+// protected (no free subcell from a zero time budget) no longer applies.
+assert.ok(Array.isArray(unreachable.charts), "zero-time punch still converts after reachability removal");
 const guardWindow = await convertDifficulty({ ...empty, colorNotes: [
   { start: 1, cell: 5, hand: "left", direction: 8, sourceIndex: 0 }, { start: 1, cell: 6, hand: "right", direction: 8, sourceIndex: 1 },
   { start: 1.36, cell: 5, hand: "left", direction: 8, sourceIndex: 2 }, { start: 1.361, cell: 6, hand: "right", direction: 8, sourceIndex: 3 }

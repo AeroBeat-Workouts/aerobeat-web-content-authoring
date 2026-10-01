@@ -338,7 +338,10 @@ function blockedSubcellsAt(timeMs, windows) { const blocked = new Set(); for (co
  * re-block the entire grid and reintroduce the undodgeable case. A squat blocks
  * only the top row (duck under it); a weave keeps its own side's cells.
  */
+// Rule 4 same-type advance order (Derrick): weave-left -> weave-right -> squat.
 const simultaneousObstacleCycle = Object.freeze(["weave_left", "weave_right", "squat"]);
+// A both-sides MERGE starts at a squat (duck under it) and then varies.
+const mergedObstacleCycle = Object.freeze(["squat", "weave_left", "weave_right"]);
 const topRowCells = Object.freeze([0, 1, 2, 3]);
 /** @param {ReadonlyArray<ObstacleWindow>} windows @returns {DataRecord[]} */
 /**
@@ -370,15 +373,21 @@ function resolveBoxingObstacles(windows, settings, classify) {
 
   // (3) Variety cycle.
   let previousType = null;
+  let occurrence = 0;
   const cycled = groups.map((group) => {
     const first = group.entries[0];
+    const base = first.window;
     let type = first.type;
-    if (previousType !== null && type === previousType) {
+    if (group.entries.length > 1) {
+      // A both-sides merge takes the NEXT CYCLE SLOT outright (occurrence 0 is a
+      // squat), rather than keeping whichever side happened to be authored first.
+      type = mergedObstacleCycle[occurrence % mergedObstacleCycle.length];
+      occurrence += 1;
+    } else if (previousType !== null && type === previousType) {
       const index = simultaneousObstacleCycle.indexOf(type);
       type = simultaneousObstacleCycle[(index + 1) % simultaneousObstacleCycle.length];
     }
     previousType = type;
-    const base = first.window;
     if (group.entries.length === 1 && type === first.type) return base;
     const left = group.entries.find((entry) => entry.type === "weave_left");
     const right = group.entries.find((entry) => entry.type === "weave_right");
