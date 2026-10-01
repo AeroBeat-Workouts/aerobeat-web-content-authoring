@@ -127,15 +127,20 @@ export async function reprocessBoxingChart(sourceSummary, options) {
   if (spawnTiming.bpm !== bpm || spawnTiming.noteJumpMovementSpeed !== options.noteJumpMovementSpeed || spawnTiming.noteJumpStartBeatOffset !== options.noteJumpStartBeatOffset) throw new Error("spawn_timing_mismatch");
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
   const profileSettings = converterProfile ? /** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings) : null;
-  const settings = /** @type {{guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (options.converterSettings ?? {});
-  const converterSettings = {
+  const settings = /** @type {{guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean,maxObstacleDurationMs?:number,obstacleCooldownMs?:number}} */ (options.converterSettings ?? {});
+  const converterSettings = /** @type {{uppercutOppositeLane:boolean,anyOppositeLane:boolean,guardSpacing:number,maxObstacleDurationMs:number,obstacleCooldownMs:number,guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} */ ({
     uppercutOppositeLane: settings.uppercutOppositeLane ?? profileSettings?.uppercutOppositeLane ?? false,
-    anyOppositeLane: settings.anyOppositeLane ?? profileSettings?.anyOppositeLane ?? true,
-    guardSpacing: settings.guardSpacing ?? profileSettings?.guardSpacing ?? 1,
+    // 0.0.89 (Derrick): ONLY hooks stay in the opposite handiness lane.
+    anyOppositeLane: settings.anyOppositeLane ?? profileSettings?.anyOppositeLane ?? false,
+    guardSpacing: settings.guardSpacing ?? profileSettings?.guardSpacing ?? 0.25,
+    // 0.0.89 (Derrick): Boxing obstacle rules. Both bake at import time, so a change
+    // needs a reimport. Surfaced in Game Setup for playtesting, locked in later.
+    maxObstacleDurationMs: Number(settings.maxObstacleDurationMs ?? 3000),
+    obstacleCooldownMs: Number(settings.obstacleCooldownMs ?? 4000),
     guardRelocationRadius: profileSettings?.guardRelocationRadius ?? 0,
     reachAllowanceSubcells: profileSettings?.reachAllowanceSubcells ?? 0,
     profileApplied: converterProfile !== null
-  };
+  });
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const rowRecipe = /** @type {DataRecord} */ (recipeDefinitions.find((recipe) => String(recipe.recipeId) === rowFamilyRecipeId) ?? recipeDefinitions[0]);
   const modifiers = normalizeModifiers(options.modifiers ?? []);
@@ -203,6 +208,14 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
   let lastPunchMs = -1e9; let previousHand = "";
   const wristSubcell = { left: seedSubcell(5), right: seedSubcell(6) }; const wristBeat = { left: 0, right: 0 };
   const familyCounts = { straight: 0, hook: 0, uppercut: 0 };
+  // 0.0.89 (Derrick): resolve the obstacle set ONCE and use the SAME set for punch
+  // blocking and obstacle emission, so every rule sees the final obstacles.
+  const resolvedObstacleWindows = resolveBoxingObstacles(obstacleWindows, {
+    maxObstacleDurationMs: Number(converterSettings["maxObstacleDurationMs"] ?? 3000),
+    obstacleCooldownMs: Number(converterSettings["obstacleCooldownMs"] ?? 4000),
+    msPerBeat: 60000 / bpm
+  }, obstacleType);
+  const obstacleWindowActive = (timeMs) => resolvedObstacleWindows.some((window) => timeMs >= window.startMs && timeMs <= window.endMs);
   for (const candidate of candidates) {
     const start = Number(candidate.start); const startMs = beatToMs(start, bpm);
     if (candidate.kind === "guard") {
@@ -216,21 +229,20 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     }
     if (!optimizer.selected.has(String(candidate.stableId))) { trace.push(dropTrace(candidate, optimizer.infeasible.get(String(candidate.stableId)) ?? "spacing_optimizer_rejected", { priorityOrder: optimizerPriority })); continue; }
     const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const family = String(candidate.family);
-    const spatial = spatialTarget(family, hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane, anyOppositeLane: converterSettings.anyOppositeLane, anyPunch: modifiers.includes("any_punch") }); const blocked = blockedSubcellsAt(startMs, obstacleWindows);
+    // 0.0.89 (Derrick) rule 1: no punch may be authored while a weave/squat is up.
+    if (obstacleWindowActive(startMs)) { trace.push(dropTrace(candidate, "obstacle_window_active")); continue; }
+    const spatial = spatialTarget(family, hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane, anyOppositeLane: converterSettings.anyOppositeLane, anyPunch: modifiers.includes("any_punch") }); const blocked = blockedSubcellsAt(startMs, resolvedObstacleWindows);
     const safe = /** @type {number[]} */ (spatial.acceptedSubcells).filter((subcell) => !blocked.has(subcell));
     if (!safe.length) { trace.push(dropTrace(candidate, "spatial_target_blocked")); continue; }
     spatial.acceptedSubcells = safe;
-    const deltaBeats = Math.max(start - wristBeat[/** @type {"left" | "right"} */ (hand)], 0);
-    const target = safe.find((subcell) => reachable(wristSubcell[/** @type {"left" | "right"} */ (hand)], subcell, deltaBeats, reachSubcellsPerBeat[difficulty] + converterSettings.reachAllowanceSubcells, blocked));
-    if (target === undefined) { trace.push(dropTrace(candidate, "unreachable_after_optimizer")); continue; }
     if (startMs - lastPunchMs < punchMinSpacingMs) { trace.push(dropTrace(candidate, "punch_min_spacing", { previousHand, spacingMs: startMs - lastPunchMs })); continue; }
     const type = `${family}_${hand}`; const generatedEventId = await eventId(String(recipe.recipeId), String(candidate.stableId), type);
     const beat = { start, type, eventId: generatedEventId, sourceEventIds: cloneData(candidate.sourceEventIds), spatialTarget: spatial, timingWindowMs, evidenceFreshnessMs: freshnessMs };
     if (modifiers.includes("any_punch")) Object.assign(beat, { modifier: "any_punch" }); else if (modifiers.includes("cross_body")) Object.assign(beat, { modifier: "cross_body" });
-    beats.push(beat); lastPunchMs = startMs; previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = target; wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
+    beats.push(beat); lastPunchMs = startMs; previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = seedSubcell(spatial.targetCell); wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
     trace.push({ sourceEventIds: beat.sourceEventIds, eventId: generatedEventId, start, action: "emit", kind: "punch", family, hand, sourceDirection: Number(note.direction ?? 8), generatedDirection: spatial.entryDirection ?? "semantic_straight", target: cloneData(spatial) });
   }
-  for (const mergedWindow of mergeSimultaneousLeanPairs(obstacleWindows)) {
+  for (const mergedWindow of resolvedObstacleWindows) {
     const window = /** @type {ObstacleWindow & {forcedType?:string}} */ (/** @type {unknown} */ (mergedWindow));
     const blockedCells = [...window.blockedCells]; const type = window.forcedType ?? obstacleType(blockedCells); const sourceId = `obstacle-${String(window.sourceIndex).padStart(3, "0")}`;
     if ((type === "squat" && modifiers.includes("no_squats")) || (type.startsWith("weave_") && modifiers.includes("no_weaves"))) { trace.push({ sourceEventIds: [sourceId], start: window.startBeat, action: "drop", reason: "disabled_by_modifier", type }); continue; }
@@ -265,9 +277,9 @@ function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty, c
 /** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
 function staticInfeasibility(candidate, bpm, obstacles, difficulty, converterSettings) {
   const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const spatial = spatialTarget(String(candidate.family), hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane ?? false, anyOppositeLane: converterSettings.anyOppositeLane ?? true, anyPunch: false }); const blocked = blockedSubcellsAt(beatToMs(Number(candidate.start), bpm), obstacles);
-  let safe = false; let reach = false; const seed = hand === "left" ? 5 : 6;
-  for (const subcell of /** @type {number[]} */ (spatial.acceptedSubcells)) { if (blocked.has(subcell)) continue; safe = true; if (reachable(seedSubcell(seed), subcell, Number(candidate.start), reachSubcellsPerBeat[difficulty] + converterSettings.reachAllowanceSubcells, blocked)) { reach = true; break; } }
-  return !safe ? "spatial_target_blocked_before_optimizer" : !reach ? "unreachable_before_optimizer" : "";
+  // 0.0.89 (Derrick): reachability removed. Only obstacle coverage matters now.
+  for (const subcell of /** @type {number[]} */ (spatial.acceptedSubcells)) { if (!blocked.has(subcell)) return ""; }
+  return "spatial_target_blocked_before_optimizer";
 }
 
 /** @param {DataRecord[]} left @param {DataRecord[]} right */
@@ -326,40 +338,67 @@ function blockedSubcellsAt(timeMs, windows) { const blocked = new Set(); for (co
  * re-block the entire grid and reintroduce the undodgeable case. A squat blocks
  * only the top row (duck under it); a weave keeps its own side's cells.
  */
-const simultaneousLeanCycle = Object.freeze(["squat", "weave_left", "weave_right"]);
+const simultaneousObstacleCycle = Object.freeze(["weave_left", "weave_right", "squat"]);
 const topRowCells = Object.freeze([0, 1, 2, 3]);
 /** @param {ReadonlyArray<ObstacleWindow>} windows @returns {DataRecord[]} */
-function mergeSimultaneousLeanPairs(windows) {
-  /** @type {{startBeat:number,endBeat:number,entries:ReadonlyArray<{window:DataRecord,type:string}>}[]} */
+/**
+ * 0.0.89 (Derrick): the four Boxing obstacle rules in a FIXED order, because they
+ * interact. Only ONE obstacle may exist at a time.
+ *   1. clamp duration to the configured maximum
+ *   2. collapse obstacles starting together into ONE (never squat + a weave)
+ *   3. advance consecutive same-type obstacles through the variety cycle
+ *   4. drop obstacles starting sooner than the cooldown after the previous ENDS
+ *      (dropped, never shifted - shifting desyncs from the music)
+ * The caller deletes punches inside surviving windows, last, on the final set.
+ */
+function resolveBoxingObstacles(windows, settings, classify) {
+  const msPerBeat = Math.max(settings.msPerBeat, 0.0001);
+  const maxBeats = Math.max(settings.maxObstacleDurationMs, 0) / msPerBeat;
+  const cooldownBeats = Math.max(settings.obstacleCooldownMs, 0) / msPerBeat;
+
+  // (1) Clamp duration.
+  const clamped = windows.map((window) => ({ ...window, endBeat: Math.min(window.endBeat, window.startBeat + maxBeats) }));
+
+  // (2) One obstacle at a time.
   const groups = [];
-  for (const window of windows) {
-    const entry = { window, type: String(obstacleType([.../** @type {readonly number[]} */ (window.blockedCells)])) };
-    const existing = groups.find((group) => group.startBeat === window.startBeat && group.endBeat === window.endBeat);
-    if (existing) existing.entries = [...existing.entries, entry];
-    else groups.push({ startBeat: window.startBeat, endBeat: window.endBeat, entries: [entry] });
+  for (const window of [...clamped].sort((a, b) => a.startBeat - b.startBeat || a.sourceIndex - b.sourceIndex)) {
+    const type = classify([...window.blockedCells]);
+    const existing = groups.find((group) => group.startBeat === window.startBeat);
+    if (existing) existing.entries.push({ window, type });
+    else groups.push({ startBeat: window.startBeat, entries: [{ window, type }] });
   }
-  let occurrence = 0;
-  /** @type {DataRecord[]} */
-  const merged = [];
-  for (const group of groups) {
-    const hasLeft = group.entries.some((entry) => entry.type === "weave_left");
-    const hasRight = group.entries.some((entry) => entry.type === "weave_right");
-    if (group.entries.length < 2 || !hasLeft || !hasRight) { for (const entry of group.entries) merged.push(entry.window); continue; }
-    const type = simultaneousLeanCycle[occurrence % simultaneousLeanCycle.length];
-    occurrence += 1;
+
+  // (3) Variety cycle.
+  let previousType = null;
+  const cycled = groups.map((group) => {
+    const first = group.entries[0];
+    let type = first.type;
+    if (previousType !== null && type === previousType) {
+      const index = simultaneousObstacleCycle.indexOf(type);
+      type = simultaneousObstacleCycle[(index + 1) % simultaneousObstacleCycle.length];
+    }
+    previousType = type;
+    const base = first.window;
+    if (group.entries.length === 1 && type === first.type) return base;
     const left = group.entries.find((entry) => entry.type === "weave_left");
     const right = group.entries.find((entry) => entry.type === "weave_right");
-    const kept = type === "weave_left" ? left.window : type === "weave_right" ? right.window : group.entries[0].window;
-    const blockedCells = type === "squat" ? [...topRowCells] : [.../** @type {readonly number[]} */ (kept.blockedCells)].sort((a, b) => a - b);
-    // The emitted gameplayGeometry must agree with the new blockedCells or the
-    // package validator rejects it as boxing_obstacle_geometry_invalid. A squat is
-    // a full-width TOP row; a weave keeps the side it inherited.
+    const kept = type === "weave_left" && left ? left.window : type === "weave_right" && right ? right.window : base;
+    const blockedCells = type === "squat" ? [...topRowCells] : [...kept.blockedCells].sort((a, b) => a - b);
     const gameplayGeometry = type === "squat"
       ? { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 0, y: 0, width: 4, height: 1 }
       : kept.gameplayGeometry;
-    merged.push(/** @type {DataRecord} */ ({ ...kept, gameplayGeometry, blockedCells, gridMask: blockedCells, forcedType: type }));
+    return { ...kept, gameplayGeometry, blockedCells, gridMask: blockedCells, forcedType: type };
+  });
+
+  // (4) Cooldown.
+  const kept = [];
+  let previousEnd = null;
+  for (const window of [...cycled].sort((a, b) => a.startBeat - b.startBeat)) {
+    if (previousEnd !== null && window.startBeat < previousEnd + cooldownBeats) continue;
+    kept.push(window);
+    previousEnd = window.endBeat;
   }
-  return merged;
+  return kept;
 }
 
 function obstacleType(cells) { let left = 0; let right = 0; for (const cell of cells) cell % 4 <= 1 ? left += 1 : right += 1; return left > right ? "weave_right" : right > left ? "weave_left" : "squat"; }
@@ -375,14 +414,13 @@ async function emitGuard(candidate, wristSubcell, wristBeat, difficulty, recipeI
 }
 
 /** @param {number[]} sourcePair @param {boolean} crossed @param {number} start @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean}} converterSettings */
-function chooseGuardPair(sourcePair, crossed, start, wristSubcell, wristBeat, difficulty, converterSettings) { const sourceSorted = [...sourcePair].sort((a,b)=>a-b); const candidates = []; const spacing = converterSettings.guardSpacing; for (const rowPair of guardPairs) { const row=2,leftColumn=Math.round(1.5-spacing*0.75),rightColumn=Math.round(1.5+spacing*0.75);const pair=[row*4+leftColumn,row*4+rightColumn];if(leftColumn<0||rightColumn>3)continue;const generatedLeftCell=crossed?pair[1]:pair[0],generatedRightCell=crossed?pair[0]:pair[1];if(converterSettings.profileApplied&&Math.max(subcellManhattan(seedSubcell(sourcePair[0]),seedSubcell(generatedLeftCell)),subcellManhattan(seedSubcell(sourcePair[1]),seedSubcell(generatedRightCell)))>converterSettings.guardRelocationRadius)continue;const subcells = [seedSubcell(pair[0]), seedSubcell(pair[1])]; const leftTarget = crossed ? subcells[1] : subcells[0]; const rightTarget = crossed ? subcells[0] : subcells[1]; const rate = reachSubcellsPerBeat[difficulty]+converterSettings.reachAllowanceSubcells; if (!reachable(wristSubcell.left, leftTarget, Math.max(start-wristBeat.left,0), rate, new Set()) || !reachable(wristSubcell.right, rightTarget, Math.max(start-wristBeat.right,0), rate, new Set())) continue; const sourceRow = Math.floor(sourceSorted[0]/4) === Math.floor(sourceSorted[1]/4) ? Math.floor(sourceSorted[0]/4) : 1; const pairRow = Math.floor(pair[0]/4); const sourceMid=(sourceSorted[0]+sourceSorted[1])/2; const pairMid=(pair[0]+pair[1])/2; candidates.push({pair:[...pair],row:Math.abs(pairRow-sourceRow),mid:Math.abs(pairMid-sourceMid),center:Math.abs(pairMid-5.5),id:pair[0]}); } candidates.sort((a,b)=>a.row-b.row||a.mid-b.mid||a.center-b.center||a.id-b.id); return candidates[0]?.pair ?? []; }
+function chooseGuardPair(sourcePair, crossed, start, wristSubcell, wristBeat, difficulty, converterSettings) { const sourceSorted = [...sourcePair].sort((a,b)=>a-b); const candidates = []; const spacing = converterSettings.guardSpacing; for (const rowPair of guardPairs) { const row=2,leftColumn=Math.round(1.5-spacing*0.75),rightColumn=Math.round(1.5+spacing*0.75);const pair=[row*4+leftColumn,row*4+rightColumn];if(leftColumn<0||rightColumn>3)continue;const generatedLeftCell=crossed?pair[1]:pair[0],generatedRightCell=crossed?pair[0]:pair[1];if(converterSettings.profileApplied&&Math.max(subcellManhattan(seedSubcell(sourcePair[0]),seedSubcell(generatedLeftCell)),subcellManhattan(seedSubcell(sourcePair[1]),seedSubcell(generatedRightCell)))>converterSettings.guardRelocationRadius)continue;const subcells = [seedSubcell(pair[0]), seedSubcell(pair[1])]; const leftTarget = crossed ? subcells[1] : subcells[0]; const rightTarget = crossed ? subcells[0] : subcells[1]; const rate = reachSubcellsPerBeat[difficulty]+converterSettings.reachAllowanceSubcells; /* 0.0.89 (Derrick): reachability removed; guards always emit. */ const sourceRow = Math.floor(sourceSorted[0]/4) === Math.floor(sourceSorted[1]/4) ? Math.floor(sourceSorted[0]/4) : 1; const pairRow = Math.floor(pair[0]/4); const sourceMid=(sourceSorted[0]+sourceSorted[1])/2; const pairMid=(pair[0]+pair[1])/2; candidates.push({pair:[...pair],row:Math.abs(pairRow-sourceRow),mid:Math.abs(pairMid-sourceMid),center:Math.abs(pairMid-5.5),id:pair[0]}); } candidates.sort((a,b)=>a.row-b.row||a.mid-b.mid||a.center-b.center||a.id-b.id); return candidates[0]?.pair ?? []; }
 
 /** @param {string} family @param {string} hand @param {number} row */
 function spatialTarget(family, hand, row, settings = { uppercutOppositeLane: true, anyOppositeLane: true, anyPunch: false }) { let column = hand === "left" ? 1 : 2; let targetRow = family === "straight" ? 0 : clamp(row,0,2); let direction=""; let sourceCell=-1; if (family === "hook") { column=hand==="left"?2:1; direction=hand==="left"?"right":"left"; sourceCell=targetRow*4+(hand==="left"?1:2); } else if (family === "uppercut") { targetRow=Math.min(targetRow,1); direction="up"; if (settings.uppercutOppositeLane) column=hand==="left"?2:1; sourceCell=(targetRow+1)*4+column; } else if (family === "straight" && settings.anyOppositeLane) { column=hand==="left"?2:1; } const targetCell=targetRow*4+column; const result={targetCell,acceptedSubcells:acceptedSubcells(targetCell,family,hand),sourceCell}; if(direction) Object.assign(result,{entryDirection:direction}); if(family==="straight") Object.assign(result,{qualificationMs:straightQualificationMs,semanticQualification:"straight"}); return result; }
 /** @param {number} cell @param {string} family @param {string} hand */
 function acceptedSubcells(cell,family,hand){const row=Math.floor(cell/4),column=cell%4,result=[];for(const subRow of [row*2,row*2+1]){result.push(subRow*8+column*2,subRow*8+column*2+1);if(family==="straight"){const margin=hand==="left"?column*2+2:column*2-1;if(margin>=0&&margin<8)result.push(subRow*8+margin);}}return result.sort((a,b)=>a-b);}
 /** @param {number} start @param {number} target @param {number} deltaBeats @param {number} rate @param {Set<number>} blocked */
-function reachable(start,target,deltaBeats,rate,blocked){if(target<0||target>=48||blocked.has(target))return false;const distances=Array(48).fill(Infinity),visited=new Set();distances[clamp(start,0,47)]=0;for(let step=0;step<48;step+=1){let current=-1,currentDistance=Infinity;for(let candidate=0;candidate<48;candidate+=1)if(!visited.has(candidate)&&distances[candidate]<currentDistance){current=candidate;currentDistance=distances[candidate];}if(current<0||current===target)break;visited.add(current);const x=current%8,y=Math.floor(current/8);for(let dy=-1;dy<=1;dy+=1)for(let dx=-1;dx<=1;dx+=1){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx<0||nx>=8||ny<0||ny>=6)continue;const next=ny*8+nx;if(blocked.has(next))continue;distances[next]=Math.min(distances[next],currentDistance+(dx&&dy?Math.SQRT2:1));}}return distances[target]<=Math.max(deltaBeats*rate,0)+0.0001;}
 
 /** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} summary @param {Difficulty} difficulty @param {string} songToken */
 export function buildFlowIntervalOracle(summary,difficulty,songToken){const beats=[];const events=[];const lookup=buildFlowNoteLookup(summary.colorNotes??[]);for(const note of summary.colorNotes??[]){const emitted=emitFlowNote(note);beats.push(emitted);events.push({start:Number(note.start??0),sourceFamily:"note",result:{action:"emit",beat:cloneData(emitted),noteRef:flowNoteRef(note)},note:cloneData(note)});}for(const bomb of summary.bombNotes??[]){const emitted={start:Number(bomb.start??0),type:"bomb",placement:topLeftCell(Number(bomb.cell??0))};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"bomb",result:{action:"emit",beat:cloneData(emitted)},bomb:cloneData(bomb)});}for(const obstacle of summary.obstacles??[]){const start=Number(obstacle.start??0);const end=start+Number(obstacle.duration??0);if(!(end>start))continue;const emitted={start,end,type:"obstacle",...normalizedGeometryForObstacle(obstacle),gridMask:gridMaskForObstacle(obstacle)};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"obstacle",result:{action:"emit",beat:cloneData(emitted)},obstacle:cloneData(obstacle)});}for(const slider of summary.sliders??[]){const start=Number(slider.start??0);const end=Number(slider.end??slider.start??0);if(!(end>start))continue;const emitted=emitFlowArc(slider,lookup);beats.push(emitted);events.push({start,sourceFamily:"slider",result:{action:"emit",beat:cloneData(emitted)},slider:cloneData(slider)});}for(const burst of summary.burstSliders??[]){const burstStart=Number(burst.start??0);const burstEnd=Number(burst.end??burst.start??0);if(!(burstEnd>burstStart))continue;/* B1.6: drop genuinely zero/negative-length bursts — they fail the flow-interval positive-duration gate ("start at center") */const emitted={start:burstStart,end:burstEnd,type:"burst",hand:String(burst.hand??"left"),placement:topLeftCell(Number(burst.cell??0)),direction:Number(burst.direction??8),tailPlacement:topLeftCell(Number(burst.tailCell??burst.cell??0)),checkpointCount:Math.max(Number(burst.sliceCount??1),1)};if(Object.hasOwn(burst,"spacingBias"))Object.assign(emitted,{spacingBias:Number(burst.spacingBias)});beats.push(emitted);events.push({start:emitted.start,sourceFamily:"burstSlider",result:{action:"emit",beat:cloneData(emitted)},source:cloneData(burst)});}swapCrossedFlowNotes(beats,events);const order={note:0,bomb:1,obstacle:2,arc:3,burst:4};beats.sort((a,b)=>Number(a.start)-Number(b.start)||(order[/** @type {keyof typeof order} */(a.type)]??99)-(order[/** @type {keyof typeof order} */(b.type)]??99)||JSON.stringify(a).localeCompare(JSON.stringify(b)));return{chart:{schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,recordVersion:2,rulesetId:flowCollidersRulesetId,chartId:`ab-chart-${songToken}-flow-${difficulty.toLowerCase()}`,chartName:`${titleize(songToken)} ${difficulty} Flow`,mode:"flow",difficulty,beats},trace:{difficulty,obstacleContract:"normalized_obstacle_v2",events}};}
