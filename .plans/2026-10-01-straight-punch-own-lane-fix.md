@@ -67,3 +67,35 @@ for a right hand). That expectation is itself wrong and must be corrected to the
 own-lane default, with a case proving straights and uppercuts of the same hand
 coexist (no drop) on a chart where they compete. Wire into `npm test` and prove
 the test fails against the pre-fix code.
+## Refined diagnosis (2026-10-01, implementation attempt)
+
+I implemented and measured the row-preference approach, then REVERTED it because
+it does not fully solve the problem and would ship note loss.
+
+Golden fixture source (left hand): cell 8 (row 2) dir 1 start 1; cell 2 (row 0)
+dir 2 start 3; cell 6 (row 1) dir 8 start 4; cell 5 (row 1) dir 8 start 5.
+
+Because straights are pinned to row 0 and own-lane puts every same-hand straight
+in the same column, the two left straights at start 4 and start 5 both target
+**row 0, own column**. They collide with EACH OTHER, not primarily with the
+uppercut. So the uppercut-side fix is necessary but not sufficient.
+
+Measured with the row-preference fix applied:
+- uppercut_left -> cell 5 (row 1, col 1)  own lane
+- straight_left -> cell 1 (row 0, col 1)  own lane
+- straight_left -> STILL DROPPED (golden expects it present)
+
+So the remaining conflict is straight-vs-straight at the same row/column, and the
+existing lateral escape (`acceptedSubcells` margin, one adjacent column for
+straights) is not enough when several same-hand straights land close together.
+
+A correct fix must give same-hand straights in the SAME ROW a real place to go —
+either by relaxing how many same-hand same-row straights may share a cell, or by
+adding a vertical escape for straights as well. Note the tension: straights are
+pinned to row 0 specifically so they cannot be "bonked" from guard (Derrick's
+0.0.83 requirement), so a vertical escape for straights may be undesirable; a
+temporal or lateral rule may be better.
+
+Do NOT ship own-lane alone: `npm test` fails on the golden with
+`straight_left` missing. The suite is currently GREEN at commit 728e692 with the
+converter unchanged.
