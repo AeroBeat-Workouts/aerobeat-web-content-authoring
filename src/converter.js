@@ -343,6 +343,32 @@ const simultaneousObstacleCycle = Object.freeze(["weave_left", "weave_right", "s
 // A both-sides MERGE starts at a squat (duck under it) and then varies.
 const mergedObstacleCycle = Object.freeze(["squat", "weave_left", "weave_right"]);
 const topRowCells = Object.freeze([0, 1, 2, 3]);
+/**
+ * Canonical gameplay geometry and blocked cells per obstacle TYPE (Derrick,
+ * 0.0.89): squat = the full top row (duck under it), weave_left = the full right
+ * two columns, weave_right = the full left two columns.
+ *
+ * The variety cycle can relabel an obstacle into a type its authored shape does
+ * not represent — cycling a one-cell weave into the opposite weave, or a squat
+ * into a weave. Deriving the cells from the TARGET type (never from the kept
+ * window's authored shape) is what keeps blockedCells, gridMask, and
+ * gameplayGeometry mutually consistent, which is exactly what the package
+ * validator checks: `obstacleActionForCells(gridMask)` must equal the beat type.
+ * Deriving from the kept window instead left the 3D44B real map emitting a
+ * `weave_right` beat whose cells still described a weave_left, and validation
+ * rejected the package with `blocked_cells_invalid`.
+ */
+const canonicalObstacleShapes = Object.freeze({
+  squat: Object.freeze({ x: 0, y: 0, width: 4, height: 1, cells: topRowCells }),
+  weave_left: Object.freeze({ x: 2, y: 0, width: 2, height: 3, cells: Object.freeze([2, 3, 6, 7, 10, 11]) }),
+  weave_right: Object.freeze({ x: 0, y: 0, width: 2, height: 3, cells: Object.freeze([0, 1, 4, 5, 8, 9]) })
+});
+/** @param {string} type @returns {{x:number,y:number,width:number,height:number,readonly cells:readonly number[]}} */
+function canonicalObstacleShape(type) {
+  const shape = /** @type {Record<string, {x:number,y:number,width:number,height:number,cells:readonly number[]}|undefined>} */ (canonicalObstacleShapes)[type];
+  if (!shape) throw new Error("obstacle_type_not_canonical");
+  return shape;
+}
 /** @param {ReadonlyArray<ObstacleWindow>} windows @returns {DataRecord[]} */
 /**
  * 0.0.89 (Derrick): the four Boxing obstacle rules in a FIXED order, because they
@@ -391,11 +417,12 @@ function resolveBoxingObstacles(windows, settings, classify) {
     if (group.entries.length === 1 && type === first.type) return base;
     const left = group.entries.find((entry) => entry.type === "weave_left");
     const right = group.entries.find((entry) => entry.type === "weave_right");
+    // The kept window supplies the TIMING and the authored source evidence; the
+    // blocked cells and gameplay geometry always come from the target type.
     const kept = type === "weave_left" && left ? left.window : type === "weave_right" && right ? right.window : base;
-    const blockedCells = type === "squat" ? [...topRowCells] : [...kept.blockedCells].sort((a, b) => a - b);
-    const gameplayGeometry = type === "squat"
-      ? { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: 0, y: 0, width: 4, height: 1 }
-      : kept.gameplayGeometry;
+    const shape = canonicalObstacleShape(type);
+    const blockedCells = [...shape.cells];
+    const gameplayGeometry = { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: shape.x, y: shape.y, width: shape.width, height: shape.height };
     return { ...kept, gameplayGeometry, blockedCells, gridMask: blockedCells, forcedType: type };
   });
 
