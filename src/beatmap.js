@@ -147,27 +147,27 @@ function normalizeV2Obstacle(value, sourceIndex) {
   // see canonical grid columns rather than the legacy double-spacing encoding.
   const rawWidth = requiredInteger(value, ["_width", "w"], "obstacle_geometry_invalid");
   const width = rawWidth === 2 ? 1 : rawWidth === 4 ? 2 : rawWidth;
-  return obstacleRecord(
-    requiredFinite(value, ["_time", "b"], "obstacle_time_invalid"),
-    requiredFinite(value, ["_duration", "d"], "obstacle_duration_invalid"),
-    requiredInteger(value, ["_lineIndex", "x"], "obstacle_geometry_invalid"),
-    type === 1 ? 2 : 0,
-    width,
-    type === 1 ? 3 : 5,
-    sourceIndex,
-    type === 1 ? "v2_type_1" : "v2_type_0"
-  );
+  const start = requiredFinite(value, ["_time", "b"], "obstacle_time_invalid");
+  const duration = requiredFinite(value, ["_duration", "d"], "obstacle_duration_invalid");
+  const x = requiredInteger(value, ["_lineIndex", "x"], "obstacle_geometry_invalid");
+  // Negative/zero v2 START intervals are legacy non-playable markers, but all
+  // required fields and extents must still be valid before they can be ignored.
+  if (start < 0) throw new AuthoringParseError("obstacle_time_invalid", "Obstacle start must be non-negative");
+  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(x + width)) throw new AuthoringParseError("obstacle_geometry_invalid", "Obstacle geometry must have a positive safe width and safe integer extent");
+  if (duration <= 0) return null;
+  return obstacleRecord(start, duration, x, type === 1 ? 2 : 0, width, type === 1 ? 3 : 5, sourceIndex, type === 1 ? "v2_type_1" : "v2_type_0");
 }
 
 /** @param {unknown} value @param {number} sourceIndex */
 function normalizeInlineObstacle(value, sourceIndex) {
   if (!isPlainRecord(value)) throw new AuthoringParseError("obstacle_shape_invalid", "v3 obstacle must be a plain record");
   rejectObstacleRotation(value);
+  // V3 permits omitted rectangle x/y at the zero origin; present malformed values reject.
   return obstacleRecord(
     requiredFinite(value, ["b"], "obstacle_time_invalid"),
     requiredFinite(value, ["d"], "obstacle_duration_invalid"),
-    requiredInteger(value, ["x"], "obstacle_geometry_invalid"),
-    requiredInteger(value, ["y"], "obstacle_geometry_invalid"),
+    optionalDefaultInteger(value, ["x"], 0, "obstacle_geometry_invalid"),
+    optionalDefaultInteger(value, ["y"], 0, "obstacle_geometry_invalid"),
     requiredInteger(value, ["w"], "obstacle_geometry_invalid"),
     requiredInteger(value, ["h"], "obstacle_geometry_invalid"),
     sourceIndex,

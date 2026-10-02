@@ -227,6 +227,18 @@ export function createAeroWebContentAuthoringService(options = {}) {
     async listCollections() { assertOpen(); return deepFreeze(await persistence.listCollections()); },
     /** @param {string} collectionId */
     async getCollection(collectionId) { assertOpen(); const id = collectionKey(collectionId); const collections = await persistence.listCollections(); assertOpen(); return collections.find((collection) => collection.collectionId === id) ?? null; },
+    /** Return only bounded persisted source provenance for an explicitly selected collection. @param {string} collectionId */
+    async getCollectionReimportSource(collectionId) {
+      assertOpen();
+      const id = collectionKey(collectionId);
+      const stored = await persistence.getCollection(id);
+      assertOpen();
+      if (stored === null) return null;
+      const fields = ["collectionId", "sourceProvider", "sourceId", "sourceVersionHash"];
+      const values = fields.map((field) => dataProperty(stored, field));
+      if (values.some((value) => typeof value !== "string" || !value || value.length > 1024) || values[0] !== id) throw authoringError("collection_invalid", "Stored collection source identity is invalid");
+      return deepFreeze({ collectionId: values[0], sourceProvider: values[1], sourceId: values[2], sourceVersionHash: values[3] });
+    },
     /** @param {string} collectionId */
     async deleteCollection(collectionId) { assertOpen(); return persistence.deleteCollection(collectionKey(collectionId)); },
     /** @param {Readonly<Record<string, unknown>> | string} handle */

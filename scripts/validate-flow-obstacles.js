@@ -183,4 +183,51 @@ for(const [format,document,code] of [["v2",{_obstacles:[{_time:1,_lineIndex:1,_t
   assert.deepEqual([sole.gameplayGeometry.x, sole.gameplayGeometry.y, sole.gameplayGeometry.width, sole.gameplayGeometry.height], [1, 0, 2, 3]);
   assert.equal(sole.sourceIndex, 0, "sourceIndex retains original array position even after END skips");
 }
+// Fall Out Boy 9a0c: v2 START entries may encode a finite negative interval.
+// Validate the entire record before omitting it, retaining positive playable walls.
+{
+  const start = { _time: 6, _lineIndex: 0, _type: 0, _duration: -2.5, _width: 1 };
+  const parse = (entry) => parseBeatMapDifficulty(JSON.stringify({ _obstacles: [entry] }), "v2").obstacles;
+  assert.equal(parse(start).length, 0);
+  assert.equal(parse({ ...start, _duration: 0 }).length, 0);
+  assert.deepEqual(parse({ ...start, _duration: 2 }).map(({ start, duration, sourceIndex }) => [start, duration, sourceIndex]), [[6, 2, 0]]);
+  for (const [entry, code] of [
+    [{ ...start, _duration: undefined }, "obstacle_duration_invalid"],
+    [{ ...start, _duration: "-2.5" }, "obstacle_duration_invalid"],
+    [{ ...start, _duration: null }, "obstacle_duration_invalid"],
+    [{ ...start, _type: 3 }, "obstacle_type_unsupported"],
+    [{ ...start, _width: undefined }, "obstacle_geometry_invalid"],
+    [{ ...start, _lineIndex: 0.5 }, "obstacle_geometry_invalid"],
+    [{ ...start, _width: 0 }, "obstacle_geometry_invalid"],
+    [{ ...start, _width: -1 }, "obstacle_geometry_invalid"],
+    [{ ...start, _lineIndex: Number.MAX_SAFE_INTEGER + 1, _width: 1 }, "obstacle_geometry_invalid"],
+    [{ ...start, _lineIndex: -(Number.MAX_SAFE_INTEGER + 1), _width: Number.MAX_SAFE_INTEGER + 1 }, "obstacle_geometry_invalid"],
+    [{ ...start, _width: Number.MAX_SAFE_INTEGER + 1 }, "obstacle_geometry_invalid"],
+    [{ ...start, _lineIndex: 2, _width: Number.MAX_SAFE_INTEGER }, "obstacle_geometry_invalid"],
+    [{ ...start, _time: undefined }, "obstacle_time_invalid"]
+  ]) assert.throws(() => parse(entry), (error) => error?.code === code);
+}
+// Skillet 52cac Expert v3.3: optional x/y default only when absent; all other
+// rectangle fields and every explicitly supplied coordinate remain strict.
+{
+  const wall = { b: 39, d: 0.5, w: 1, h: 5 };
+  const parse = (entry) => parseBeatMapDifficulty(JSON.stringify({ obstacles: [entry] }), "v3").obstacles;
+  const absent = parse(wall);
+  assert.equal(absent.length, 1);
+  assert.deepEqual([absent[0].sourceGeometry.x, absent[0].sourceGeometry.y, absent[0].sourceGeometry.width, absent[0].sourceGeometry.height], [0, 0, 1, 5]);
+  assert.deepEqual([absent[0].gameplayGeometry.x, absent[0].gameplayGeometry.y, absent[0].gameplayGeometry.width, absent[0].gameplayGeometry.height], [0, 0, 1, 3]);
+  assert.deepEqual([parse({ ...wall, y: 1 })[0].sourceGeometry.x, parse({ ...wall, x: 2 })[0].sourceGeometry.y], [0, 0]);
+  for (const field of ["x", "y"]) for (const invalid of [null, "0", 0.5, Infinity, -Infinity, NaN]) {
+    assert.throws(() => parse({ ...wall, [field]: invalid }), (error) => error?.code === "obstacle_geometry_invalid", `present invalid v3 ${field}=${String(invalid)} must reject`);
+  }
+  for (const field of ["w", "h", "d"]) for (const invalid of [null, "1", Infinity, NaN]) {
+    assert.throws(() => parse({ ...wall, [field]: invalid }), (error) => error?.code === (field === "d" ? "obstacle_duration_invalid" : "obstacle_geometry_invalid"), `invalid v3 ${field} must reject`);
+  }
+  for (const field of ["w", "h", "d"]) {
+    const missing = { ...wall }; delete missing[field];
+    assert.throws(() => parse(missing), (error) => error?.code === (field === "d" ? "obstacle_duration_invalid" : "obstacle_geometry_invalid"), `missing v3 ${field} must reject`);
+  }
+  for (const field of ["w", "h"]) assert.throws(() => parse({ ...wall, [field]: 1.5 }), (error) => error?.code === "obstacle_geometry_invalid");
+  assert.throws(() => parse({ ...wall, d: 0 }), (error) => error?.code === "obstacle_duration_invalid");
+}
 console.log("Versioned source-to-canonical obstacle normalization and exact 3c9d oracle passed.");
