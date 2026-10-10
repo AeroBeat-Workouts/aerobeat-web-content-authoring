@@ -341,18 +341,18 @@ function blockedSubcellsAt(timeMs, windows) { const blocked = new Set(); for (co
  * song, so consecutive both-sides moments differ.
  *
  * The merged obstacle does NOT union the two walls' blocked cells: that would
- * re-block the entire grid and reintroduce the undodgeable case. A squat blocks
- * only the top row (duck under it); a weave keeps its own side's cells.
+ * re-block the entire grid and reintroduce the undodgeable case. A squat extends
+ * three rows above the grid and halfway into its second row; the shared mask
+ * includes only its fully covered top row. A weave blocks its target two columns.
  */
 // Rule 4 same-type advance order (Derrick): weave-left -> weave-right -> squat.
 const simultaneousObstacleCycle = Object.freeze(["weave_left", "weave_right", "squat"]);
 // A both-sides MERGE starts at a squat (duck under it) and then varies.
 const mergedObstacleCycle = Object.freeze(["squat", "weave_left", "weave_right"]);
-const topRowCells = Object.freeze([0, 1, 2, 3]);
 /**
- * Canonical gameplay geometry and blocked cells per obstacle TYPE (Derrick,
- * 0.0.89): squat = the full top row (duck under it), weave_left = the full right
- * two columns, weave_right = the full left two columns.
+ * Canonical gameplay geometry and blocked cells per obstacle TYPE (Derrick's
+ * 4.5-row footprint): squat spans y=-3..1.5 while its derived mask covers the top row;
+ * weave_left = the full right two columns, weave_right = the full left two columns.
  *
  * The variety cycle can relabel an obstacle into a type its authored shape does
  * not represent — cycling a one-cell weave into the opposite weave, or a squat
@@ -365,13 +365,13 @@ const topRowCells = Object.freeze([0, 1, 2, 3]);
  * rejected the package with `blocked_cells_invalid`.
  */
 const canonicalObstacleShapes = Object.freeze({
-  squat: Object.freeze({ x: 0, y: 0, width: 4, height: 1, cells: topRowCells }),
-  weave_left: Object.freeze({ x: 2, y: 0, width: 2, height: 3, cells: Object.freeze([2, 3, 6, 7, 10, 11]) }),
-  weave_right: Object.freeze({ x: 0, y: 0, width: 2, height: 3, cells: Object.freeze([0, 1, 4, 5, 8, 9]) })
+  squat: Object.freeze({ x: 0, y: -3, width: 4, height: 4.5 }),
+  weave_left: Object.freeze({ x: 2, y: 0, width: 2, height: 3 }),
+  weave_right: Object.freeze({ x: 0, y: 0, width: 2, height: 3 })
 });
-/** @param {string} type @returns {{x:number,y:number,width:number,height:number,readonly cells:readonly number[]}} */
+/** @param {string} type @returns {{x:number,y:number,width:number,height:number}} */
 function canonicalObstacleShape(type) {
-  const shape = /** @type {Record<string, {x:number,y:number,width:number,height:number,cells:readonly number[]}|undefined>} */ (canonicalObstacleShapes)[type];
+  const shape = /** @type {Record<string, {x:number,y:number,width:number,height:number}|undefined>} */ (canonicalObstacleShapes)[type];
   if (!shape) throw new Error("obstacle_type_not_canonical");
   return shape;
 }
@@ -423,16 +423,15 @@ function resolveBoxingObstacles(windows, settings, classify) {
       type = simultaneousObstacleCycle[(index + 1) % simultaneousObstacleCycle.length];
     }
     previousType = type;
-    if (group.entries.length === 1 && type === first.type) return base;
     const left = group.entries.find((entry) => entry.type === "weave_left");
     const right = group.entries.find((entry) => entry.type === "weave_right");
     // The kept window supplies the TIMING and the authored source evidence; the
     // blocked cells and gameplay geometry always come from the target type.
     const kept = type === "weave_left" && left ? left.window : type === "weave_right" && right ? right.window : base;
     const shape = canonicalObstacleShape(type);
-    const blockedCells = [...shape.cells];
-    const gameplayGeometry = { schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: shape.x, y: shape.y, width: shape.width, height: shape.height };
-    return { ...kept, gameplayGeometry, blockedCells, gridMask: blockedCells, forcedType: type };
+    const gameplayGeometry = /** @type {import("@aerobeat/web-contracts/obstacle-contracts").AeroObstacleGameplayGeometry} */ ({ schema: "aerobeat/obstacle_gameplay_geometry", version: 1, coordinateSpace: "aerobeat_top_left_grid", x: shape.x, y: shape.y, width: shape.width, height: shape.height });
+    const gridMask = [...deriveObstacleGridMask(gameplayGeometry)];
+    return { ...kept, gameplayGeometry, blockedCells: [...gridMask], gridMask, forcedType: type };
   });
 
   // (4) Cooldown.
