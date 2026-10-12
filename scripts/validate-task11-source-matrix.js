@@ -17,6 +17,8 @@ import {
   validateAuthoredPackage
 } from "../src/index.js";
 
+// Resolve the sibling implementation at runtime without making its in-flight type surface part of our check:types gate.
+const { validateRuntimePackage } = await import(String(new URL("../../aerobeat-web-content/src/index.js", import.meta.url)));
 const fixturePath = new URL("../fixtures/task11-source-matrix-v2.json", import.meta.url);
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 const { fixtureHash, ...fixtureBody } = fixture;
@@ -53,7 +55,7 @@ for (const format of ["v2", "v3", "v4"]) {
       const source = sourceBundle(format, formatFixture.sourceBeatmapVersion, difficultyBytes, audioBytes);
       const persistence = createMemoryPersistenceAdapter({ quotaBytes: 64 * 1024 * 1024 });
       const service = createAeroWebContentAuthoringService({ persistence, now: () => 11 });
-      const sourceId = `task11-matrix-${format}`;
+      const sourceId = `task11-same-side-v2-${format}`;
       const sourceVersionHash = formatFixture.sourceVersionHash;
       const authored = await service.convertAndPersist({ providerId: "synthetic", sourceHash: sourceVersionHash, source }, {
         difficulty: fixture.difficulty,
@@ -68,6 +70,7 @@ for (const format of ["v2", "v3", "v4"]) {
       });
       const validation = await validateAuthoredPackage(authored.package);
       assert.equal(validation.valid, true, JSON.stringify(validation.issues));
+      await assert.doesNotReject(() => validateRuntimePackage(authored.package, { declaredPackageHash: authored.handle.packageHash }), `${format} same-side guard package must pass the current sibling runtime`);
       const packageRecord = /** @type {{source: Record<string, unknown>, charts: {chartId:string,mode:string,prototype?:Record<string,unknown>,beats:Record<string,unknown>[]}[], conversionTrace:Record<string,unknown>}} */ (authored.package);
       assert.equal(packageRecord.charts.length, 2);
       assert.deepEqual(packageRecord.charts.map((chart) => chart.chartId), expectedIds);

@@ -19,6 +19,8 @@ import {
   semanticParityHash,
   validateAuthoredPackage
 } from "../src/index.js";
+// Resolve sibling runtime at execution time while contracts and runtime types converge independently.
+const { validateRuntimePackage } = await import(String(new URL("../../aerobeat-web-content/src/index.js", import.meta.url)));
 
 const encoder = new TextEncoder();
 class FakeWorker { constructor(){this.onmessage=null;this.onerror=null;this.terminated=false;} postMessage(){} terminate(){this.terminated=true;} emit(data){this.onmessage?.({data});} }
@@ -54,6 +56,7 @@ signedLegacyCross.charts[0].prototype.modifiers = ["crossed_guard", "no_squats"]
 signedLegacyCross.charts[0].prototype.contentHash = await prefixedSha256(canonicalJson({ beats: signedLegacyCross.charts[0].beats, sourceHash: signedLegacyCross.charts[0].prototype.sourceHash, rulesetId: "boxing_collider_v1" }));
 const signedLegacyHash = await prefixedSha256(canonicalJson(signedLegacyCross));
 assert.ok((await validateAuthoredPackage(signedLegacyCross)).issues.some((issue) => issue.code === "crossed_guard_reimport_required"), "correctly rehashed old crossings require reimport");
+await assert.rejects(() => validateRuntimePackage(signedLegacyCross, { declaredPackageHash: signedLegacyHash }), hasCode("crossed_guard_reimport_required"), "the current sibling runtime refuses signed historical crossings");
 const signedStore = createMemoryPersistenceAdapter();
 await signedStore.put(stored("signed-old-cross", signedLegacyCross, signedLegacyHash, []));
 assert.equal((await signedStore.list()).length, 1, "historical signed bytes remain listable");

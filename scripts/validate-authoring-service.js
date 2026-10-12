@@ -29,6 +29,14 @@ assert.deepEqual(first.package, second.package, "double conversion must be byte-
 const boxing = /** @type {{prototype: Record<string, unknown>, beats: Record<string, unknown>[]}[]} */ (first.charts.filter((chart) => chart.mode === "boxing"));
 assert.equal(boxing.length, 1);
 const collider = boxing[0];
+const goldenGuard = collider.beats.find((beat) => beat.type === "guard");
+assert.ok(goldenGuard, "the sanitized historical source still produces a guard");
+const goldenTarget = /** @type {{leftCell:number,rightCell:number,sourcePair:number[]}} */ (goldenGuard.guardTarget);
+assert.deepEqual(goldenTarget.sourcePair, [6, 5], "preserve reversed source as neutral, hash-bound lineage");
+assert.deepEqual([goldenTarget.leftCell, goldenTarget.rightCell], [9, 10], "current authoring keeps opposite-source guards on their own sides");
+assert.equal(Object.hasOwn(goldenTarget, "crossed"), false);
+assert.equal(Object.hasOwn(goldenGuard, "modifier"), false);
+assert.deepEqual(collider.prototype.modifiers, []);
 assert.equal(collider.prototype.rulesetId, "boxing_collider_v1");
 assert.equal(Object.hasOwn(collider.prototype, "recipeId"), false, "collider prototype carries no conversion recipe identity");
 assert.deepEqual(collider.beats.map((beat) => beat.type), golden.godotExpected.rowTypes);
@@ -47,7 +55,9 @@ assert.equal(flowChart.contentHash,await prefixedSha256(canonicalJson({beats:flo
 const firstPackage=/** @type {Record<string,unknown>} */(first.package),firstSource=/** @type {Record<string,unknown>} */(firstPackage.source),firstTrace=/** @type {Record<string,unknown>} */(firstPackage.conversionTrace);
 assert.deepEqual(firstSource.spawnTiming,deriveBeatSaberSpawnTiming(golden.bpm,10,1));
 assert.equal(canonicalJson(firstTrace.spawnTiming),canonicalJson(firstSource.spawnTiming));
-assert.equal(typeof await semanticParityHash(first.package),"string");
+assert.equal(await semanticParityHash(first.package), "sha256:755fe6891e8a4358a343feb4acb1ed746ef4bae5c497b04843ccf916ccdcf464", "next-version browser semantic hash must bind same-side guards, separate from historical Godot proof");
+assert.equal(first.packageHash, "sha256:23c9fc6d76a7b21e46edddb8c56ed87296d50492568c5a425647b1e6f3b5dee6", "next-version package hash must bind same-side guards");
+assert.equal(collider.prototype.contentHash, "sha256:b16d70cb578d3acb9e13220af8137e23297e8526777389e09d09eba03e911dce", "next-version Boxing hash must bind the new guard geometry");
 assert.notEqual(first.sourceHash, golden.godotExpected.sourceHash, "language-specific numeric JSON hash must not be presented as Godot hash parity");
 assert.equal((await validateAuthoredPackage(first.package)).valid, true);
 const guardReservationSummary = { colorNotes: [{ start: 1, cell: 5, hand: "left", direction: 8, sourceIndex: 0 }, { start: 1, cell: 6, hand: "right", direction: 8, sourceIndex: 1 }, { start: 1.2, cell: 5, hand: "left", direction: 8, sourceIndex: 2 }], bombNotes: [], obstacles: [], sliders: [], burstSliders: [] };
@@ -121,7 +131,7 @@ for (const format of /** @type {const} */ (["v2", "v3", "v4"])) {
   malformedService.destroy();
 }
 
-console.log("Deterministic Worker conversion, Godot semantic parity, persistence, export, cancellation and malformed-source atomicity validation passed.");
+console.log("Deterministic same-side browser hashes, historical Godot type/lineage reference, persistence, export, cancellation and malformed-source atomicity passed (no new Godot parity claim).");
 
 /** @param {"v2" | "v3" | "v4"} format */
 function syntheticDifficulty(format) {
