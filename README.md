@@ -16,7 +16,7 @@ Provider-neutral browser conversion, local authoring persistence, and determinis
 
 It adapts one explicit Standard difficulty, or prepares every exact Standard difficulty in canonical Easy → Normal → Hard → Expert → ExpertPlus order, using only required entry copies and one shared audio read/hash. Worker conversion remains one difficulty per request and emits one Flow chart with shared immutable beat truth for the sole ruleset variant `flow_colliders_v1` (the visible `Flow` mode; the retired Flow Grid ruleset is deleted), plus exactly one Boxing chart for new imports: the single collider variant `boxing_collider_v1` (z7nw). The collider variant carries no conversion recipe identity (`prototype.recipeId` absent) over the row-family Balanced Height authored beats — the same beat set the Lanes/Grid conversions carried; its `recipeHash` remains as generation provenance only. Legacy stored packages keep their stored four-chart Lanes/Grid matrix (two recipes × two rulesets); both package shapes remain valid, with no data migration.
 
-The package does not call BeatSaver APIs, inspect ZIP structures, depend on provider DTOs, choose playlists, render UI, play media, score gameplay, or select a production Boxing winner.
+The package does not call BeatSaver APIs, inspect ZIP structures, depend on provider DTOs, choose playlists, render UI, play media, score gameplay, or select a production Boxing winner. Boxing guard generation always places the left hand on player-left and the right hand on player-right, even when source notes are reversed; `sourcePair` remains neutral source evidence, but new beats/traces carry no crossing flag or `crossed_guard` modifier. The authoring validator refuses retired crossing evidence and the persistence load/read path returns `crossed_guard_reimport_required` for old signed packages while leaving their bytes/hashes listable, exportable, and deletable for management. Reimport from the source is required; no in-place hash mutation occurs.
 
 ## Canonical and Cross-Language Boundaries
 
@@ -29,7 +29,7 @@ The browser locks the canonical contract, recipes, rulesets, event IDs, lineage,
 - locks event types, event IDs, ordering, lineage and targets against the sanitized Godot golden;
 - exports a documented `semanticParityHash` over a language-neutral projection.
 
-`fixtures/boxing-prototype-golden-v1.json` records both the authoritative Godot hashes and the separate browser semantic parity hash.
+`fixtures/boxing-prototype-golden-v1.json` records both the authoritative Godot hashes and the separate browser semantic parity hash. This historical canonical/Godot proof is not re-pinned by the no-crossed-guards change. The prior `fixtures/task11-source-matrix-v1.json` and its hash remain unchanged historical synthetic evidence; the independent v2 source matrix omits the retired requested modifier. A newly authored reversed-source guard now stays left/right, removes crossing metadata from both beat and trace, and therefore changes Boxing content, package, and semantic hashes. These next-version browser deltas must not be presented as Godot parity or silently substituted for the earlier hash proof.
 
 ## Service
 

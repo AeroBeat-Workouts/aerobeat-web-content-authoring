@@ -80,4 +80,4 @@ export const rulesetDefinitions = deepFreeze([
   }
 ]);
 
-export const supportedModifiers = deepFreeze(["no_squats", "no_weaves", "any_punch", "crossed_guard", "cross_body"]);
+export const supportedModifiers = deepFreeze(["no_squats", "no_weaves", "any_punch", "cross_body"]);

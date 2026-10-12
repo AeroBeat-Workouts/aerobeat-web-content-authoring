@@ -12,7 +12,6 @@ import {
   freshnessMs,
   guardPairs,
   punchMinSpacingMs,
-  reachSubcellsPerBeat,
   recipeDefinitions,
   recipeVersion,
   rowFamilyRecipeId,
@@ -449,16 +448,36 @@ function obstacleType(cells) { let left = 0; let right = 0; for (const cell of c
 
 /** @param {DataRecord} candidate @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty @param {string} recipeIdValue @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean}} converterSettings */
 async function emitGuard(candidate, wristSubcell, wristBeat, difficulty, recipeIdValue, converterSettings) {
-  const notes = /** @type {DataRecord[]} */ (candidate.notes); const left = noteForHand(notes, "left"); const right = noteForHand(notes, "right"); const crossed = Number(left.cell) % 4 > Number(right.cell) % 4; const sourcePair = [topLeftCell(Number(left.cell)), topLeftCell(Number(right.cell))]; const start = Number(candidate.start); const pair = chooseGuardPair(sourcePair, crossed, start, wristSubcell, wristBeat, difficulty, converterSettings);
+  const notes = /** @type {DataRecord[]} */ (candidate.notes); const left = noteForHand(notes, "left"); const right = noteForHand(notes, "right"); const sourcePair = [topLeftCell(Number(left.cell)), topLeftCell(Number(right.cell))]; const start = Number(candidate.start); const pair = chooseGuardPair(sourcePair, converterSettings);
   if (!pair.length) return { ok: false, trace: dropTrace(candidate, "guard_no_legal_pair") };
-  const leftCell = crossed ? pair[1] : pair[0]; const rightCell = crossed ? pair[0] : pair[1]; const sourceEventIds = cloneData(candidate.sourceEventIds); const id = await eventId(recipeIdValue, String(candidate.stableId), "guard");
-  const beat = { start, type: "guard", eventId: id, sourceEventIds, guardTarget: { leftCell, rightCell, crossed, sourcePair, spacing: converterSettings.guardSpacing }, checkpoint: { kind: "instantaneous", freshnessMs, timingWindowMs }, timingWindowMs, evidenceFreshnessMs: freshnessMs };
-  if (crossed) Object.assign(beat, { modifier: "crossed_guard" });
-  return { ok: true, beat, trace: { sourceEventIds, eventId: id, start, action: "emit", kind: "guard", sourcePair, generatedPair: pair, crossed } };
+  const [leftCell, rightCell] = pair; const sourceEventIds = cloneData(candidate.sourceEventIds); const id = await eventId(recipeIdValue, String(candidate.stableId), "guard");
+  const beat = { start, type: "guard", eventId: id, sourceEventIds, guardTarget: { leftCell, rightCell, sourcePair, spacing: converterSettings.guardSpacing }, checkpoint: { kind: "instantaneous", freshnessMs, timingWindowMs }, timingWindowMs, evidenceFreshnessMs: freshnessMs };
+  return { ok: true, beat, trace: { sourceEventIds, eventId: id, start, action: "emit", kind: "guard", sourcePair, generatedPair: pair } };
 }
 
-/** @param {number[]} sourcePair @param {boolean} crossed @param {number} start @param {{left:number,right:number}} wristSubcell @param {{left:number,right:number}} wristBeat @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean}} converterSettings */
-function chooseGuardPair(sourcePair, crossed, start, wristSubcell, wristBeat, difficulty, converterSettings) { const sourceSorted = [...sourcePair].sort((a,b)=>a-b); const candidates = []; const spacing = converterSettings.guardSpacing; for (const rowPair of guardPairs) { const row=2,leftColumn=Math.round(1.5-spacing*0.75),rightColumn=Math.round(1.5+spacing*0.75);const pair=[row*4+leftColumn,row*4+rightColumn];if(leftColumn<0||rightColumn>3)continue;const generatedLeftCell=crossed?pair[1]:pair[0],generatedRightCell=crossed?pair[0]:pair[1];if(converterSettings.profileApplied&&Math.max(subcellManhattan(seedSubcell(sourcePair[0]),seedSubcell(generatedLeftCell)),subcellManhattan(seedSubcell(sourcePair[1]),seedSubcell(generatedRightCell)))>converterSettings.guardRelocationRadius)continue;const subcells = [seedSubcell(pair[0]), seedSubcell(pair[1])]; const leftTarget = crossed ? subcells[1] : subcells[0]; const rightTarget = crossed ? subcells[0] : subcells[1]; const rate = reachSubcellsPerBeat[difficulty]+converterSettings.reachAllowanceSubcells; /* 0.0.89 (Derrick): reachability removed; guards always emit. */ const sourceRow = Math.floor(sourceSorted[0]/4) === Math.floor(sourceSorted[1]/4) ? Math.floor(sourceSorted[0]/4) : 1; const pairRow = Math.floor(pair[0]/4); const sourceMid=(sourceSorted[0]+sourceSorted[1])/2; const pairMid=(pair[0]+pair[1])/2; candidates.push({pair:[...pair],row:Math.abs(pairRow-sourceRow),mid:Math.abs(pairMid-sourceMid),center:Math.abs(pairMid-5.5),id:pair[0]}); } candidates.sort((a,b)=>a.row-b.row||a.mid-b.mid||a.center-b.center||a.id-b.id); return candidates[0]?.pair ?? []; }
+/** @param {number[]} sourcePair @param {{guardRelocationRadius:number,guardSpacing:number,profileApplied:boolean}} converterSettings */
+function chooseGuardPair(sourcePair, converterSettings) {
+  const sourceSorted = [...sourcePair].sort((a, b) => a - b);
+  const candidates = [];
+  const spacing = converterSettings.guardSpacing;
+  for (const rowPair of guardPairs) {
+    // Keep the existing fixed bottom-row guard policy; candidate order is historical.
+    const row = 2;
+    const leftColumn = Math.round(1.5 - spacing * 0.75);
+    const rightColumn = Math.round(1.5 + spacing * 0.75);
+    if (leftColumn < 0 || rightColumn > 3) continue;
+    const pair = [row * 4 + leftColumn, row * 4 + rightColumn];
+    if (converterSettings.profileApplied && Math.max(
+      subcellManhattan(seedSubcell(sourcePair[0]), seedSubcell(pair[0])),
+      subcellManhattan(seedSubcell(sourcePair[1]), seedSubcell(pair[1]))
+    ) > converterSettings.guardRelocationRadius) continue;
+    const sourceRow = Math.floor(sourceSorted[0] / 4) === Math.floor(sourceSorted[1] / 4) ? Math.floor(sourceSorted[0] / 4) : 1;
+    const pairMid = (pair[0] + pair[1]) / 2;
+    candidates.push({ pair, row: Math.abs(row - sourceRow), mid: Math.abs(pairMid - (sourceSorted[0] + sourceSorted[1]) / 2), center: Math.abs(pairMid - 5.5), id: pair[0] });
+  }
+  candidates.sort((a, b) => a.row - b.row || a.mid - b.mid || a.center - b.center || a.id - b.id);
+  return candidates[0]?.pair ?? [];
+}
 
 /** @param {string} family @param {string} hand @param {number} row */
 function spatialTarget(family, hand, row, settings = { uppercutOppositeLane: false, anyOppositeLane: false, anyPunch: false }) { let column = hand === "left" ? 1 : 2; let targetRow = family === "straight" ? 0 : clamp(row,0,2); let direction=""; let sourceCell=-1; if (family === "hook") { column=hand==="left"?2:1; direction=hand==="left"?"right":"left"; sourceCell=targetRow*4+(hand==="left"?1:2); } else if (family === "uppercut") { targetRow=Math.min(targetRow,1); direction="up"; if (settings.uppercutOppositeLane) column=hand==="left"?2:1; sourceCell=(targetRow+1)*4+column; } else if (family === "straight" && settings.anyOppositeLane) { column=hand==="left"?2:1; } const targetCell=targetRow*4+column; const result={targetCell,acceptedSubcells:acceptedSubcells(targetCell,family,hand),sourceCell}; if(direction) Object.assign(result,{entryDirection:direction}); if(family==="straight") Object.assign(result,{qualificationMs:straightQualificationMs,semanticQualification:"straight"}); return result; }

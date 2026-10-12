@@ -2,7 +2,7 @@
 
 This folder holds deterministic, provider-neutral browser content-authoring fixtures.
 
-`boxing-prototype-golden-v1.json` locks sanitized cross-language semantic parity. `task11-source-matrix-v1.json` is wholly synthetic Beat Saber v2/v3/v4 Standard Hard input covering Flow, the four frozen Boxing variants, both hands and punch families, paired/crossed guards, bomb, obstacle, arc, v3/v4 burst, and every supported requested modifier. Its `fixtureHash` is `prefixedSha256(canonicalJson(fixture without fixtureHash))` and therefore excludes only its own hash field.
+`boxing-prototype-golden-v1.json` locks historical sanitized cross-language semantic parity; it is not a new same-side-guard golden. `task11-source-matrix-v1.json` preserves historical synthetic v2/v3/v4 source and the retired modifier set/hash unchanged. `task11-source-matrix-v2.json` is the independent next-version input with the retired modifier removed; its source notes still include a reversed-hand guard pair to test that newly authored targets never cross. Each `fixtureHash` is `prefixedSha256(canonicalJson(fixture without fixtureHash))`. Neither a new input hash nor a changed browser package/semantic hash may be labeled an updated Godot proof.
 
 `flow-orientation-3c9d-easy-v1.json` contains only sanitized scalar evidence from BeatSaver `3C9D`, version `5662f64a12c76a3dd11a5f6ee22611608cd06760`, Standard Easy. It records the first twelve note coordinates and canonical top-left AeroBeat cells, including beat `21` source `(x=3,y=0)` → cell `11`.
 

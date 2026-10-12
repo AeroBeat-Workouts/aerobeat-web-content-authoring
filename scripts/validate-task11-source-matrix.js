@@ -1,7 +1,7 @@
 // @ts-check
 
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import {
   canonicalConverterProfile,
   canonicalJson,
@@ -17,16 +17,16 @@ import {
   validateAuthoredPackage
 } from "../src/index.js";
 
-const fixturePath = new URL("../fixtures/task11-source-matrix-v1.json", import.meta.url);
+const fixturePath = new URL("../fixtures/task11-source-matrix-v2.json", import.meta.url);
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 const { fixtureHash, ...fixtureBody } = fixture;
 const syntheticHash=`sha256:${"0".repeat(64)}`;
 assert.equal(fixture.schema, "aerobeat/task11_source_matrix");
-assert.equal(fixture.version, 1);
-assert.equal(fixture.fixtureId, "task11-source-matrix-v1");
+assert.equal(fixture.version, 2);
+assert.equal(fixture.fixtureId, "task11-source-matrix-v2");
 assert.match(fixtureHash, /^sha256:[0-9a-f]{64}$/u);
 assert.equal(await prefixedSha256(canonicalJson(fixtureBody)), fixtureHash, "fixture hash must exclude only fixtureHash");
-assert.deepEqual(fixture.requestedModifierSets, [[], ["crossed_guard"], ["cross_body"], ["any_punch"], ["no_squats"], ["no_weaves"], ["any_punch", "cross_body", "crossed_guard", "no_squats", "no_weaves"]]);
+assert.deepEqual(fixture.requestedModifierSets, [[], ["cross_body"], ["any_punch"], ["no_squats"], ["no_weaves"], ["any_punch", "cross_body", "no_squats", "no_weaves"]]);
 const profiles = [];
 for (const value of fixture.converterProfiles) profiles.push(await normalizeConverterProfile(value));
 assert.deepEqual(profiles, [canonicalConverterProfile, prototypeReachConverterProfile]);
@@ -98,6 +98,12 @@ for (const format of ["v2", "v3", "v4"]) {
         const expectedModifiers = [...new Set([...modifierSet, ...emitted])].sort(compareCodePoints);
         assert.deepEqual(prototype.modifiers, expectedModifiers, "chart identity is requested + emitted modifier union");
         assertUniqueLineage(chart.beats);
+        for (const guard of chart.beats.filter((beat) => beat.type === "guard")) {
+          const target = /** @type {{leftCell:number,rightCell:number,sourcePair:number[]}} */ (guard.guardTarget);
+          assert.ok(target.leftCell % 4 <= 2 && target.rightCell % 4 >= 2 && target.leftCell % 4 <= target.rightCell % 4, "every guard keeps its hand on its side");
+          assert.equal(Object.hasOwn(target, "crossed"), false);
+          assert.equal(Object.hasOwn(guard, "modifier"), false);
+        }
         const types = new Set(chart.beats.map((beat) => beat.type));
         for (const type of ["straight_left", "straight_right", "hook_left", "hook_right", "uppercut_left", "uppercut_right"]) assert.equal(types.has(type), true, `${format} must cover ${type}`);
         assert.equal(types.has("guard"), converterProfile.settings.guardRelocationRadius >= 2, `${format} guard coverage must respect the profile relocation radius`);
@@ -124,9 +130,7 @@ for (const format of ["v2", "v3", "v4"]) {
       assert.equal((await service.listPackages()).length, 0);
       service.destroy();
     }
-    // The Flow Grid deletion changed every Flow chart content identity (variants reduced to the
-    // sole flow_colliders_v1 ruleset), so pinned per-format semantic hashes are regenerated and
-    // re-pinned here instead of being asserted against retired evidence.
+    // Historical v1 fixture is retained unchanged; this v2 input has independent identity.
     profileResults[converterProfile.profileId] = { semanticHashes, packageHashes };
   }
   results[format] = profileResults;
@@ -139,7 +143,6 @@ await assertWorkerProfileHashMismatch();
 await assertPerTraceProfileTampering();
 await assertFinalWorkerProfileBinding();
 await assertStaleProfileResponse();
-if (process.env.AEROBEAT_TASK11_REPIN === "1") await rePinSemanticHashes(fixture, fixturePath.href);
 console.log(`Task 11 source matrix ${fixtureHash} passed: ${JSON.stringify(results)}`);
 
 async function assertMalformedProfiles() {
@@ -155,44 +158,6 @@ async function assertWorkerProfileHashMismatch() {
   const persistence=createMemoryPersistenceAdapter({quotaBytes:64*1024*1024});const service=createAeroWebContentAuthoringService({worker,persistence,now:()=>11});const source=sourceBundle("v3",formatFixture.sourceBeatmapVersion,difficultyBytes,audioBytes);
   await assert.rejects(()=>service.convertAndPersist({providerId:"synthetic",sourceHash:formatFixture.sourceVersionHash,source},{difficulty:fixture.difficulty,sourceProvider:"synthetic",sourceId:"task11-matrix-v3",sourceVersionHash:formatFixture.sourceVersionHash,expectedAudioContentHash:audioHash,expectedDifficultyContentHashes:{"Hard.dat":difficultyHash},converterProfile:prototypeReachConverterProfile,includeAudio:true}),coded("converter_profile_hash_mismatch"));
   assert.equal((await service.listPackages()).length,0,"Worker profile hash mismatch must not persist");service.destroy();
-}
-
-/** @param {Record<string, unknown>} fixture @param {string} fixturePath */
-async function rePinSemanticHashes(fixture, fixturePath) {
-  const difficulty = /** @type {string} */ (fixture.difficulty);
-  const encoder = new TextEncoder();
-  for (const format of ["v2", "v3", "v4"]) {
-    const formatFixture = /** @type {{beatmap: unknown, sourceBeatmapVersion: string, sourceVersionHash: string, expectedSemanticHashes: Record<string, string[]>}} */ (fixture.formats[format]);
-    const difficultyBytes = encoder.encode(JSON.stringify(formatFixture.beatmap));
-    const difficultyHash = await prefixedSha256(difficultyBytes);
-    for (const converterProfile of profiles) {
-      const semanticHashes = [];
-      for (const modifierSet of /** @type {readonly (readonly string[])[]} */ (fixture.requestedModifierSets)) {
-        const source = sourceBundle(format, formatFixture.sourceBeatmapVersion, difficultyBytes, audioBytes);
-        const persistence = createMemoryPersistenceAdapter({ quotaBytes: 64 * 1024 * 1024 });
-        const service = createAeroWebContentAuthoringService({ persistence, now: () => 11 });
-        const authored = await service.convertAndPersist({ providerId: "synthetic", sourceHash: formatFixture.sourceVersionHash, source }, {
-          difficulty,
-          sourceProvider: "synthetic",
-          sourceId: `task11-repin-${format}`,
-          sourceVersionHash: formatFixture.sourceVersionHash,
-          expectedAudioContentHash: audioHash,
-          expectedDifficultyContentHashes: { "Hard.dat": difficultyHash },
-          modifiers: [...modifierSet],
-          converterProfile,
-          includeAudio: true
-        });
-        semanticHashes.push(await semanticParityHash(authored.package));
-        service.destroy();
-      }
-      formatFixture.expectedSemanticHashes[converterProfile.profileId] = semanticHashes;
-    }
-  }
-  const body = structuredClone(fixture);
-  delete body.fixtureHash;
-  const recomputedHash = await prefixedSha256(canonicalJson(body));
-  if (recomputedHash !== fixtureHash) throw new Error(`re-pinned Task 11 fixture truth must recompute as ${fixtureHash} but produced ${recomputedHash}`);
-  console.log(`Task 11 source matrix semantic truth verified against ${fixtureHash}.`);
 }
 
 async function assertPerTraceProfileTampering() {

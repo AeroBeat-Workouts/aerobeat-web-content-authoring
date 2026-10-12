@@ -43,6 +43,23 @@ for (const spacing of [0, 2]) {
 const noProfileOverride = await convertDifficulty(summary, { ...options, converterSettings: { guardSpacing: 2 } });
 const noProfileGuard = /** @type {{guardTarget:{spacing:number}}} */ (/** @type {unknown} */ ((/** @type {Record<string,unknown>[]} */ (noProfileOverride.charts[0].beats)).find((entry) => entry.type === "guard")));
 assert.equal(noProfileGuard.guardTarget.spacing, 2, "runtime settings apply without a converter profile");
+const reversedSource = { ...summary, colorNotes: [{ start: 2, cell: 10, hand: "left", direction: 8, sourceIndex: 0 }, { start: 2, cell: 9, hand: "right", direction: 8, sourceIndex: 1 }] };
+const reversed = await convertDifficulty(reversedSource, options);
+const reversedGuard = /** @type {Record<string,unknown>} */ ((/** @type {Record<string,unknown>[]} */ (reversed.charts[0].beats)).find((beat) => beat.type === "guard"));
+assert.ok(reversedGuard, "reversed source notes still author a guard");
+const reversedTarget = /** @type {{leftCell:number,rightCell:number,sourcePair:number[]}} */ (reversedGuard.guardTarget);
+assert.deepEqual(reversedTarget.sourcePair, [2, 1], "source-hand order remains neutral lineage evidence");
+assert.deepEqual([reversedTarget.leftCell, reversedTarget.rightCell], [9, 10], "reversed source never swaps target hands");
+assert.equal(Object.hasOwn(reversedTarget, "crossed"), false);
+assert.equal(Object.hasOwn(reversedGuard, "modifier"), false);
+assert.equal(Object.hasOwn((/** @type {Record<string,unknown>[]} */ (reversed.traces[0].events)).find((event) => event.kind === "guard") ?? {}, "crossed"), false);
+assert.deepEqual((/** @type {{modifiers:string[]}} */ (reversed.charts[0].prototype)).modifiers, []);
+assert.equal((await validateAuthoredPackage(reversed.package)).valid, true, "reversed source must persist a valid same-side map");
+const crossedTarget = structuredClone(reversed.package);
+const invalidGuard = (/** @type {Record<string,unknown>[]} */ (crossedTarget.charts[0].beats)).find((beat) => beat.type === "guard");
+const invalidTarget = /** @type {Record<string,unknown>} */ (invalidGuard.guardTarget);
+invalidTarget.leftCell = 10; invalidTarget.rightCell = 9;
+assert.ok((await validateAuthoredPackage(crossedTarget)).issues.some((issue) => issue.code === "guard_target_invalid"), "validator rejects reversed target even when no crossing flag remains");
 for (const invalid of [-1, 3, -0.5, "1", null]) {
   const body = { schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.guard-spacing-invalid", profileVersion: "1.0.0", class: "converter_regeneration", settings: { guardRelocationRadius: 8, reachAllowanceSubcells: 8, guardSpacing: invalid } };
   await assert.rejects(() => normalizeConverterProfile({ ...body, label: "Invalid guard spacing", experimental: true, contentHash: "0".repeat(64) }), /** @type {(error:unknown)=>boolean} */ ((error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "converter_profile_settings_invalid")));

@@ -42,9 +42,27 @@ assert.ok(guardWindow.traces.every((trace) => traceEvents(trace).some((event) =>
 assert.ok(guardWindow.traces.every((trace) => !traceEvents(trace).some((event) => eventHasSource(event,"note-003") && event.reason === "guard_window_reserved_before_optimizer")), "outside guard boundary must not be mislabeled reserved");
 
 const crossed = await convertDifficulty({ ...empty, colorNotes: [{ start: 2, cell: 6, hand: "left", direction: 8, sourceIndex: 0 }, { start: 2, cell: 5, hand: "right", direction: 8, sourceIndex: 1 }] }, { ...conversionOptions, modifiers: ["no_squats", "no_squats"] });
-for (const chart of crossed.charts.filter((chart) => chart.mode === "boxing")) assert.deepEqual((/** @type {Record<string, unknown>} */ (chart.prototype)).modifiers, ["crossed_guard", "no_squats"]);
-const tamperedModifiers = structuredClone(crossed.package); tamperedModifiers.charts[0].prototype.modifiers = ["no_squats"];
-assert.equal((await validateAuthoredPackage(tamperedModifiers)).valid, false, "validator must reject a modifier projection hiding emitted crossed_guard");
+for (const chart of crossed.charts.filter((chart) => chart.mode === "boxing")) assert.deepEqual((/** @type {Record<string, unknown>} */ (chart.prototype)).modifiers, ["no_squats"]);
+const tamperedModifiers = structuredClone(crossed.package); tamperedModifiers.charts[0].prototype.modifiers = ["crossed_guard", "no_squats"];
+assert.ok((await validateAuthoredPackage(tamperedModifiers)).issues.some((issue) => issue.code === "prototype_modifiers_invalid"), "retired modifier cannot enter a chart even with a valid hash");
+const signedLegacyCross = structuredClone(crossed.package);
+const legacyGuard = signedLegacyCross.charts[0].beats.find((beat) => beat.type === "guard");
+legacyGuard.guardTarget.crossed = true; legacyGuard.modifier = "crossed_guard";
+const formerLeft = legacyGuard.guardTarget.leftCell; legacyGuard.guardTarget.leftCell = legacyGuard.guardTarget.rightCell; legacyGuard.guardTarget.rightCell = formerLeft;
+signedLegacyCross.charts[0].prototype.modifiers = ["crossed_guard", "no_squats"];
+/** @type {{boxing:{events:Record<string,unknown>[]}[]}} */ (signedLegacyCross.conversionTrace).boxing[0].events.find((event) => event.kind === "guard").crossed = true;
+signedLegacyCross.charts[0].prototype.contentHash = await prefixedSha256(canonicalJson({ beats: signedLegacyCross.charts[0].beats, sourceHash: signedLegacyCross.charts[0].prototype.sourceHash, rulesetId: "boxing_collider_v1" }));
+const signedLegacyHash = await prefixedSha256(canonicalJson(signedLegacyCross));
+assert.ok((await validateAuthoredPackage(signedLegacyCross)).issues.some((issue) => issue.code === "crossed_guard_reimport_required"), "correctly rehashed old crossings require reimport");
+const signedStore = createMemoryPersistenceAdapter();
+await signedStore.put(stored("signed-old-cross", signedLegacyCross, signedLegacyHash, []));
+assert.equal((await signedStore.list()).length, 1, "historical signed bytes remain listable");
+await assert.rejects(() => signedStore.get("signed-old-cross"), hasCode("crossed_guard_reimport_required"));
+const signedExportRecord = await signedStore.getForExport("signed-old-cross");
+assert.deepEqual(signedExportRecord.package, signedLegacyCross, "management export preserves old bytes instead of rewriting guard evidence");
+const signedExport = await exportAuthoredPackage({ package: signedExportRecord.package, packageHash: signedExportRecord.packageHash, assets: [] });
+assert.equal((await inspectAuthoredPackageExport(signedExport.bytes)).packageHash, signedLegacyHash, "management export retains signed historical package identity");
+signedStore.destroy();
 let chartGetterCalls=0;const accessorPackage=structuredClone(crossed.package);Object.defineProperty(accessorPackage.charts,"0",{enumerable:true,get(){chartGetterCalls+=1;return crossed.package.charts[0];}});assert.equal((await validateAuthoredPackage(accessorPackage)).valid,false);assert.equal(chartGetterCalls,0,"package array accessors must not execute");
 
 // Source capability: normalized uniqueness, strict own data properties, bounds, copies and external integrity.
