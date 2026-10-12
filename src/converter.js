@@ -463,8 +463,9 @@ function chooseGuardPair(sourcePair, converterSettings) {
   for (const rowPair of guardPairs) {
     // Keep the existing fixed bottom-row guard policy; candidate order is historical.
     const row = 2;
-    const leftColumn = Math.round(1.5 - spacing * 0.75);
-    const rightColumn = Math.round(1.5 + spacing * 0.75);
+    // Zero requested spacing still cannot put the left guard on the right side.
+    const leftColumn = Math.min(1, Math.round(1.5 - spacing * 0.75));
+    const rightColumn = Math.max(2, Math.round(1.5 + spacing * 0.75));
     if (leftColumn < 0 || rightColumn > 3) continue;
     const pair = [row * 4 + leftColumn, row * 4 + rightColumn];
     if (converterSettings.profileApplied && Math.max(

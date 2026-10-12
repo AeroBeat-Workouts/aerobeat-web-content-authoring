@@ -21,12 +21,11 @@ for (const spacing of [0, 0.5, 1, 2]) {
   const guard = /** @type {{guardTarget:{leftCell:number,rightCell:number,spacing:number}}} */ (/** @type {unknown} */ ((/** @type {Record<string, unknown>[]} */ (chart.beats)).find((entry) => entry.type === "guard")));
   assert.ok(guard, `spacing ${spacing} must emit a guard`);
   assert.equal(guard.guardTarget.spacing, spacing);
-  // At spacing 0 the guards overlap (same cell); at 1+ they are distinct.
-  if (spacing > 0) assert.notEqual(guard.guardTarget.leftCell, guard.guardTarget.rightCell, "hands must occupy distinct cells when spacing > 0");
+  // Even a zero spacing request must leave each hand in its own column.
+  assert.notEqual(guard.guardTarget.leftCell, guard.guardTarget.rightCell, "guard hands must never overlap on the opposite side");
   assert.ok([guard.guardTarget.leftCell, guard.guardTarget.rightCell].every((cell) => Number.isInteger(cell) && cell >= 0 && cell <= 11));
-  // Linear interpolation: leftCol = round(1.5 - s*0.75), rightCol = round(1.5 + s*0.75).
-  // Guards are always on row 2 (bottom row, cells 8-11).
-  assert.deepEqual([guard.guardTarget.leftCell, guard.guardTarget.rightCell], spacing === 0 ? [10, 10] : spacing < 1.5 ? [9, 10] : [8, 11]);
+  // Linear spacing is clamped to each hand's own side; row 2 is always fixed.
+  assert.deepEqual([guard.guardTarget.leftCell, guard.guardTarget.rightCell], spacing < 1.5 ? [9, 10] : [8, 11]);
   assert.equal((await validateAuthoredPackage(result.package)).valid, true, `spacing ${spacing} package must validate`);
   const rerun = await convertDifficulty(summary, { ...options, converterProfile: profile });
   assert.equal(result.packageHash, rerun.packageHash, `spacing ${spacing} must be deterministic`);
@@ -64,4 +63,4 @@ for (const invalid of [-1, 3, -0.5, "1", null]) {
   const body = { schema: "aerobeat/prototype_profile", version: 1, profileId: "aero.converter.guard-spacing-invalid", profileVersion: "1.0.0", class: "converter_regeneration", settings: { guardRelocationRadius: 8, reachAllowanceSubcells: 8, guardSpacing: invalid } };
   await assert.rejects(() => normalizeConverterProfile({ ...body, label: "Invalid guard spacing", experimental: true, contentHash: "0".repeat(64) }), /** @type {(error:unknown)=>boolean} */ ((error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "converter_profile_settings_invalid")));
 }
-console.log("Guard spacing 0/1/2 converter oracle passed");
+console.log("Guard spacing 0/1/2 same-side converter oracle passed");

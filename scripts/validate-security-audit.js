@@ -47,6 +47,17 @@ const crossed = await convertDifficulty({ ...empty, colorNotes: [{ start: 2, cel
 for (const chart of crossed.charts.filter((chart) => chart.mode === "boxing")) assert.deepEqual((/** @type {Record<string, unknown>} */ (chart.prototype)).modifiers, ["no_squats"]);
 const tamperedModifiers = structuredClone(crossed.package); tamperedModifiers.charts[0].prototype.modifiers = ["crossed_guard", "no_squats"];
 assert.ok((await validateAuthoredPackage(tamperedModifiers)).issues.some((issue) => issue.code === "prototype_modifiers_invalid"), "retired modifier cannot enter a chart even with a valid hash");
+// These attacker-authored charts carry no retired flag: only the target columns are wrong.
+for (const [label, leftCell, rightCell] of [["left on right", 10, 10], ["right on left", 9, 9]]) {
+  const tampered = structuredClone(crossed.package);
+  const beat = tampered.charts[0].beats.find((entry) => entry.type === "guard");
+  beat.guardTarget.leftCell = leftCell; beat.guardTarget.rightCell = rightCell;
+  beat.guardTarget.spacing = 0;
+  tampered.charts[0].prototype.contentHash = await prefixedSha256(canonicalJson({ beats: tampered.charts[0].beats, sourceHash: tampered.charts[0].prototype.sourceHash, rulesetId: "boxing_collider_v1" }));
+  const signedHash = await prefixedSha256(canonicalJson(tampered));
+  assert.ok((await validateAuthoredPackage(tampered)).issues.some((issue) => issue.code === "guard_target_invalid"), `${label}: authoring must reject even a correctly rehashed chart`);
+  await assert.rejects(() => validateRuntimePackage(tampered, { declaredPackageHash: signedHash }), hasCode("crossed_guard_reimport_required"), `${label}: content already rejects these signed wrong-side targets`);
+}
 const signedLegacyCross = structuredClone(crossed.package);
 const legacyGuard = signedLegacyCross.charts[0].beats.find((beat) => beat.type === "guard");
 legacyGuard.guardTarget.crossed = true; legacyGuard.modifier = "crossed_guard";
