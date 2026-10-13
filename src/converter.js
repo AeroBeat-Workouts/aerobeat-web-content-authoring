@@ -489,7 +489,7 @@ function acceptedSubcells(cell,family,hand){const row=Math.floor(cell/4),column=
 /** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} summary @param {Difficulty} difficulty @param {string} songToken */
 export function buildFlowIntervalOracle(summary,difficulty,songToken){const beats=[];const events=[];const lookup=buildFlowNoteLookup(summary.colorNotes??[]);for(const note of summary.colorNotes??[]){const emitted=emitFlowNote(note);beats.push(emitted);events.push({start:Number(note.start??0),sourceFamily:"note",result:{action:"emit",beat:cloneData(emitted),noteRef:flowNoteRef(note)},note:cloneData(note)});}for(const bomb of summary.bombNotes??[]){const emitted={start:Number(bomb.start??0),type:"bomb",placement:topLeftCell(Number(bomb.cell??0))};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"bomb",result:{action:"emit",beat:cloneData(emitted)},bomb:cloneData(bomb)});}for(const obstacle of summary.obstacles??[]){const start=Number(obstacle.start??0);const end=start+Number(obstacle.duration??0);if(!(end>start))continue;const emitted={start,end,type:"obstacle",...normalizedGeometryForObstacle(obstacle),gridMask:gridMaskForObstacle(obstacle)};beats.push(emitted);events.push({start:emitted.start,sourceFamily:"obstacle",result:{action:"emit",beat:cloneData(emitted)},obstacle:cloneData(obstacle)});}for(const slider of summary.sliders??[]){const start=Number(slider.start??0);const end=Number(slider.end??slider.start??0);if(!(end>start))continue;const emitted=emitFlowArc(slider,lookup);beats.push(emitted);events.push({start,sourceFamily:"slider",result:{action:"emit",beat:cloneData(emitted)},slider:cloneData(slider)});}for(const burst of summary.burstSliders??[]){const burstStart=Number(burst.start??0);const burstEnd=Number(burst.end??burst.start??0);if(!(burstEnd>burstStart))continue;/* B1.6: drop genuinely zero/negative-length bursts — they fail the flow-interval positive-duration gate ("start at center") */const emitted={start:burstStart,end:burstEnd,type:"burst",hand:String(burst.hand??"left"),placement:topLeftCell(Number(burst.cell??0)),direction:Number(burst.direction??8),tailPlacement:topLeftCell(Number(burst.tailCell??burst.cell??0)),checkpointCount:Math.max(Number(burst.sliceCount??1),1)};if(Object.hasOwn(burst,"spacingBias"))Object.assign(emitted,{spacingBias:Number(burst.spacingBias)});beats.push(emitted);events.push({start:emitted.start,sourceFamily:"burstSlider",result:{action:"emit",beat:cloneData(emitted)},source:cloneData(burst)});}swapCrossedFlowNotes(beats,events);const order={note:0,bomb:1,obstacle:2,arc:3,burst:4};beats.sort((a,b)=>Number(a.start)-Number(b.start)||(order[/** @type {keyof typeof order} */(a.type)]??99)-(order[/** @type {keyof typeof order} */(b.type)]??99)||JSON.stringify(a).localeCompare(JSON.stringify(b)));return{chart:{schemaId:"aerobeat.chart.flow.v4",schemaVersion:4,recordVersion:2,rulesetId:flowCollidersRulesetId,chartId:`ab-chart-${songToken}-flow-${difficulty.toLowerCase()}`,chartName:`${titleize(songToken)} ${difficulty} Flow`,mode:"flow",difficulty,beats},trace:{difficulty,obstacleContract:"normalized_obstacle_v2",events}};}
 /**
- * Flip only simultaneous crossed exterior Flow notes, before chart and trace identities are frozen.
+ * Flip simultaneous crossed exterior or center Flow notes before chart and trace identities are frozen.
  * Exact start equality is the Flow same-beat timing window; adjacent beats stay independent.
  * @param {DataRecord[]} beats
  * @param {DataRecord[]} events
@@ -510,22 +510,29 @@ export function swapCrossedFlowNotes(beats, events = []) {
     return [beat, result?.beat];
   }));
   for (const group of byStart.values()) {
-    const leftOnRight = group.filter((beat) => beat.hand === "left" && [3, 7, 11].includes(Number(beat.placement)));
-    const rightOnLeft = group.filter((beat) => beat.hand === "right" && [0, 4, 8].includes(Number(beat.placement)));
-    const count = Math.min(leftOnRight.length, rightOnLeft.length);
-    for (let index = 0; index < count; index += 1) {
-      const left = leftOnRight[index];
-      const right = rightOnLeft[index];
-      // Same-cell collision (degenerate): do NOT throw — skip the swap so the
-      // song stays playable. The notes keep their original hands (the X remains
-      // unreachable, but the chart is valid). This is the heuristic fallback.
-      if (left.placement === right.placement) continue;
-      left.hand = "right";
-      right.hand = "left";
-      const leftTrace = /** @type {DataRecord | undefined} */ (traceFor.get(left));
-      const rightTrace = /** @type {DataRecord | undefined} */ (traceFor.get(right));
-      if (leftTrace) leftTrace.hand = "right";
-      if (rightTrace) rightTrace.hand = "left";
+    // Pair in source order within each family. Keeping families separate prevents
+    // an exterior chord from consuming a center partner (or the reverse).
+    for (const [leftCells, rightCells] of [
+      [[3, 7, 11], [0, 4, 8]],
+      [[2, 10], [1, 9]]
+    ]) {
+      const leftOnRight = group.filter((beat) => beat.hand === "left" && leftCells.includes(Number(beat.placement)));
+      const rightOnLeft = group.filter((beat) => beat.hand === "right" && rightCells.includes(Number(beat.placement)));
+      const count = Math.min(leftOnRight.length, rightOnLeft.length);
+      for (let index = 0; index < count; index += 1) {
+        const left = leftOnRight[index];
+        const right = rightOnLeft[index];
+        // Same-cell collision (degenerate): do NOT throw — skip the swap so the
+        // song stays playable. The notes keep their original hands (the X remains
+        // unreachable, but the chart is valid). This is the heuristic fallback.
+        if (left.placement === right.placement) continue;
+        left.hand = "right";
+        right.hand = "left";
+        const leftTrace = /** @type {DataRecord | undefined} */ (traceFor.get(left));
+        const rightTrace = /** @type {DataRecord | undefined} */ (traceFor.get(right));
+        if (leftTrace) leftTrace.hand = "right";
+        if (rightTrace) rightTrace.hand = "left";
+      }
     }
   }
 }

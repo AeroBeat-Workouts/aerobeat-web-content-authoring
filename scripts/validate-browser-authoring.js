@@ -135,6 +135,16 @@ try {
       return {hostile,hostileExportPreserved:hostileExport?.packageHash===hostileRow.packageHash,malformedV4,malformedV4ExportPreserved:malformedV4Export?.packageHash===malformedV4Row.packageHash,listed:listed.map((entry)=>entry.key),collections:collections.map((entry)=>entry.collectionId),hashPreserved:listed[0]?.packageHash===packageHash&&preserved?.packageHash===packageHash,stale,packageSchema:preserved?.package.schemaVersion,assets:preserved?.assets.map((entry)=>[entry.path,[...entry.bytes]]),sourceCache:preserved?.sourceCache.map((entry)=>[entry.path,[...entry.bytes]]),exported:exportBytes.byteLength>0,after:[after.packages.length,after.collections.length]};
     }):null;
     if(db7CurrentV3Collection)assert.deepEqual(db7CurrentV3Collection,{hostile:"storage_record_invalid",hostileExportPreserved:true,malformedV4:"spawn_timing_reimport_required",malformedV4ExportPreserved:true,listed:["derrick-import-v3"],collections:["derrick-import-collection"],hashPreserved:true,stale:"spawn_timing_reimport_required",packageSchema:3,assets:[["cover.bin",[9,8]],["song.ogg",[4,3,2,1]]],sourceCache:[["Info.dat",[7,6]]],exported:true,after:[0,0]},"real Chromium DB7 must reject hostile current-contract generations as storage-invalid while preserving management access and keeping Derrick-like v3 palette migration exact");
+    // Browser Window conversion exercises the same Flow path as the module Worker.
+    const center = await page.evaluate(async () => {
+      const { buildFlowIntervalOracle } = await import(/* @vite-ignore */ "/src/" + "converter.js");
+      const toSource = (placement, hand, start, sourceIndex) => ({ cell: (2 - Math.floor(placement / 4)) * 4 + placement % 4, hand, start, sourceIndex, direction: sourceIndex % 2 ? 3 : 8 });
+      const notes = [toSource(2, "left", 1, 0), toSource(9, "right", 1, 1), toSource(10, "left", 2, 2), toSource(1, "right", 2, 3), toSource(2, "left", 3, 4), toSource(1, "right", 3.001, 5)];
+      const result = buildFlowIntervalOracle({ colorNotes: notes, bombNotes: [], obstacles: [], sliders: [], burstSliders: [] }, "Hard", "browser-center");
+      return { beats: result.chart.beats.map((beat) => [beat.hand, beat.placement]), trace: result.trace.events.map((event) => [event.result.beat.hand, event.result.beat.placement, event.result.beat.direction]) };
+    });
+    assert.deepEqual(center.beats, [["left", 9], ["right", 2], ["left", 1], ["right", 10], ["left", 2], ["right", 1]], "browser Flow center cross-row hands and offset negative");
+    assert.deepEqual(center.trace, [["right", 2, undefined], ["left", 9, 3], ["right", 10, undefined], ["left", 1, 3], ["left", 2, undefined], ["right", 1, 3]], "browser Flow trace preserves source placement, arrow/any, and swapped hands");
     const result = await page.evaluate(() => globalThis.runAuthoringHarness());
     // z7nw — new imports convert to Flow + the sole collider chart.
     assert.equal(result.chartCount, 2);
