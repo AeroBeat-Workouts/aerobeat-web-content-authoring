@@ -52,4 +52,20 @@ assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.source
 assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.sourceEventIds).includes("note-003"))?.reason, "spacing_optimizer_rejected", "global conflict takes precedence over overlapping same-hand gap");
 assert.ok(conflictBeats.some((beat) => /** @type {string[]} */ (beat.sourceEventIds ?? []).includes("note-004") && beat.type === "straight_left"));
 assert.deepEqual(resolved.charts.find((chart) => chart.mode === "flow"), conflictBaseline.charts.find((chart) => chart.mode === "flow"));
-console.log("Same-hand gap, zero identity, global optimizer conflict recovery, opposite hand, trace, and Flow validation passed.");
+// Independently identified eight-event sequence: the legacy global winner set
+// post-filtered away an addable 1280-ms left punch between right-hand pulses.
+const pulseTimes = [[500, "right", 6], [1090, "right", 6], [1280, "left", 5], [1470, "right", 6], [1820, "right", 6], [2170, "right", 6], [2840, "right", 6], [3750, "left", 5]];
+const pulses = { ...source, colorNotes: pulseTimes.map(([timeMs, hand, cell], sourceIndex) => ({ start: Number(timeMs) * options.bpm / 60000, hand, cell, direction: 8, sourceIndex })) };
+const pulseBaseline = await convertDifficulty(pulses, options);
+const pulseZero = await convertDifficulty(pulses, { ...options, converterSettings: { sameHandPunchMinGapMs: 0 } });
+assert.equal(pulseZero.packageHash, pulseBaseline.packageHash, "eight-event conflicting timeline keeps exact zero package identity");
+const pulseTuned = await convertDifficulty(pulses, { ...options, converterSettings: { sameHandPunchMinGapMs: 1000 } });
+const pulseBoxing = /** @type {Record<string,unknown>[]} */ (pulseTuned.charts.find((chart) => chart.mode === "boxing")?.beats ?? []);
+const pulsePunches = pulseBoxing.filter((beat) => /^straight_|^hook_|^uppercut_/u.test(String(beat.type)));
+assert.ok(pulsePunches.some((beat) => /** @type {string[]} */ (beat.sourceEventIds ?? []).includes("note-002") && beat.type === "straight_left" && Math.abs(ms(beat) - 1280) < 0.0001), "feasible 1280-ms opposite-hand punch must be emitted");
+for (const hand of ["left", "right"]) {
+  const handTimes = pulsePunches.filter((beat) => String(beat.type).endsWith(`_${hand}`)).map(ms);
+  for (let index = 1; index < handTimes.length; index += 1) assert.ok(handTimes[index] - handTimes[index - 1] >= 999.9999);
+}
+assert.deepEqual(pulseTuned.charts.find((chart) => chart.mode === "flow"), pulseBaseline.charts.find((chart) => chart.mode === "flow"));
+console.log("Same-hand gap, zero identity, two global optimizer conflicts, opposite hand, trace, and Flow validation passed.");
