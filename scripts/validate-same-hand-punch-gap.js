@@ -37,4 +37,19 @@ for (const beat of baselinePunches) {
   assert.ok(punches.some((opposite) => String(opposite.type).endsWith(hand === "left" ? "_right" : "_left") && Math.abs(ms(beat) - ms(opposite)) < 1000), "opposite-hand punch remains available inside the removed punch's interval");
 }
 assert.deepEqual(tuned.charts.find((chart) => chart.mode === "flow"), baseline.charts.find((chart) => chart.mode === "flow"), "Flow chart remains unchanged");
-console.log("Same-hand 1000 ms punch gap, zero identity, opposite hand, trace, and Flow validation passed.");
+// Global 360-ms optimization previously picked left at 1300 ms, dropped it for
+// its 800-ms same-hand gap, and incorrectly excluded left at 1650 ms (1150-ms left gap).
+const conflict = { ...source, colorNotes: [[1, "left", 5], [1.8, "right", 6], [2.6, "left", 5], [3, "right", 6], [3.3, "left", 5], [4, "right", 6]].map(([start, hand, cell], sourceIndex) => ({ start, hand, cell, direction: 8, sourceIndex })) };
+const conflictBaseline = await convertDifficulty(conflict, options);
+const conflictZero = await convertDifficulty(conflict, { ...options, converterSettings: { sameHandPunchMinGapMs: 0 } });
+assert.equal(conflictZero.packageHash, conflictBaseline.packageHash, "conflicting sequence at zero retains exact package identity");
+const resolved = await convertDifficulty(conflict, { ...options, converterSettings: { sameHandPunchMinGapMs: 1000 } });
+const conflictBeats = /** @type {Record<string,unknown>[]} */ (resolved.charts.find((chart) => chart.mode === "boxing")?.beats ?? []);
+const conflictEmits = /** @type {Record<string,unknown>[]} */ (resolved.traces[0].events).filter((event) => event.action === "emit" && event.kind === "punch");
+const conflictDrops = /** @type {Record<string,unknown>[]} */ (resolved.traces[0].events).filter((event) => event.action === "drop");
+assert.deepEqual(conflictEmits.map((event) => event.sourceEventIds), [["note-000"], ["note-001"], ["note-004"]], "later feasible left must fill hole left by the globally selected but same-hand-infeasible left");
+assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.sourceEventIds).includes("note-002"))?.reason, "spacing_optimizer_rejected", "global conflict takes precedence when both constraints block a punch");
+assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.sourceEventIds).includes("note-003"))?.reason, "spacing_optimizer_rejected", "global conflict takes precedence over overlapping same-hand gap");
+assert.ok(conflictBeats.some((beat) => /** @type {string[]} */ (beat.sourceEventIds ?? []).includes("note-004") && beat.type === "straight_left"));
+assert.deepEqual(resolved.charts.find((chart) => chart.mode === "flow"), conflictBaseline.charts.find((chart) => chart.mode === "flow"));
+console.log("Same-hand gap, zero identity, global optimizer conflict recovery, opposite hand, trace, and Flow validation passed.");

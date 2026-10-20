@@ -209,7 +209,9 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     candidates.push({ kind: "punch", start, note, family, targetRow, sourceEventIds, stableId: sourceEventIds.join("+") });
   }
   candidates.sort(candidateOrder);
-  const optimizer = selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings);
+  const optimizer = converterSettings.sameHandPunchMinGapMs > 0
+    ? selectHandGapOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings)
+    : selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings);
   const beats = [];
   let lastPunchMs = -1e9; let previousHand = "";
   const lastHandPunchMs = { left: -1e9, right: -1e9 };
@@ -280,6 +282,46 @@ function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty, c
     const take = [...best[compatible + 1], candidate]; const skip = [...best[index]]; best.push(sequenceBetter(take, skip) ? take : skip);
   }
   return { selected: new Map(best.at(-1).map((candidate) => [String(candidate.stableId), true])), infeasible };
+}
+
+/** Select globally spaced punches without allowing a same-hand-infeasible winner to exclude an opposite-hand candidate. @param {DataRecord[]} candidates @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean,sameHandPunchMinGapMs:number}} converterSettings */
+function selectHandGapOptimizedPunches(candidates, bpm, obstacles, difficulty, converterSettings) {
+  const punches = []; const infeasible = new Map();
+  const guardTimesMs = candidates.filter((candidate) => candidate.kind === "guard").map((candidate) => beatToMs(Number(candidate.start), bpm));
+  for (const candidate of candidates) {
+    if (candidate.kind !== "punch") continue;
+    const punchMs = beatToMs(Number(candidate.start), bpm);
+    const reserved = guardTimesMs.some((guardMs) => Math.abs(punchMs - guardMs) <= timingWindowMs + 0.0001);
+    const reason = reserved ? "guard_window_reserved_before_optimizer" : staticInfeasibility(candidate, bpm, obstacles, difficulty, converterSettings);
+    if (reason) infeasible.set(String(candidate.stableId), reason); else punches.push(candidate);
+  }
+  punches.sort(candidateOrder);
+  /** @type {Map<string,DataRecord[]>} */ const states = new Map([["-1|-1|-1", []]]);
+  const time = (candidate) => beatToMs(Number(candidate.start), bpm);
+  for (let index = 0; index < punches.length; index += 1) {
+    const candidate = punches[index]; const hand = String(/** @type {DataRecord} */ (candidate.note).hand); const candidateMs = time(candidate);
+    for (const [key, sequence] of [...states]) {
+      const [last, left, right] = key.split("|").map(Number);
+      if (last >= 0 && candidateMs - time(punches[last]) + 0.0001 < punchMinSpacingMs) continue;
+      const handIndex = hand === "left" ? left : right;
+      if (handIndex >= 0 && candidateMs - time(punches[handIndex]) + 0.0001 < converterSettings.sameHandPunchMinGapMs) continue;
+      const next = [index, hand === "left" ? index : left, hand === "right" ? index : right].join("|");
+      const take = [...sequence, candidate]; const previous = states.get(next);
+      if (!previous || sequenceBetter(take, previous)) states.set(next, take);
+    }
+  }
+  let best = /** @type {DataRecord[]} */ ([]);
+  for (const sequence of states.values()) if (sequenceBetter(sequence, best)) best = sequence;
+  const selected = new Map(best.map((candidate) => [String(candidate.stableId), true]));
+  for (const candidate of punches) {
+    const id = String(candidate.stableId);
+    if (selected.has(id)) continue;
+    const candidateMs = time(candidate); const hand = String(/** @type {DataRecord} */ (candidate.note).hand);
+    const sameHandPrior = best.some((winner) => String(/** @type {DataRecord} */ (winner.note).hand) === hand && time(winner) < candidateMs && candidateMs - time(winner) + 0.0001 < converterSettings.sameHandPunchMinGapMs);
+    const globallyBlocked = best.some((winner) => Math.abs(time(winner) - candidateMs) + 0.0001 < punchMinSpacingMs);
+    if (sameHandPrior && !globallyBlocked) infeasible.set(id, "same_hand_punch_min_gap");
+  }
+  return { selected, infeasible };
 }
 
 /** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
