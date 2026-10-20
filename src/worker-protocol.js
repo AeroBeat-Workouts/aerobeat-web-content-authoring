@@ -130,9 +130,9 @@ function narrowRequest(request) {
 
 /** @param {unknown} value */
 function converterSettingsShape(value){
-  if(!hasOnlyDataKeys(value,[],["guardSpacing","sameHandPunchMinGapMs","uppercutOppositeLane","anyOppositeLane"]))return false;
+  if(!hasOnlyDataKeys(value,[],["guardSpacing","sameHandPunchMinGapMs","repeatedPunchSwitchChancePercent","repeatedGuardReplaceChancePercent","uppercutOppositeLane","anyOppositeLane"]))return false;
   const settings=/** @type {Record<string,unknown>} */(value);
-  return (!Object.hasOwn(settings,"guardSpacing")||(Number.isFinite(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2))&&(!Object.hasOwn(settings,"sameHandPunchMinGapMs")||(Number.isInteger(settings.sameHandPunchMinGapMs)&&Number(settings.sameHandPunchMinGapMs)>=0&&Number(settings.sameHandPunchMinGapMs)<=2000))&&(!Object.hasOwn(settings,"uppercutOppositeLane")||typeof settings.uppercutOppositeLane==="boolean")&&(!Object.hasOwn(settings,"anyOppositeLane")||typeof settings.anyOppositeLane==="boolean");
+  return (!Object.hasOwn(settings,"guardSpacing")||(Number.isFinite(settings.guardSpacing)&&Number(settings.guardSpacing)>=0&&Number(settings.guardSpacing)<=2))&&(!Object.hasOwn(settings,"sameHandPunchMinGapMs")||(Number.isInteger(settings.sameHandPunchMinGapMs)&&Number(settings.sameHandPunchMinGapMs)>=0&&Number(settings.sameHandPunchMinGapMs)<=2000))&&["repeatedPunchSwitchChancePercent","repeatedGuardReplaceChancePercent"].every((key)=>!Object.hasOwn(settings,key)||(Number.isInteger(settings[key])&&Number(settings[key])>=0&&Number(settings[key])<=100))&&(!Object.hasOwn(settings,"uppercutOppositeLane")||typeof settings.uppercutOppositeLane==="boolean")&&(!Object.hasOwn(settings,"anyOppositeLane")||typeof settings.anyOppositeLane==="boolean");
 }
 
 /** @param {unknown} value */

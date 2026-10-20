@@ -125,8 +125,8 @@ export async function reprocessBoxingChart(sourceSummary, options) {
   if (spawnTiming.bpm !== bpm || spawnTiming.noteJumpMovementSpeed !== options.noteJumpMovementSpeed || spawnTiming.noteJumpStartBeatOffset !== options.noteJumpStartBeatOffset) throw new Error("spawn_timing_mismatch");
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
   const profileSettings = converterProfile ? /** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings) : null;
-  const settings = /** @type {{guardSpacing?:number,sameHandPunchMinGapMs?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean,maxObstacleDurationMs?:number,obstacleCooldownMs?:number}} */ (options.converterSettings ?? {});
-  const converterSettings = /** @type {{uppercutOppositeLane:boolean,anyOppositeLane:boolean,guardSpacing:number,sameHandPunchMinGapMs:number,maxObstacleDurationMs:number,obstacleCooldownMs:number,guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} */ ({
+  const settings = /** @type {{guardSpacing?:number,sameHandPunchMinGapMs?:number,repeatedPunchSwitchChancePercent?:number,repeatedGuardReplaceChancePercent?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean,maxObstacleDurationMs?:number,obstacleCooldownMs?:number}} */ (options.converterSettings ?? {});
+  const converterSettings = /** @type {{uppercutOppositeLane:boolean,anyOppositeLane:boolean,guardSpacing:number,sameHandPunchMinGapMs:number,repeatedPunchSwitchChancePercent:number,repeatedGuardReplaceChancePercent:number,maxObstacleDurationMs:number,obstacleCooldownMs:number,guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} */ ({
     uppercutOppositeLane: settings.uppercutOppositeLane ?? profileSettings?.uppercutOppositeLane ?? false,
     // 0.0.91 (F4): straight punches must land in the PUNCHING hand's own lane
     // (left hand → left lane columns 0-1, right hand → right lane columns 2-3).
@@ -139,6 +139,8 @@ export async function reprocessBoxingChart(sourceSummary, options) {
     anyOppositeLane: settings.anyOppositeLane ?? profileSettings?.anyOppositeLane ?? false,
     guardSpacing: settings.guardSpacing ?? profileSettings?.guardSpacing ?? 0.25,
     sameHandPunchMinGapMs: settings.sameHandPunchMinGapMs ?? 0,
+    repeatedPunchSwitchChancePercent: settings.repeatedPunchSwitchChancePercent ?? 0,
+    repeatedGuardReplaceChancePercent: settings.repeatedGuardReplaceChancePercent ?? 0,
     // 0.0.89 (Derrick): Boxing obstacle rules. Both bake at import time, so a change
     // needs a reimport. Surfaced in Game Setup for playtesting, locked in later.
     maxObstacleDurationMs: Number(settings.maxObstacleDurationMs ?? 3000),
@@ -190,12 +192,12 @@ async function colliderChartFor(generated, recipe, difficulty, songToken, source
   return chart;
 }
 
-/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,sameHandPunchMinGapMs:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
+/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,sameHandPunchMinGapMs:number,repeatedPunchSwitchChancePercent:number,repeatedGuardReplaceChancePercent:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
 async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings) {
   const trace = [];
   const obstacleWindows = obstaclesFor(sourceSummary.obstacles ?? [], bpm);
   const groups = noteGroups(sourceSummary.colorNotes ?? []);
-  const candidates = [];
+  /** @type {DataRecord[]} */ const candidates = [];
   const rowCounts = [0, 0, 0];
   for (const [start, rawGroup] of groups) {
     const group = collapseSameHand(rawGroup);
@@ -209,6 +211,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     candidates.push({ kind: "punch", start, note, family, targetRow, sourceEventIds, stableId: sourceEventIds.join("+") });
   }
   candidates.sort(candidateOrder);
+  if (converterSettings.repeatedPunchSwitchChancePercent > 0 || converterSettings.repeatedGuardReplaceChancePercent > 0) await applyRepeatedBoxingCandidates(candidates, String(recipe.recipeId), converterSettings);
   const optimizer = converterSettings.sameHandPunchMinGapMs > 0
     ? selectHandGapOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings)
     : selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings);
@@ -236,7 +239,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
       }
       continue;
     }
-    if (!optimizer.selected.has(String(candidate.stableId))) { trace.push(dropTrace(candidate, optimizer.infeasible.get(String(candidate.stableId)) ?? "spacing_optimizer_rejected", { priorityOrder: optimizerPriority })); continue; }
+    if (!optimizer.selected.has(String(candidate.stableId))) { trace.push(dropTrace(candidate, optimizer.infeasible.get(String(candidate.stableId)) ?? "spacing_optimizer_rejected", { priorityOrder: optimizerPriority, ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) })); continue; }
     const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const family = String(candidate.family);
     // 0.0.89 (Derrick) rule 1: no punch may be authored while a weave/squat is up.
     if (obstacleWindowActive(startMs)) { trace.push(dropTrace(candidate, "obstacle_window_active")); continue; }
@@ -250,7 +253,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     const beat = { start, type, eventId: generatedEventId, sourceEventIds: cloneData(candidate.sourceEventIds), spatialTarget: spatial, timingWindowMs, evidenceFreshnessMs: freshnessMs };
     if (modifiers.includes("any_punch")) Object.assign(beat, { modifier: "any_punch" }); else if (modifiers.includes("cross_body")) Object.assign(beat, { modifier: "cross_body" });
     beats.push(beat); lastPunchMs = startMs; lastHandPunchMs[/** @type {"left" | "right"} */ (hand)] = startMs; previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = seedSubcell(spatial.targetCell); wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
-    trace.push({ sourceEventIds: beat.sourceEventIds, eventId: generatedEventId, start, action: "emit", kind: "punch", family, hand, sourceDirection: Number(note.direction ?? 8), generatedDirection: spatial.entryDirection ?? "semantic_straight", target: cloneData(spatial) });
+    trace.push({ sourceEventIds: beat.sourceEventIds, eventId: generatedEventId, start, action: "emit", kind: "punch", family, hand, sourceDirection: Number(note.direction ?? 8), generatedDirection: spatial.entryDirection ?? "semantic_straight", target: cloneData(spatial), ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) });
   }
   for (const mergedWindow of resolvedObstacleWindows) {
     const window = /** @type {ObstacleWindow & {forcedType?:string}} */ (/** @type {unknown} */ (mergedWindow));
@@ -265,10 +268,61 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     beats.push(emitted); trace.push({ sourceEventIds: [sourceId], start: window.startBeat, end: window.endBeat, action: "emit", kind: "obstacle_checkpoint", type, sourceGeometry: cloneData(window.sourceGeometry), gameplayGeometry: cloneData(window.gameplayGeometry), gridMask: [...window.gridMask], blockedCells, noseSafeCells: safeCells });
   }
   beats.sort((left, right) => Number(left.start) - Number(right.start) || String(left.eventId).localeCompare(String(right.eventId)));
-  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.sameHandPunchMinGapMs > 0 ? { sameHandPunchMinGapMs: converterSettings.sameHandPunchMinGapMs } : {}), ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
+  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.repeatedPunchSwitchChancePercent > 0 ? { repeatedPunchSwitchChancePercent: converterSettings.repeatedPunchSwitchChancePercent } : {}), ...(converterSettings.repeatedGuardReplaceChancePercent > 0 ? { repeatedGuardReplaceChancePercent: converterSettings.repeatedGuardReplaceChancePercent } : {}), ...(converterSettings.sameHandPunchMinGapMs > 0 ? { sameHandPunchMinGapMs: converterSettings.sameHandPunchMinGapMs } : {}), ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
 }
 
 const optimizerPriority = ["retained_punches", "hand_alternation", "family_balance", "source_order", "stable_event_id"];
+
+/** Seed every choice from immutable source evidence, not the caller's runtime clock or candidate traversal count. @param {string} identity @param {number} chance */
+async function repetitionChosen(identity, chance) {
+  if (chance <= 0) return false;
+  if (chance >= 100) return true;
+  const digest = await prefixedSha256(identity);
+  return Number.parseInt(digest.slice(7, 15), 16) / 0x100000000 < chance / 100;
+}
+
+/** Reassign candidate identity and hand before the optimizer, preserving source notes and zero-percent paths. @param {DataRecord[]} candidates @param {string} recipeIdValue @param {{repeatedPunchSwitchChancePercent:number,repeatedGuardReplaceChancePercent:number}} settings */
+async function applyRepeatedBoxingCandidates(candidates, recipeIdValue, settings) {
+  let previousWasPunch = false;
+  let previousWasGuard = false;
+  let previousSourceHand = ""; let previousSourceFamily = "";
+  for (const candidate of candidates) {
+    if (candidate.kind === "guard") {
+      const repeated = previousWasGuard;
+      previousWasGuard = true;
+      previousWasPunch = false; previousSourceHand = ""; previousSourceFamily = "";
+      if (!repeated || !await repetitionChosen(`${recipeIdValue}|guard|${String(candidate.stableId)}`, settings.repeatedGuardReplaceChancePercent)) continue;
+      const notes = /** @type {DataRecord[]} */ (candidate.notes);
+      const sourceLeft = noteForHand(notes, "left"), sourceRight = noteForHand(notes, "right");
+      const sourcePair = [topLeftCell(Number(sourceLeft.cell)), topLeftCell(Number(sourceRight.cell))];
+      const families = /** @type {const} */ (["straight", "hook", "uppercut"]);
+      const seed = await prefixedSha256(`${recipeIdValue}|guard-punch|${String(candidate.stableId)}`);
+      const familyIndex = Number.parseInt(seed.slice(7, 15), 16);
+      const family = families[familyIndex % families.length];
+      const hand = Number.parseInt(seed.slice(15, 23), 16) % 2 === 0 ? "left" : "right";
+      const note = hand === "left" ? sourceLeft : sourceRight;
+      candidate.kind = "punch"; candidate.note = { ...note, hand };
+      candidate.family = family; candidate.targetRow = 1;
+      candidate.stableId = `${String(candidate.stableId)}|guard-to-${family}-${hand}`;
+      candidate.repetition = { kind: "repeated_guard_replaced", originalKind: "guard", sourcePair, family, hand };
+      // The next source guard remains in the same guard run even after replacement.
+      continue;
+    }
+    previousWasGuard = false;
+    if (candidate.kind !== "punch") continue;
+    const note = /** @type {DataRecord} */ (candidate.note);
+    const sourceHand = String(note.hand);
+    const family = String(candidate.family);
+    if (previousWasPunch && previousSourceFamily === family && previousSourceHand === sourceHand && await repetitionChosen(`${recipeIdValue}|punch-switch|${String(candidate.stableId)}`, settings.repeatedPunchSwitchChancePercent)) {
+      const hand = sourceHand === "left" ? "right" : "left";
+      candidate.note = { ...note, hand };
+      candidate.stableId = `${String(candidate.stableId)}|switch-${hand}`;
+      candidate.repetition = { kind: "repeated_punch_switched", sourceHand, hand, family };
+    }
+    previousWasPunch = true; previousSourceHand = sourceHand; previousSourceFamily = family;
+  }
+}
+
 
 /** @param {DataRecord[]} candidates @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean}} converterSettings */
 function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty, converterSettings) {
