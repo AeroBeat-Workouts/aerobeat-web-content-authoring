@@ -125,8 +125,8 @@ export async function reprocessBoxingChart(sourceSummary, options) {
   if (spawnTiming.bpm !== bpm || spawnTiming.noteJumpMovementSpeed !== options.noteJumpMovementSpeed || spawnTiming.noteJumpStartBeatOffset !== options.noteJumpStartBeatOffset) throw new Error("spawn_timing_mismatch");
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
   const profileSettings = converterProfile ? /** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings) : null;
-  const settings = /** @type {{guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean,maxObstacleDurationMs?:number,obstacleCooldownMs?:number}} */ (options.converterSettings ?? {});
-  const converterSettings = /** @type {{uppercutOppositeLane:boolean,anyOppositeLane:boolean,guardSpacing:number,maxObstacleDurationMs:number,obstacleCooldownMs:number,guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} */ ({
+  const settings = /** @type {{guardSpacing?:number,sameHandPunchMinGapMs?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean,maxObstacleDurationMs?:number,obstacleCooldownMs?:number}} */ (options.converterSettings ?? {});
+  const converterSettings = /** @type {{uppercutOppositeLane:boolean,anyOppositeLane:boolean,guardSpacing:number,sameHandPunchMinGapMs:number,maxObstacleDurationMs:number,obstacleCooldownMs:number,guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} */ ({
     uppercutOppositeLane: settings.uppercutOppositeLane ?? profileSettings?.uppercutOppositeLane ?? false,
     // 0.0.91 (F4): straight punches must land in the PUNCHING hand's own lane
     // (left hand → left lane columns 0-1, right hand → right lane columns 2-3).
@@ -138,6 +138,7 @@ export async function reprocessBoxingChart(sourceSummary, options) {
     // straights on the right side.
     anyOppositeLane: settings.anyOppositeLane ?? profileSettings?.anyOppositeLane ?? false,
     guardSpacing: settings.guardSpacing ?? profileSettings?.guardSpacing ?? 0.25,
+    sameHandPunchMinGapMs: settings.sameHandPunchMinGapMs ?? 0,
     // 0.0.89 (Derrick): Boxing obstacle rules. Both bake at import time, so a change
     // needs a reimport. Surfaced in Game Setup for playtesting, locked in later.
     maxObstacleDurationMs: Number(settings.maxObstacleDurationMs ?? 3000),
@@ -189,7 +190,7 @@ async function colliderChartFor(generated, recipe, difficulty, songToken, source
   return chart;
 }
 
-/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
+/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,sameHandPunchMinGapMs:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
 async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings) {
   const trace = [];
   const obstacleWindows = obstaclesFor(sourceSummary.obstacles ?? [], bpm);
@@ -211,6 +212,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
   const optimizer = selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings);
   const beats = [];
   let lastPunchMs = -1e9; let previousHand = "";
+  const lastHandPunchMs = { left: -1e9, right: -1e9 };
   const wristSubcell = { left: seedSubcell(5), right: seedSubcell(6) }; const wristBeat = { left: 0, right: 0 };
   const familyCounts = { straight: 0, hook: 0, uppercut: 0 };
   // 0.0.89 (Derrick): resolve the obstacle set ONCE and use the SAME set for punch
@@ -241,10 +243,11 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     if (!safe.length) { trace.push(dropTrace(candidate, "spatial_target_blocked")); continue; }
     spatial.acceptedSubcells = safe;
     if (startMs - lastPunchMs < punchMinSpacingMs) { trace.push(dropTrace(candidate, "punch_min_spacing", { previousHand, spacingMs: startMs - lastPunchMs })); continue; }
+    if (converterSettings.sameHandPunchMinGapMs > 0 && startMs - lastHandPunchMs[/** @type {"left" | "right"} */ (hand)] + 0.0001 < converterSettings.sameHandPunchMinGapMs) { trace.push(dropTrace(candidate, "same_hand_punch_min_gap", { previousHand: hand, spacingMs: startMs - lastHandPunchMs[/** @type {"left" | "right"} */ (hand)] })); continue; }
     const type = `${family}_${hand}`; const generatedEventId = await eventId(String(recipe.recipeId), String(candidate.stableId), type);
     const beat = { start, type, eventId: generatedEventId, sourceEventIds: cloneData(candidate.sourceEventIds), spatialTarget: spatial, timingWindowMs, evidenceFreshnessMs: freshnessMs };
     if (modifiers.includes("any_punch")) Object.assign(beat, { modifier: "any_punch" }); else if (modifiers.includes("cross_body")) Object.assign(beat, { modifier: "cross_body" });
-    beats.push(beat); lastPunchMs = startMs; previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = seedSubcell(spatial.targetCell); wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
+    beats.push(beat); lastPunchMs = startMs; lastHandPunchMs[/** @type {"left" | "right"} */ (hand)] = startMs; previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = seedSubcell(spatial.targetCell); wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
     trace.push({ sourceEventIds: beat.sourceEventIds, eventId: generatedEventId, start, action: "emit", kind: "punch", family, hand, sourceDirection: Number(note.direction ?? 8), generatedDirection: spatial.entryDirection ?? "semantic_straight", target: cloneData(spatial) });
   }
   for (const mergedWindow of resolvedObstacleWindows) {
@@ -260,7 +263,7 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     beats.push(emitted); trace.push({ sourceEventIds: [sourceId], start: window.startBeat, end: window.endBeat, action: "emit", kind: "obstacle_checkpoint", type, sourceGeometry: cloneData(window.sourceGeometry), gameplayGeometry: cloneData(window.gameplayGeometry), gridMask: [...window.gridMask], blockedCells, noseSafeCells: safeCells });
   }
   beats.sort((left, right) => Number(left.start) - Number(right.start) || String(left.eventId).localeCompare(String(right.eventId)));
-  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
+  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.sameHandPunchMinGapMs > 0 ? { sameHandPunchMinGapMs: converterSettings.sameHandPunchMinGapMs } : {}), ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
 }
 
 const optimizerPriority = ["retained_punches", "hand_alternation", "family_balance", "source_order", "stable_event_id"];
