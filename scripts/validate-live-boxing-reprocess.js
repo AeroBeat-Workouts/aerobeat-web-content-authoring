@@ -32,6 +32,22 @@ assert.equal(moved.packageHash, repeated.packageHash, "same inputs must produce 
 const restored = await service.reprocessBoxing(imported.handle, { uppercutOppositeLane: false, anyOppositeLane: true });
 assert.equal(imported.handle.packageHash.value, restored.packageHash.slice(7), "flipping back must recover the original package");
 assert.deepEqual((await service.loadPackage(imported.handle)).package, imported.package, "reprocess must not alter persistent collection entries");
+const repeatedSourceBytes = new TextEncoder().encode(JSON.stringify({ version: "3.3.0", colorNotes: [
+  { b: 1, x: 1, y: 1, c: 0, d: 8 }, { b: 2, x: 1, y: 1, c: 0, d: 8 },
+  { b: 4, x: 1, y: 1, c: 0, d: 8 }, { b: 4, x: 2, y: 1, c: 1, d: 8 },
+  { b: 6, x: 1, y: 1, c: 0, d: 8 }, { b: 6, x: 2, y: 1, c: 1, d: 8 }
+], bombNotes: [], obstacles: [], sliders: [], burstSliders: [] }));
+const repeatedSource = { ...source, readEntry(path) { return path.toLowerCase() === "hard.dat" ? Uint8Array.from(repeatedSourceBytes) : Uint8Array.from(entries.get(path.toLowerCase())); } };
+const B = { repeatedPunchSwitchChancePercent: 100, repeatedGuardReplaceChancePercent: 100 };
+const bImported = await service.convertAndPersist({ source: repeatedSource }, { difficulty: "Hard", sourceId: "reprocess-b", sourceVersionHash: "abc", includeAudio: true, cacheSourceEntries: true, converterSettings: B });
+const bOptimizer = /** @type {{conversionTrace:{boxing:{optimizer:Record<string,unknown>}[]}}} */ (/** @type {unknown} */ (bImported.package)).conversionTrace.boxing[0].optimizer;
+assert.equal(bOptimizer.repeatedPunchSwitchChancePercent, 100);
+assert.equal(bOptimizer.repeatedGuardReplaceChancePercent, 100);
+const selectedWithoutChanceKeys = await service.reprocessBoxing(bImported.handle, { guardSpacing: 0.25, uppercutOppositeLane: false, anyOppositeLane: false });
+assert.deepEqual(chart(selectedWithoutChanceKeys.package).beats, chart(bImported.package).beats, "selecting a B-reimported song must retain persisted repeated patterns");
+assert.deepEqual(/** @type {{conversionTrace:{boxing:{optimizer:Record<string,unknown>}[]}}} */ (/** @type {unknown} */ (selectedWithoutChanceKeys.package)).conversionTrace.boxing[0].optimizer, bOptimizer);
+assert.deepEqual(/** @type {{charts:{mode:string}[]}} */ (/** @type {unknown} */ (selectedWithoutChanceKeys.package)).charts.find((item) => item.mode === "flow"), /** @type {{charts:{mode:string}[]}} */ (/** @type {unknown} */ (bImported.package)).charts.find((item) => item.mode === "flow"));
+assert.deepEqual((await service.loadPackage(bImported.handle)).package, bImported.package, "selection preview must not mutate stored B chart");
 const uncached = await service.convertAndPersist({ source }, { difficulty: "Hard", sourceId: "reprocess-uncached", sourceVersionHash: "abc", includeAudio: true });
 await assert.rejects(() => service.reprocessBoxing(uncached.handle, { uppercutOppositeLane: true }), (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "source_cache_unavailable"));
 service.destroy();

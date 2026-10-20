@@ -192,6 +192,16 @@ export function createAeroWebContentAuthoringService(options = {}) {
       if (boxingBefore.length !== 1 || existing.conversionTrace.boxing.length !== 1) throw authoringError("boxing_reprocess_unsupported", "Only current single-collider Boxing packages can be reprocessed");
       const oldChart = boxingBefore[0];
       const oldTrace = existing.conversionTrace.boxing[0];
+       // Selection's live lane preview omits reimport-only B chances. Recover
+       // their authored values from the validated stored Boxing trace.
+       const optimizer = oldTrace.optimizer;
+       const reprocessSettings = { ...(options.converterSettings ?? {}) };
+       for (const key of ["repeatedPunchSwitchChancePercent", "repeatedGuardReplaceChancePercent"]) {
+         if (Object.hasOwn(reprocessSettings, key) || !isPlainRecord(optimizer) || !Object.hasOwn(optimizer, key)) continue;
+         const value = Object.getOwnPropertyDescriptor(optimizer, key)?.value;
+         if (!Number.isInteger(value) || value < 0 || value > 100) throw authoringError("boxing_reprocess_unsupported", `Stored ${key} is invalid`);
+         if (value > 0) Object.assign(reprocessSettings, { [key]: value });
+       }
       const suffix = `-boxing-collider-${source.difficulty.toLowerCase()}`;
       if (!oldChart.chartId.startsWith("ab-chart-") || !oldChart.chartId.endsWith(suffix)) throw authoringError("boxing_reprocess_unsupported", "Stored Boxing chart identity is inconsistent");
       const songToken = oldChart.chartId.slice("ab-chart-".length, -suffix.length);
@@ -204,7 +214,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
         sourceInfoHash: source.sourceInfoHash, sourceDifficultyPath: source.sourceDifficultyPath,
         sourceBeatmapFormat: source.sourceBeatmapFormat, sourceBeatmapVersion: source.sourceBeatmapVersion,
         sourceDifficultyHash: source.sourceDifficultyHash, converterProfile: source.converterProfile,
-        converterSettings: options.converterSettings,
+        converterSettings: reprocessSettings,
         modifiers: oldChart.prototype.modifiers.filter((modifier) => supportedModifiers.includes(modifier)),
         presentationSuggestion: oldChart.presentationSuggestion
       });
