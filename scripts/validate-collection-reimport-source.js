@@ -35,6 +35,16 @@ for (const kind of ["memory", "indexeddb"]) {
     assert.deepEqual(Object.keys(/** @type {object} */ (provenance)), ["collectionId", "sourceProvider", "sourceId", "sourceVersionHash"]);
     assert.ok(Object.isFrozen(provenance));
     assert.notEqual(provenance, await persistence.getCollection(id), "accessor must not expose the persistence record");
+    const before = await Promise.all(result.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes]));
+    const other = await service.convertAllStandardAndPersist(acquired, { ...identity, sourceId: "different-map" });
+    const otherBytes = await Promise.all(other.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes]));
+    await assert.rejects(() => service.convertAllStandardAndPersist(acquired, { ...identity, sourceId: "wrong-map", replaceCollectionId: id }), hasCode("collection_invalid"));
+    assert.deepEqual(await Promise.all(result.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes])), before, "failed replacement preserves original bytes");
+    assert.deepEqual(await Promise.all(other.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes])), otherBytes, "failed replacement preserves unrelated bytes");
+    const replacement = await service.convertAllStandardAndPersist(acquired, { ...identity, replaceCollectionId: id, converterSettings: { guardSpacing: 2 } });
+    assert.equal(replacement.collection.collectionId, id);
+    assert.deepEqual((await service.listCollections()).map((entry) => entry.collectionId).sort(), [id, other.collection.collectionId].sort(), "replacement keeps exactly one selected collection");
+    assert.deepEqual(await Promise.all(other.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes])), otherBytes, "successful replacement leaves unrelated bytes intact");
     assert.equal(await service.getCollectionReimportSource("missing"), null);
     for (const invalid of ["", 42, "x".repeat(1025)]) {
       await assert.rejects(() => service.getCollectionReimportSource(/** @type {never} */ (invalid)), hasCode("collection_invalid"));

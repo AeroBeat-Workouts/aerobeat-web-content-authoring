@@ -16,7 +16,7 @@ import { verifyBeatSaberSpawnTiming } from "./spawn-timing.js";
 
 /** @typedef {ReturnType<typeof createMemoryPersistenceAdapter> | ReturnType<typeof createIndexedDbPersistenceAdapter>} PersistenceAdapter */
 /** @typedef {{kind: string, convert: (request: unknown, runtime?: {signal?: AbortSignal, onProgress?: (progress: number, phase: string) => void}) => Promise<unknown>, destroy: () => void}} WorkerAdapter */
-/** @typedef {{difficulty:string,modifiers:string[],sourceProvider?:string,sourceId?:string,sourceVersionHash?:string,expectedAudioContentHash?:string,expectedDifficultyContentHashes?:Record<string,string>,presentationSuggestion?:Record<string,unknown>,converterProfile?:Record<string,unknown>,converterSettings?:Record<string,unknown>,limits?:Record<string,number>,cacheSourceEntries?:boolean,includeAudio?:boolean,signal?:AbortSignal}} NormalizedRequestOptions */
+/** @typedef {{difficulty:string,modifiers:string[],sourceProvider?:string,sourceId?:string,sourceVersionHash?:string,replaceCollectionId?:string,expectedAudioContentHash?:string,expectedDifficultyContentHashes?:Record<string,string>,presentationSuggestion?:Record<string,unknown>,converterProfile?:Record<string,unknown>,converterSettings?:Record<string,unknown>,limits?:Record<string,number>,cacheSourceEntries?:boolean,includeAudio?:boolean,signal?:AbortSignal}} NormalizedRequestOptions */
 
 /**
  * Create one reconnectable browser content-authoring service instance.
@@ -40,7 +40,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
      * Convert, validate and atomically persist one selected source difficulty.
      *
      * @param {unknown} acquired Provider-neutral vendor acquisition/source bundle.
-     * @param {{difficulty: string, sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, converterSettings?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
+     * @param {{difficulty: string, sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, replaceCollectionId?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, converterSettings?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
      */
     async convertAndPersist(acquired, requestOptions) {
       assertOpen();
@@ -102,11 +102,12 @@ export function createAeroWebContentAuthoringService(options = {}) {
     /**
      * Convert every exact Standard difficulty sequentially and atomically persist one collection.
      * @param {unknown} acquired
-     * @param {{sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, converterSettings?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
+     * @param {{sourceProvider?: string, sourceId?: string, sourceVersionHash?: string, replaceCollectionId?: string, expectedAudioContentHash?: string, expectedDifficultyContentHashes?: Readonly<Record<string, string>>, modifiers?: readonly string[], presentationSuggestion?: Readonly<Record<string, unknown>>, converterProfile?: Readonly<Record<string, unknown>>, converterSettings?: Readonly<Record<string, unknown>>, cacheSourceEntries?: boolean, includeAudio?: boolean, limits?: Readonly<Record<string, number>>, signal?: AbortSignal}} requestOptions
      */
     async convertAllStandardAndPersist(acquired, requestOptions) {
       assertOpen();
       const normalizedOptions = normalizeBatchRequestOptions(requestOptions);
+      if (normalizedOptions.replaceCollectionId && (normalizedOptions.sourceProvider !== "beatsaver" || !normalizedOptions.sourceId || !normalizedOptions.sourceVersionHash)) throw authoringError("request_invalid", "Replacement requires an exact BeatSaver source");
       if (normalizedOptions.includeAudio === false) throw authoringError("request_invalid", "Batch conversion requires shared audio");
       const converterProfile = normalizedOptions.converterProfile ? await normalizeConverterProfile(normalizedOptions.converterProfile) : null;
       assertOpen(); active?.abort.abort();
@@ -156,17 +157,17 @@ export function createAeroWebContentAuthoringService(options = {}) {
         const profileId = converterProfile ? String(converterProfile.profileId) : "aero.converter.legacy";
         const profileHash = converterProfile ? String(converterProfile.contentHash) : "unprofiled";
         const collectionIdentity = { sourceProvider: prepared.sourceProvider, sourceId: prepared.sourceId, sourceVersionHash: prepared.sourceVersionHash, converterProfileId: profileId, converterProfileHash: profileHash, modifierIds: [...normalizedOptions.modifiers], packageHashes };
-        persistedCollectionId = `collection:${(await prefixedSha256(canonicalJson(collectionIdentity))).slice(7)}`;
+        persistedCollectionId = normalizedOptions.replaceCollectionId ?? `collection:${(await prefixedSha256(canonicalJson(collectionIdentity))).slice(7)}`;
         const collectionRecord = { collectionId: persistedCollectionId, songName: prepared.songName, sourceProvider: prepared.sourceProvider, sourceId: prepared.sourceId, sourceVersionHash: prepared.sourceVersionHash, converterProfileId: profileId, converterProfileHash: profileHash, modifierIds: [...normalizedOptions.modifiers], packageKeys: packageRows.map((row) => row.key), packages: resultRows.map((row, index) => ({ packageKey: packageRows[index].key, packageId: row.packageId, difficultyId: row.difficultyId, difficultyLabel: row.difficultyLabel })), createdAtMs: now(), schemaVersion: persistence.schemaVersion, writeToken: jobId };
         publish(makeSnapshot(jobId, "persisting", 0.94, prepared.sourceId, prepared.sourceVersionHash, null, null, null, null));
-        const collection = await persistence.putCollection({ collection: collectionRecord, packages: packageRows, assets: [{ contentHash: prepared.audioContentHash, bytes: prepared.audio[0].bytes }] }, { signal: abort.signal });
+        const collection = await persistence.putCollection({ collection: collectionRecord, packages: packageRows, assets: [{ contentHash: prepared.audioContentHash, bytes: prepared.audio[0].bytes }] }, { signal: abort.signal, replaceCollectionId: normalizedOptions.replaceCollectionId });
         checkCurrent(generation, abort.signal);
         const packages = resultRows.map((row) => deepFreeze(row)); const defaultPackage = packages[0];
         const completed = makeSnapshot(jobId, "complete", 1, prepared.sourceId, prepared.sourceVersionHash, null, null, null, defaultPackage.handle);
         publish(completed); active = null;
         return deepFreeze({ collection, packages, defaultPackage });
       } catch (cause) {
-        if (persistedCollectionId) { const stored = await persistence.getCollection(persistedCollectionId).catch(() => null); if (stored?.writeToken === jobId) await persistence.deleteCollection(persistedCollectionId).catch(() => false); }
+        if (persistedCollectionId && !normalizedOptions.replaceCollectionId) { const stored = await persistence.getCollection(persistedCollectionId).catch(() => null); if (stored?.writeToken === jobId) await persistence.deleteCollection(persistedCollectionId).catch(() => false); }
         const cancelled = abort.signal.aborted || errorCode(cause) === "operation_aborted" || !isCurrent(generation);
         const failed = makeSnapshot(jobId, cancelled ? "cancelled" : "failed", cancelled ? snapshot.progress : 1, snapshot.sourceId, snapshot.sourceVersionHash, null, cancelled ? "operation_aborted" : errorCode(cause), cancelled ? "Conversion was cancelled" : errorMessage(cause), null);
         if (isCurrent(generation)) { publish(failed); active = null; }
@@ -326,10 +327,13 @@ function normalizeRequestOptions(value){
 /** @param {unknown} value @returns {Readonly<NormalizedRequestOptions>} */
 function normalizeBatchRequestOptions(value){
   if(!isPlainRecord(value))throw authoringError("request_invalid","Batch authoring options must be a plain record");
-  const allowed=new Set(["sourceProvider","sourceId","sourceVersionHash","expectedAudioContentHash","expectedDifficultyContentHashes","modifiers","presentationSuggestion","converterProfile","converterSettings","cacheSourceEntries","includeAudio","limits","signal"]);
+  const allowed=new Set(["sourceProvider","sourceId","sourceVersionHash","replaceCollectionId","expectedAudioContentHash","expectedDifficultyContentHashes","modifiers","presentationSuggestion","converterProfile","converterSettings","cacheSourceEntries","includeAudio","limits","signal"]);
   /** @type {Record<string, unknown>} */ const narrowed={difficulty:"Easy"};
   for(const key of Reflect.ownKeys(value)){if(typeof key!=="string"||!allowed.has(key))throw authoringError("request_invalid","Batch authoring options contain an unknown field");const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable||descriptor.value===undefined)throw authoringError("request_invalid","Batch authoring options must contain enumerable data properties");narrowed[key]=descriptor.value;}
-  return normalizeRequestOptions(narrowed);
+  const replacement=narrowed.replaceCollectionId===undefined?undefined:collectionKey(narrowed.replaceCollectionId);
+  delete narrowed.replaceCollectionId;
+  const normalized=normalizeRequestOptions(narrowed);
+  return replacement===undefined?normalized:Object.freeze({...normalized,replaceCollectionId:replacement});
 }
 /** @param {Record<string, unknown>} record @param {string} key */
 function dataProperty(record,key){const descriptor=Object.getOwnPropertyDescriptor(record,key);return descriptor&&"value" in descriptor&&descriptor.enumerable?descriptor.value:undefined;}

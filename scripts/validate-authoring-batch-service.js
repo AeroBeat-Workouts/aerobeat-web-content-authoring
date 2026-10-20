@@ -50,6 +50,28 @@ for (const entry of result.packages) {
 }
 assert.equal(snapshots.some((snapshot) => containsBinary(snapshot)), false);
 
+const originalExports = await Promise.all(result.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes]));
+const unrelated = await service.convertAllStandardAndPersist(acquired, { sourceProvider: "beatsaver", sourceId: "another-map", sourceVersionHash: "b".repeat(40), includeAudio: true });
+const unrelatedExports = await Promise.all(unrelated.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes]));
+const beatSaver = await service.convertAllStandardAndPersist(acquired, { sourceProvider: "beatsaver", sourceId: "selected-map", sourceVersionHash: "a".repeat(40), includeAudio: true });
+const before = await Promise.all(beatSaver.packages.map(async (entry) => [...(await service.exportPackage(entry.handle)).bytes]));
+const replaceOptions = { sourceProvider: "beatsaver", sourceId: "selected-map", sourceVersionHash: "a".repeat(40), replaceCollectionId: beatSaver.collection.collectionId, includeAudio: true };
+const failedWorkerInline = createInlineAuthoringWorkerAdapter();
+let failNext = true;
+const failingWorker = { kind: "inline", async convert(request, runtime) { if (failNext) { failNext = false; throw codedError("synthetic_failure"); } return failedWorkerInline.convert(request, runtime); }, destroy() { failedWorkerInline.destroy(); } };
+const replacementService = createAeroWebContentAuthoringService({ persistence, worker: failingWorker });
+await assert.rejects(() => replacementService.convertAllStandardAndPersist(acquired, replaceOptions), hasCode("synthetic_failure"));
+assert.deepEqual(await Promise.all(beatSaver.packages.map(async (entry) => [...(await replacementService.exportPackage(entry.handle)).bytes])), before, "failed conversion must retain original exported bytes");
+await assert.rejects(() => replacementService.convertAllStandardAndPersist(acquired, { ...replaceOptions, sourceVersionHash: "c".repeat(40) }), hasCode("collection_invalid"));
+assert.deepEqual(await Promise.all(beatSaver.packages.map(async (entry) => [...(await replacementService.exportPackage(entry.handle)).bytes])), before, "mismatched provenance must retain original bytes");
+const replaced = await replacementService.convertAllStandardAndPersist(acquired, { ...replaceOptions, converterSettings: { guardSpacing: 2 } });
+assert.equal(replaced.collection.collectionId, beatSaver.collection.collectionId);
+assert.equal((await replacementService.listCollections()).length, 3, "replacement must not duplicate a collection");
+assert.equal((await replacementService.listPackages()).length, 6, "replacement must remove superseded package records");
+assert.deepEqual(await Promise.all(unrelated.packages.map(async (entry) => [...(await replacementService.exportPackage(entry.handle)).bytes])), unrelatedExports, "unrelated song exports must remain byte-identical");
+assert.deepEqual(await Promise.all(result.packages.map(async (entry) => [...(await replacementService.exportPackage(entry.handle)).bytes])), originalExports, "other collection exports must remain byte-identical");
+replacementService.destroy();
+
 const singlePersistence = createMemoryPersistenceAdapter();
 const single = createAeroWebContentAuthoringService({ persistence: singlePersistence });
 const expert = await single.convertAndPersist(acquired, { difficulty: "Expert", sourceProvider: "synthetic", sourceId: "batch-map", sourceVersionHash: "batch-v1", includeAudio: true, cacheSourceEntries: true, converterSettings: { guardSpacing: 2, uppercutOppositeLane: true, anyOppositeLane: false } });
@@ -62,8 +84,8 @@ for (const invalidSettings of [{ guardSpacing: 3 }, { guardSpacing: -0.5 }, { an
 single.destroy();
 
 assert.equal(await service.deleteCollection(result.collection.collectionId), true);
-assert.equal((await service.listPackages()).length, 0);
-assert.equal((await service.listCollections()).length, 0);
+assert.equal((await service.listPackages()).length, 4);
+assert.equal((await service.listCollections()).length, 2);
 service.destroy();
 
 const hostilePersistence = createMemoryPersistenceAdapter();

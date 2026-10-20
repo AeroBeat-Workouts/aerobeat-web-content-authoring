@@ -56,7 +56,7 @@ const authored = await service.convertAndPersist(acquiredSource, {
 Public operations:
 
 - `prepareSourceMaterial(source, options)` / `prepareAllStandardSourceMaterials(source, options)`
-- `convertAndPersist(source, options)` / `convertAllStandardAndPersist(source, options)`
+- `convertAndPersist(source, options)` / `convertAllStandardAndPersist(source, options)`; the latter accepts private `replaceCollectionId` for an exact BeatSaver source/version and atomically swaps the existing collection after all difficulties validate. A failed conversion or transaction retains the original.
 - `cancel(jobId?)`
 - `getSnapshot()` / `subscribe(listener)`
 - `listPackages()` / `loadPackage(handle)` / `deletePackage(handle)`
