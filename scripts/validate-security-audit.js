@@ -54,6 +54,7 @@ for (const [label, leftCell, rightCell] of [["left on right", 10, 10], ["right o
   beat.guardTarget.leftCell = leftCell; beat.guardTarget.rightCell = rightCell;
   beat.guardTarget.spacing = 0;
   tampered.charts[0].prototype.contentHash = await prefixedSha256(canonicalJson({ beats: tampered.charts[0].beats, sourceHash: tampered.charts[0].prototype.sourceHash, rulesetId: "boxing_collider_v1" }));
+  (/** @type {{boxing:{contentHash:string}[]}} */ (tampered.conversionTrace)).boxing[0].contentHash = tampered.charts[0].prototype.contentHash;
   const signedHash = await prefixedSha256(canonicalJson(tampered));
   assert.ok((await validateAuthoredPackage(tampered)).issues.some((issue) => issue.code === "guard_target_invalid"), `${label}: authoring must reject even a correctly rehashed chart`);
   await assert.rejects(() => validateRuntimePackage(tampered, { declaredPackageHash: signedHash }), hasCode("crossed_guard_reimport_required"), `${label}: content already rejects these signed wrong-side targets`);
@@ -65,6 +66,7 @@ const formerLeft = legacyGuard.guardTarget.leftCell; legacyGuard.guardTarget.lef
 signedLegacyCross.charts[0].prototype.modifiers = ["crossed_guard", "no_squats"];
 /** @type {{boxing:{events:Record<string,unknown>[]}[]}} */ (signedLegacyCross.conversionTrace).boxing[0].events.find((event) => event.kind === "guard").crossed = true;
 signedLegacyCross.charts[0].prototype.contentHash = await prefixedSha256(canonicalJson({ beats: signedLegacyCross.charts[0].beats, sourceHash: signedLegacyCross.charts[0].prototype.sourceHash, rulesetId: "boxing_collider_v1" }));
+(/** @type {{boxing:{contentHash:string}[]}} */ (signedLegacyCross.conversionTrace)).boxing[0].contentHash = signedLegacyCross.charts[0].prototype.contentHash;
 const signedLegacyHash = await prefixedSha256(canonicalJson(signedLegacyCross));
 assert.ok((await validateAuthoredPackage(signedLegacyCross)).issues.some((issue) => issue.code === "crossed_guard_reimport_required"), "correctly rehashed old crossings require reimport");
 await assert.rejects(() => validateRuntimePackage(signedLegacyCross, { declaredPackageHash: signedLegacyHash }), hasCode("crossed_guard_reimport_required"), "the current sibling runtime refuses signed historical crossings");
