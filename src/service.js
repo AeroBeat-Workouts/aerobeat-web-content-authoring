@@ -189,7 +189,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
       const summary = parseBeatMapDifficulty(difficultyCache.bytes, source.sourceBeatmapFormat);
       if (await prefixedSha256(canonicalJson(summary)) !== source.sourceHash) throw authoringError("source_hash_mismatch", "Cached difficulty does not match package source hash");
       const boxingBefore = existing.charts.filter((chart) => chart.mode === "boxing");
-      if (boxingBefore.length !== 1 || existing.conversionTrace.boxing.length !== 1) throw authoringError("boxing_reprocess_unsupported", "Only current single-collider Boxing packages can be reprocessed");
+      if (![1, 2].includes(boxingBefore.length) || existing.conversionTrace.boxing.length !== boxingBefore.length || boxingBefore[0].prototype?.rulesetId !== "boxing_collider_v1" || (boxingBefore.length === 2 && boxingBefore[1].prototype?.rulesetId !== "boxing_collider_knee_v1")) throw authoringError("boxing_reprocess_unsupported", "Only current collider Boxing packages can be reprocessed");
       const oldChart = boxingBefore[0];
       const oldTrace = existing.conversionTrace.boxing[0];
        // Selection's live lane preview omits reimport-only B chances. Recover
@@ -202,10 +202,15 @@ export function createAeroWebContentAuthoringService(options = {}) {
          if (!Number.isInteger(value) || value < 0 || value > 100) throw authoringError("boxing_reprocess_unsupported", `Stored ${key} is invalid`);
          if (value > 0) Object.assign(reprocessSettings, { [key]: value });
        }
-      const suffix = `-boxing-collider-${source.difficulty.toLowerCase()}`;
+      if (boxingBefore.length === 2) {
+         const storedKneeChance = existing.conversionTrace.boxing[1].optimizer?.kneeStrikeChancePercent;
+         if (storedKneeChance !== undefined && (!Number.isInteger(storedKneeChance) || storedKneeChance < 0 || storedKneeChance > 100)) throw authoringError("boxing_reprocess_unsupported", "Stored knee chance is invalid");
+         if (!Object.hasOwn(reprocessSettings, "kneeStrikeChancePercent") && storedKneeChance > 0) reprocessSettings.kneeStrikeChancePercent = storedKneeChance;
+       }
+       const suffix = `-boxing-collider-${source.difficulty.toLowerCase()}`;
       if (!oldChart.chartId.startsWith("ab-chart-") || !oldChart.chartId.endsWith(suffix)) throw authoringError("boxing_reprocess_unsupported", "Stored Boxing chart identity is inconsistent");
       const songToken = oldChart.chartId.slice("ab-chart-".length, -suffix.length);
-      const regenerated = await reprocessBoxingChart(summary, {
+      const regenerate = async (kneeEnabled) => reprocessBoxingChart(summary, {
         difficulty: source.difficulty, songToken, songName: existing.songName,
         bpm: source.spawnTiming.bpm, noteJumpMovementSpeed: source.spawnTiming.noteJumpMovementSpeed,
         noteJumpStartBeatOffset: source.spawnTiming.noteJumpStartBeatOffset, spawnTiming: source.spawnTiming,
@@ -217,11 +222,14 @@ export function createAeroWebContentAuthoringService(options = {}) {
         converterSettings: reprocessSettings,
         modifiers: oldChart.prototype.modifiers.filter((modifier) => supportedModifiers.includes(modifier)),
         presentationSuggestion: oldChart.presentationSuggestion
-      });
-      if (regenerated.chart.chartId !== oldChart.chartId || regenerated.trace.chartId !== oldTrace.chartId) throw authoringError("boxing_reprocess_unsupported", "Stored Boxing chart identity is inconsistent");
+      }, kneeEnabled);
+      const regenerated = [await regenerate(false)];
+      if (boxingBefore.length === 2) regenerated.push(await regenerate(true));
+      if (regenerated.some((result, index) => result.chart.chartId !== boxingBefore[index].chartId || result.trace.chartId !== existing.conversionTrace.boxing[index].chartId)) throw authoringError("boxing_reprocess_unsupported", "Stored Boxing chart identity is inconsistent");
+      const byId = new Map(regenerated.map((result) => [result.chart.chartId, result]));
       const updated = /** @type {{charts:Record<string,unknown>[],conversionTrace:{boxing:unknown[]},packageId:string}} */ (cloneData(existing));
-      updated.charts = updated.charts.map((chart) => chart.mode === "boxing" ? /** @type {Record<string,unknown>} */ (cloneData(regenerated.chart)) : chart);
-      updated.conversionTrace.boxing = [cloneData(regenerated.trace)];
+      updated.charts = updated.charts.map((chart) => chart.mode === "boxing" ? /** @type {Record<string,unknown>} */ (cloneData(byId.get(String(chart.chartId)).chart)) : chart);
+      updated.conversionTrace.boxing = regenerated.map((result) => cloneData(result.trace));
       const verified = await validateAuthoredPackage(updated);
       if (!verified.valid || !verified.packageHash) throw authoringError("boxing_reprocess_invalid", "Regenerated Boxing chart failed package validation");
       assertOpen();
@@ -309,8 +317,8 @@ async function workerResultMatchesManifestFinal(packageValue,manifest,includeAud
     for(const [key,value] of Object.entries(expected))if(dataProperty(source,key)!==value)return false;
     if(canonicalJson(dataProperty(source,"spawnTiming"))!==canonicalJson(expectedSpawnTiming)||canonicalJson(dataProperty(trace,"spawnTiming"))!==canonicalJson(expectedSpawnTiming))return false;
     const expectedProfile=converterProfile===null?undefined:canonicalJson(converterProfile);if((converterProfile===null&&(dataProperty(source,"converterProfile")!==undefined||dataProperty(trace,"converterProfile")!==undefined))||(converterProfile!==null&&(canonicalJson(dataProperty(source,"converterProfile"))!==expectedProfile||canonicalJson(dataProperty(trace,"converterProfile"))!==expectedProfile)))return false;
-    if((charts.length!==2&&charts.length!==5)||charts.length!==(Array.isArray(dataProperty(trace,"boxing"))?dataProperty(trace,"boxing").length:0)+1||charts.some((chart)=>!isPlainRecord(chart)||dataProperty(chart,"difficulty")!==dataProperty(selected,"difficulty")))return false;
-    const boxing=dataProperty(trace,"boxing"),flow=dataProperty(trace,"flow");if(!Array.isArray(boxing)||!(boxing.length===1||boxing.length===4)||!Array.isArray(flow)||flow.length!==1)return false;
+    if((charts.length!==2&&charts.length!==3&&charts.length!==5)||charts.length!==(Array.isArray(dataProperty(trace,"boxing"))?dataProperty(trace,"boxing").length:0)+1||charts.some((chart)=>!isPlainRecord(chart)||dataProperty(chart,"difficulty")!==dataProperty(selected,"difficulty")))return false;
+    const boxing=dataProperty(trace,"boxing"),flow=dataProperty(trace,"flow");if(!Array.isArray(boxing)||!(boxing.length===1||boxing.length===2||boxing.length===4)||!Array.isArray(flow)||flow.length!==1)return false;
     for(const item of boxing)if(!isPlainRecord(item)||dataProperty(item,"sourceHash")!==workerSourceHash||dataProperty(item,"sourceInfoFormat")!==expected.sourceInfoFormat||dataProperty(item,"sourceInfoVersion")!==expected.sourceInfoVersion||dataProperty(item,"sourceInfoHash")!==expected.sourceInfoHash||dataProperty(item,"sourceDifficultyPath")!==expected.sourceDifficultyPath||dataProperty(item,"sourceBeatmapFormat")!==expected.sourceBeatmapFormat||dataProperty(item,"sourceBeatmapVersion")!==expected.sourceBeatmapVersion||dataProperty(item,"sourceDifficultyHash")!==expected.sourceDifficultyHash||canonicalJson(dataProperty(item,"spawnTiming"))!==canonicalJson(expectedSpawnTiming))return false;
     const flowItem=flow[0],flowChart=charts.find((chart)=>isPlainRecord(chart)&&dataProperty(chart,"mode")==="flow");if(!isPlainRecord(flowItem)||!isPlainRecord(flowChart)||dataProperty(flowItem,"sourceHash")!==workerSourceHash||dataProperty(flowItem,"sourceInfoFormat")!==expected.sourceInfoFormat||dataProperty(flowItem,"sourceInfoVersion")!==expected.sourceInfoVersion||dataProperty(flowItem,"sourceInfoHash")!==expected.sourceInfoHash||dataProperty(flowItem,"sourceDifficultyPath")!==expected.sourceDifficultyPath||dataProperty(flowItem,"sourceBeatmapFormat")!==expected.sourceBeatmapFormat||dataProperty(flowItem,"sourceBeatmapVersion")!==expected.sourceBeatmapVersion||dataProperty(flowItem,"sourceDifficultyHash")!==expected.sourceDifficultyHash||canonicalJson(dataProperty(flowItem,"spawnTiming"))!==canonicalJson(expectedSpawnTiming)||canonicalJson(dataProperty(flowItem,"notePalette"))!==canonicalJson(expectedPaletteReference)||canonicalJson(dataProperty(flowChart,"notePalette"))!==canonicalJson(expectedPaletteReference)||dataProperty(flowItem,"contentHash")!==dataProperty(flowChart,"contentHash"))return false;
     const audio=dataProperty(song,"audio");if(includeAudio?(!isPlainRecord(audio)||dataProperty(audio,"filePath")!==dataProperty(manifest,"audioPath")||dataProperty(audio,"contentHash")!==dataProperty(manifest,"audioContentHash")):audio!==undefined)return false;
@@ -330,7 +338,7 @@ function normalizeRequestOptions(value){
   const modifiers=arrayStrings(dataProperty(value,"modifiers")??[],supportedModifiers.length,"modifiers");for(const modifier of modifiers){if(!supportedModifiers.includes(modifier))throw authoringError("request_invalid",`Unsupported modifier ${modifier}`);}result.modifiers=[...new Set(modifiers)].sort();
   for(const field of ["expectedDifficultyContentHashes","limits","presentationSuggestion","converterProfile","converterSettings"]){const entry=dataProperty(value,field);if(entry!==undefined){if(!isPlainRecord(entry))throw authoringError("request_invalid",`${field} must be a plain record`);let encoded;try{encoded=canonicalJson(entry);}catch{throw authoringError("request_invalid",`${field} must contain plain data only`);}if(new TextEncoder().encode(encoded).byteLength>64*1024)throw authoringError("request_invalid",`${field} exceeds the size limit`);Object.assign(result,{[field]:cloneData(entry)});}}
   const converterSettings=dataProperty(result,"converterSettings");
-  if(converterSettings!==undefined){const allowedSettings=new Set(["guardSpacing","sameHandPunchMinGapMs","repeatedPunchSwitchChancePercent","repeatedGuardReplaceChancePercent","uppercutOppositeLane","anyOppositeLane"]);for(const key of Reflect.ownKeys(converterSettings)){if(typeof key!=="string"||!allowedSettings.has(key))throw authoringError("request_invalid","converterSettings contains an unknown field");const descriptor=Object.getOwnPropertyDescriptor(converterSettings,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable||(key==="guardSpacing"?(!Number.isFinite(descriptor.value)||descriptor.value<0||descriptor.value>2):key==="sameHandPunchMinGapMs"?(!Number.isInteger(descriptor.value)||descriptor.value<0||descriptor.value>2000):key==="repeatedPunchSwitchChancePercent"||key==="repeatedGuardReplaceChancePercent"?(!Number.isInteger(descriptor.value)||descriptor.value<0||descriptor.value>100):typeof descriptor.value!=="boolean"))throw authoringError("request_invalid",`converterSettings.${key} is invalid`);}}
+  if(converterSettings!==undefined){const allowedSettings=new Set(["guardSpacing","sameHandPunchMinGapMs","repeatedPunchSwitchChancePercent","repeatedGuardReplaceChancePercent","kneeStrikeChancePercent","uppercutOppositeLane","anyOppositeLane"]);for(const key of Reflect.ownKeys(converterSettings)){if(typeof key!=="string"||!allowedSettings.has(key))throw authoringError("request_invalid","converterSettings contains an unknown field");const descriptor=Object.getOwnPropertyDescriptor(converterSettings,key);if(!descriptor||!("value" in descriptor)||!descriptor.enumerable||(key==="guardSpacing"?(!Number.isFinite(descriptor.value)||descriptor.value<0||descriptor.value>2):key==="sameHandPunchMinGapMs"?(!Number.isInteger(descriptor.value)||descriptor.value<0||descriptor.value>2000):key==="repeatedPunchSwitchChancePercent"||key==="repeatedGuardReplaceChancePercent"||key==="kneeStrikeChancePercent"?(!Number.isInteger(descriptor.value)||descriptor.value<0||descriptor.value>100):typeof descriptor.value!=="boolean"))throw authoringError("request_invalid",`converterSettings.${key} is invalid`);}}
   const signal=dataProperty(value,"signal");if(signal!==undefined){if(typeof AbortSignal==="undefined"||!(signal instanceof AbortSignal))throw authoringError("request_invalid","signal must be an AbortSignal");Object.assign(result,{signal});}
   return Object.freeze(result);
 }

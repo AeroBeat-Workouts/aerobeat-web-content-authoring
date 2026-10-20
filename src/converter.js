@@ -26,6 +26,7 @@ import {
 // (the sole newly-created Boxing option per the 2026-09-11 design doc §5/§6).
 // It carries no conversion recipe identity; legacy stored Lanes/Grid matrices remain readable.
 const colliderRulesetId = "boxing_collider_v1";
+const kneeColliderRulesetId = "boxing_collider_knee_v1";
 
 /** @typedef {"Easy" | "Normal" | "Hard" | "Expert" | "ExpertPlus"} Difficulty */
 /** @typedef {Record<string, unknown>} DataRecord */
@@ -57,9 +58,11 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
   // time, so its authored rows come from the row-family "Balanced Height" generation
   // (balance_generated_rows, the first frozen recipe definition). The cut-family call was dropped.
   const boxing = await reprocessBoxingChart(sourceSummary, options);
-  const chart = boxing.chart;
-  charts.push(chart);
+  charts.push(boxing.chart);
   traces.push(boxing.trace);
+  const knee = await reprocessBoxingChart(sourceSummary, options, true);
+  charts.push(knee.chart);
+  traces.push(knee.trace);
 
   onProgress(0.45, "converting");
   const flow = await convertFlowChart(sourceSummary, difficulty, songToken, notePalette);
@@ -117,7 +120,7 @@ export async function convertDifficulty(sourceSummary, options, onProgress = () 
 }
 
 /** Regenerate only the selected difficulty's Boxing chart and trace from normalized source. */
-export async function reprocessBoxingChart(sourceSummary, options) {
+export async function reprocessBoxingChart(sourceSummary, options, kneeEnabled = false) {
   const difficulty = normalizeDifficulty(options.difficulty);
   const bpm = options.bpm;
   if (!Number.isFinite(bpm) || bpm <= 0) throw new Error("spawn_timing_bpm_invalid");
@@ -125,8 +128,8 @@ export async function reprocessBoxingChart(sourceSummary, options) {
   if (spawnTiming.bpm !== bpm || spawnTiming.noteJumpMovementSpeed !== options.noteJumpMovementSpeed || spawnTiming.noteJumpStartBeatOffset !== options.noteJumpStartBeatOffset) throw new Error("spawn_timing_mismatch");
   const converterProfile = options.converterProfile ? await normalizeConverterProfile(options.converterProfile) : null;
   const profileSettings = converterProfile ? /** @type {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} */ (converterProfile.settings) : null;
-  const settings = /** @type {{guardSpacing?:number,sameHandPunchMinGapMs?:number,repeatedPunchSwitchChancePercent?:number,repeatedGuardReplaceChancePercent?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean,maxObstacleDurationMs?:number,obstacleCooldownMs?:number}} */ (options.converterSettings ?? {});
-  const converterSettings = /** @type {{uppercutOppositeLane:boolean,anyOppositeLane:boolean,guardSpacing:number,sameHandPunchMinGapMs:number,repeatedPunchSwitchChancePercent:number,repeatedGuardReplaceChancePercent:number,maxObstacleDurationMs:number,obstacleCooldownMs:number,guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} */ ({
+  const settings = /** @type {{guardSpacing?:number,sameHandPunchMinGapMs?:number,repeatedPunchSwitchChancePercent?:number,repeatedGuardReplaceChancePercent?:number,kneeStrikeChancePercent?:number,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean,maxObstacleDurationMs?:number,obstacleCooldownMs?:number}} */ (options.converterSettings ?? {});
+  const converterSettings = /** @type {{uppercutOppositeLane:boolean,anyOppositeLane:boolean,guardSpacing:number,sameHandPunchMinGapMs:number,repeatedPunchSwitchChancePercent:number,repeatedGuardReplaceChancePercent:number,kneeStrikeChancePercent:number,maxObstacleDurationMs:number,obstacleCooldownMs:number,guardRelocationRadius:number,reachAllowanceSubcells:number,profileApplied:boolean}} */ ({
     uppercutOppositeLane: settings.uppercutOppositeLane ?? profileSettings?.uppercutOppositeLane ?? false,
     // 0.0.91 (F4): straight punches must land in the PUNCHING hand's own lane
     // (left hand → left lane columns 0-1, right hand → right lane columns 2-3).
@@ -141,6 +144,7 @@ export async function reprocessBoxingChart(sourceSummary, options) {
     sameHandPunchMinGapMs: settings.sameHandPunchMinGapMs ?? 0,
     repeatedPunchSwitchChancePercent: settings.repeatedPunchSwitchChancePercent ?? 0,
     repeatedGuardReplaceChancePercent: settings.repeatedGuardReplaceChancePercent ?? 0,
+    kneeStrikeChancePercent: settings.kneeStrikeChancePercent ?? 0,
     // 0.0.89 (Derrick): Boxing obstacle rules. Both bake at import time, so a change
     // needs a reimport. Surfaced in Game Setup for playtesting, locked in later.
     maxObstacleDurationMs: Number(settings.maxObstacleDurationMs ?? 3000),
@@ -152,10 +156,11 @@ export async function reprocessBoxingChart(sourceSummary, options) {
   const sourceHash = await prefixedSha256(canonicalJson(sourceSummary));
   const rowRecipe = /** @type {DataRecord} */ (recipeDefinitions.find((recipe) => String(recipe.recipeId) === rowFamilyRecipeId) ?? recipeDefinitions[0]);
   const modifiers = normalizeModifiers(options.modifiers ?? []);
-  const generated = await generateEvents(sourceSummary, difficulty, bpm, rowRecipe, modifiers, converterSettings);
-  const chart = await colliderChartFor(generated, rowRecipe, difficulty, sanitizeToken(options.songToken || options.sourceId || "imported"), sourceHash, modifiers, options.presentationSuggestion, converterProfile);
+  const generated = await generateEvents(sourceSummary, difficulty, bpm, rowRecipe, modifiers, converterSettings, kneeEnabled);
+  const rulesetId = kneeEnabled ? kneeColliderRulesetId : colliderRulesetId;
+  const chart = await colliderChartFor(generated, rowRecipe, difficulty, sanitizeToken(options.songToken || options.sourceId || "imported"), sourceHash, modifiers, options.presentationSuggestion, converterProfile, rulesetId);
   const trace = {
-    chartId: chart.chartId, difficulty, bpm, rulesetId: colliderRulesetId, sourceHash,
+    chartId: chart.chartId, difficulty, bpm, rulesetId, sourceHash,
     contentHash: chart.prototype.contentHash,
     sourceInfoFormat: options.sourceInfoFormat, sourceInfoVersion: options.sourceInfoVersion,
     sourceInfoHash: options.sourceInfoHash, sourceDifficultyPath: options.sourceDifficultyPath,
@@ -168,13 +173,13 @@ export async function reprocessBoxingChart(sourceSummary, options) {
 }
 
 /** @param {DataRecord} generated @param {DataRecord} recipe @param {Difficulty} difficulty @param {string} songToken @param {string} sourceHash @param {readonly string[]} modifiers @param {Readonly<Record<string, unknown>> | undefined} suggestion @param {Readonly<Record<string, unknown>> | null} converterProfile */
-async function colliderChartFor(generated, recipe, difficulty, songToken, sourceHash, modifiers, suggestion, converterProfile) {
+async function colliderChartFor(generated, recipe, difficulty, songToken, sourceHash, modifiers, suggestion, converterProfile, rulesetId = colliderRulesetId) {
   const beats = cloneData(generated.beats);
   // Provenance only: recipeHash identifies which generation produced the authored rows.
   // The single collider variant carries no conversion-recipe identity, so recipeId is absent from the prototype and its content hash.
   const recipeHash = await prefixedSha256(canonicalJson(recipe));
-  const rulesetHash = await prefixedSha256(canonicalJson({ contractId: boxingPrototypeContractId, rulesetId: colliderRulesetId, version: rulesetVersion }));
-  const contentHash = await prefixedSha256(canonicalJson({ beats, sourceHash, rulesetId: colliderRulesetId, ...(converterProfile ? { converterProfile } : {}) }));
+  const rulesetHash = await prefixedSha256(canonicalJson({ contractId: boxingPrototypeContractId, rulesetId, version: rulesetVersion }));
+  const contentHash = await prefixedSha256(canonicalJson({ beats, sourceHash, rulesetId, ...(converterProfile ? { converterProfile } : {}) }));
   const allModifiers = [...modifiers];
   for (const beat of /** @type {DataRecord[]} */ (beats)) {
     if (typeof beat.modifier === "string" && !allModifiers.includes(beat.modifier)) allModifiers.push(beat.modifier);
@@ -182,18 +187,18 @@ async function colliderChartFor(generated, recipe, difficulty, songToken, source
   allModifiers.sort();
   const chart = {
     schemaId: "aerobeat.chart.boxing.v1", schemaVersion: 1, recordVersion: 1,
-    chartId: `ab-chart-${songToken}-boxing-collider-${difficulty.toLowerCase()}`,
-    chartName: `${titleize(songToken)} ${difficulty} Boxing - Collider`,
+    chartId: `ab-chart-${songToken}-boxing-collider${rulesetId === kneeColliderRulesetId ? "-knee" : ""}-${difficulty.toLowerCase()}`,
+    chartName: `${titleize(songToken)} ${difficulty} Boxing - Collider${rulesetId === kneeColliderRulesetId ? " Knee" : ""}`,
     mode: "boxing", difficulty,
-    prototype: { contractId: boxingPrototypeContractId, recipeVersion, rulesetId: colliderRulesetId, rulesetVersion, sourceHash, recipeHash, rulesetHash, contentHash, modifiers: allModifiers, ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}), regenerationRequiredFor: ["punchMinSpacingMs", "reachSubcellsPerBeat", "familyBalance", "guardRelocation"] },
+    prototype: { contractId: boxingPrototypeContractId, recipeVersion, rulesetId, rulesetVersion, sourceHash, recipeHash, rulesetHash, contentHash, modifiers: allModifiers, ...(converterProfile ? { converterProfile: cloneData(converterProfile) } : {}), regenerationRequiredFor: ["punchMinSpacingMs", "reachSubcellsPerBeat", "familyBalance", "guardRelocation"] },
     beats
   };
   if (suggestion) Object.assign(chart, { presentationSuggestion: cloneData(suggestion) });
   return chart;
 }
 
-/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,sameHandPunchMinGapMs:number,repeatedPunchSwitchChancePercent:number,repeatedGuardReplaceChancePercent:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
-async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings) {
+/** @param {Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>} sourceSummary @param {Difficulty} difficulty @param {number} bpm @param {DataRecord} recipe @param {readonly string[]} modifiers @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,sameHandPunchMinGapMs:number,repeatedPunchSwitchChancePercent:number,repeatedGuardReplaceChancePercent:number,kneeStrikeChancePercent?:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */
+async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers, converterSettings, kneeEnabled = false) {
   const trace = [];
   const obstacleWindows = obstaclesFor(sourceSummary.obstacles ?? [], bpm);
   const groups = noteGroups(sourceSummary.colorNotes ?? []);
@@ -212,11 +217,12 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
   }
   candidates.sort(candidateOrder);
   if (converterSettings.repeatedPunchSwitchChancePercent > 0 || converterSettings.repeatedGuardReplaceChancePercent > 0) await applyRepeatedBoxingCandidates(candidates, String(recipe.recipeId), converterSettings);
+  if (kneeEnabled && Number(converterSettings.kneeStrikeChancePercent ?? 0) > 0) await applyKneeCandidates(candidates, String(recipe.recipeId), Number(converterSettings.kneeStrikeChancePercent));
   const optimizer = converterSettings.sameHandPunchMinGapMs > 0
     ? selectHandGapOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings)
     : selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings);
   const beats = [];
-  let lastPunchMs = -1e9; let previousHand = "";
+  let lastPunchMs = -1e9; let previousHand = ""; let nextKneeHand = "left";
   const lastHandPunchMs = { left: -1e9, right: -1e9 };
   const wristSubcell = { left: seedSubcell(5), right: seedSubcell(6) }; const wristBeat = { left: 0, right: 0 };
   const familyCounts = { straight: 0, hook: 0, uppercut: 0 };
@@ -230,6 +236,20 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
   const obstacleWindowActive = (timeMs) => resolvedObstacleWindows.some((window) => timeMs >= window.startMs && timeMs <= window.endMs);
   for (const candidate of candidates) {
     const start = Number(candidate.start); const startMs = beatToMs(start, bpm);
+    if (candidate.kind === "knee") {
+      const sourceEventIds = cloneData(candidate.sourceEventIds);
+      if (obstacleWindowActive(startMs)) { trace.push(dropTrace(candidate, "knee_obstacle_window_active")); continue; }
+      const hand = nextKneeHand;
+      const targetCell = hand === "left" ? 9 : 10;
+      const accepted = acceptedSubcells(targetCell, "straight", hand).filter((cell) => !blockedSubcellsAt(startMs, resolvedObstacleWindows).has(cell));
+      if (!accepted.length) { trace.push(dropTrace(candidate, "knee_spatial_target_blocked")); continue; }
+      const generatedEventId = await eventId(String(recipe.recipeId), String(candidate.stableId), `knee_${hand}`);
+      const beat = { start, type: `knee_${hand}`, eventId: generatedEventId, sourceEventIds, spatialTarget: { targetCell, acceptedSubcells: accepted }, timingWindowMs, evidenceFreshnessMs: freshnessMs };
+      beats.push(beat);
+      nextKneeHand = hand === "left" ? "right" : "left";
+      trace.push({ sourceEventIds, eventId: generatedEventId, start, action: "emit", kind: "knee", hand, sourcePair: cloneData(candidate.kneeSourcePair), target: cloneData(beat.spatialTarget) });
+      continue;
+    }
     if (candidate.kind === "guard") {
       const emitted = await emitGuard(candidate, wristSubcell, wristBeat, difficulty, String(recipe.recipeId), converterSettings);
       trace.push(emitted.trace);
@@ -268,10 +288,21 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
     beats.push(emitted); trace.push({ sourceEventIds: [sourceId], start: window.startBeat, end: window.endBeat, action: "emit", kind: "obstacle_checkpoint", type, sourceGeometry: cloneData(window.sourceGeometry), gameplayGeometry: cloneData(window.gameplayGeometry), gridMask: [...window.gridMask], blockedCells, noseSafeCells: safeCells });
   }
   beats.sort((left, right) => Number(left.start) - Number(right.start) || String(left.eventId).localeCompare(String(right.eventId)));
-  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.repeatedPunchSwitchChancePercent > 0 ? { repeatedPunchSwitchChancePercent: converterSettings.repeatedPunchSwitchChancePercent } : {}), ...(converterSettings.repeatedGuardReplaceChancePercent > 0 ? { repeatedGuardReplaceChancePercent: converterSettings.repeatedGuardReplaceChancePercent } : {}), ...(converterSettings.sameHandPunchMinGapMs > 0 ? { sameHandPunchMinGapMs: converterSettings.sameHandPunchMinGapMs } : {}), ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
+  return { beats, trace, familyCounts, optimizer: { priorityOrder: optimizerPriority, punchMinSpacingMs, ...(converterSettings.repeatedPunchSwitchChancePercent > 0 ? { repeatedPunchSwitchChancePercent: converterSettings.repeatedPunchSwitchChancePercent } : {}), ...(converterSettings.repeatedGuardReplaceChancePercent > 0 ? { repeatedGuardReplaceChancePercent: converterSettings.repeatedGuardReplaceChancePercent } : {}), ...(kneeEnabled && Number(converterSettings.kneeStrikeChancePercent ?? 0) > 0 ? { kneeStrikeChancePercent: converterSettings.kneeStrikeChancePercent } : {}), ...(converterSettings.sameHandPunchMinGapMs > 0 ? { sameHandPunchMinGapMs: converterSettings.sameHandPunchMinGapMs } : {}), ...(converterSettings.profileApplied ? { guardRelocationRadius: converterSettings.guardRelocationRadius, reachAllowanceSubcells: converterSettings.reachAllowanceSubcells } : {}), selectedStableIds: [...optimizer.selected.keys()] } };
 }
 
 const optimizerPriority = ["retained_punches", "hand_alternation", "family_balance", "source_order", "stable_event_id"];
+
+/** Replace only guards left after B's candidate transformation. Legs alternate on emitted knee beats, not rejected random draws. @param {DataRecord[]} candidates @param {string} recipeIdValue @param {number} chance */
+async function applyKneeCandidates(candidates, recipeIdValue, chance) {
+  for (const candidate of candidates) {
+    if (candidate.kind !== "guard" || !await repetitionChosen(`${recipeIdValue}|knee|${String(candidate.stableId)}`, chance)) continue;
+    const notes = /** @type {DataRecord[]} */ (candidate.notes);
+    const sourcePair = [topLeftCell(Number(noteForHand(notes, "left").cell)), topLeftCell(Number(noteForHand(notes, "right").cell))];
+    candidate.kind = "knee";
+    candidate.kneeSourcePair = sourcePair;
+  }
+}
 
 /** Seed every choice from immutable source evidence, not the caller's runtime clock or candidate traversal count. @param {string} identity @param {number} chance */
 async function repetitionChosen(identity, chance) {
