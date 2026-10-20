@@ -145,9 +145,9 @@ for (const fixture of cases) {
   };
   const first = await firstService.convertAndPersist({ providerId: "beatsaver", sourceHash: fixture.versionHash, source }, request);
   const firstPackage = /** @type {{notePalette:Record<string,unknown>|null,charts: {mode: string, beats: unknown[]}[],song:{audio:{filePath:string,contentHash:string}}}} */ (first.package);
-  // z7nw — new imports emit Flow + the sole collider Boxing chart.
-  assert.equal(firstPackage.charts.length, 2);
-  assert.equal(firstPackage.charts.filter((chart) => chart.mode === "boxing").length, 1);
+  // z7nw — new imports emit Flow plus no-knee and knee collider Boxing charts.
+  assert.equal(firstPackage.charts.length, 3);
+  assert.equal(firstPackage.charts.filter((chart) => chart.mode === "boxing").length, 2);
   assert.equal(firstPackage.charts.filter((chart) => chart.mode === "flow").length, 1);
   const validation = await validateAuthoredPackage(first.package);
   assert.equal(validation.valid, true, `${fixture.mapId} ${fixture.difficulty} package validation: ${JSON.stringify(validation.issues)}`);

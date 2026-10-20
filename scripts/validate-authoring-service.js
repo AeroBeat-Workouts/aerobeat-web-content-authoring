@@ -24,10 +24,11 @@ const options = { difficulty: "Hard", songToken: golden.songToken, songName: "Sa
 const first = await convertDifficulty(golden.sourceSummary, options);
 const second = await convertDifficulty(golden.sourceSummary, options);
 assert.deepEqual(first.package, second.package, "double conversion must be byte-semantically deterministic");
-// z7nw — new imports emit exactly one Boxing chart: the sole collider variant
-// (row-family balanced-height authored rows; no conversion recipe identity).
+// New imports emit no-knee and knee Boxing charts. The historical no-knee
+// collider retains its row-family beats and hash identity.
 const boxing = /** @type {{prototype: Record<string, unknown>, beats: Record<string, unknown>[]}[]} */ (first.charts.filter((chart) => chart.mode === "boxing"));
-assert.equal(boxing.length, 1);
+assert.equal(boxing.length, 2);
+assert.equal(boxing[1].prototype.rulesetId, "boxing_collider_knee_v1");
 const collider = boxing[0];
 const goldenGuard = collider.beats.find((beat) => beat.type === "guard");
 assert.ok(goldenGuard, "the sanitized historical source still produces a guard");
@@ -55,8 +56,8 @@ assert.equal(flowChart.contentHash,await prefixedSha256(canonicalJson({beats:flo
 const firstPackage=/** @type {Record<string,unknown>} */(first.package),firstSource=/** @type {Record<string,unknown>} */(firstPackage.source),firstTrace=/** @type {Record<string,unknown>} */(firstPackage.conversionTrace);
 assert.deepEqual(firstSource.spawnTiming,deriveBeatSaberSpawnTiming(golden.bpm,10,1));
 assert.equal(canonicalJson(firstTrace.spawnTiming),canonicalJson(firstSource.spawnTiming));
-assert.equal(await semanticParityHash(first.package), "sha256:755fe6891e8a4358a343feb4acb1ed746ef4bae5c497b04843ccf916ccdcf464", "next-version browser semantic hash must bind same-side guards, separate from historical Godot proof");
-assert.equal(first.packageHash, "sha256:23c9fc6d76a7b21e46edddb8c56ed87296d50492568c5a425647b1e6f3b5dee6", "next-version package hash must bind same-side guards");
+assert.equal(await semanticParityHash(first.package), "sha256:1ecb2a63036a95a1c87f8f85f2150302cffd552661143dbf14190c812da4966c", "dual-variant browser semantic hash must bind both Boxing variants, separate from historical Godot proof");
+assert.equal(first.packageHash, "sha256:6650490ba4fc840d3053db644f86fcc7f325910380cabb4a20dcf7275d8f0c10", "dual-variant package hash must bind both Boxing charts");
 assert.equal(collider.prototype.contentHash, "sha256:b16d70cb578d3acb9e13220af8137e23297e8526777389e09d09eba03e911dce", "next-version Boxing hash must bind the new guard geometry");
 assert.notEqual(first.sourceHash, golden.godotExpected.sourceHash, "language-specific numeric JSON hash must not be presented as Godot hash parity");
 assert.equal((await validateAuthoredPackage(first.package)).valid, true);
@@ -86,7 +87,7 @@ service.subscribe((snapshot) => { snapshots.push(snapshot); });
 const authored = await service.convertAndPersist({ providerId: "synthetic", sourceHash: "synthetic-v1", source }, { difficulty: "Hard", sourceId: "synthetic-map", sourceVersionHash: "synthetic-v1", includeAudio: true, cacheSourceEntries: true });
 assert.equal(isContentImportJobSnapshot(authored.job), true);
 assert.equal(isPersistenceHandle(authored.handle), true);
-assert.equal((/** @type {{charts: unknown[]}} */ (authored.package)).charts.length, 2);
+assert.equal((/** @type {{charts: unknown[]}} */ (authored.package)).charts.length, 3);
 assert.equal((await service.listPackages()).length, 1);
 const loaded = await service.loadPackage(authored.handle);
 assert.deepEqual(loaded.package, authored.package);

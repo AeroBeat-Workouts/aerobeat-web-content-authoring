@@ -63,15 +63,15 @@ for (const entry of result.packages) {
   const loaded = await service.loadPackage(entry.handle);
   assert.equal((await validateAuthoredPackage(loaded.package)).valid, true);
   const charts = /** @type {{charts:unknown[]}} */ (loaded.package).charts;
-  assert.equal(charts.length, 5);
+  assert.equal(charts.length, 3);
   chartCount += charts.length;
   assert.ok((await service.readAsset(entry.handle, manifest.audioPath)).byteLength > 0);
 }
-assert.equal(chartCount, 10);
+assert.equal(chartCount, 6);
 assert.equal(await service.deleteCollection(result.collection.collectionId), true);
 assert.equal((await service.listPackages()).length, 0);
 service.destroy();
-console.log(`Catalyst ${mapId}/${versionHash}: Standard Expert + ExpertPlus -> 2 v1 packages / 10 charts / 1 atomic collection / 1 shared audio; archive and media remained process-local.`);
+console.log(`Catalyst ${mapId}/${versionHash}: Standard Expert + ExpertPlus -> 2 v6 packages / 6 charts / 1 atomic collection / 1 shared audio; archive and media remained process-local.`);
 
 async function acquireCatalyst() {
   const saved = await resolveSavedFixture();

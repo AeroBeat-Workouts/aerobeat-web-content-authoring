@@ -77,13 +77,13 @@ function v2Obstacle(kind, sourceWidth, sourceIndex) {
 /** @param {{package: Readonly<Record<string, unknown>>, charts: Readonly<Record<string, unknown>>[]}} converted */
 function boxingEventsFor(converted) {
   const boxingTrace = /** @type {Record<string, unknown>[]} */ (/** @type {Record<string, unknown>} */ (/** @type {Record<string, unknown>} */ (converted.package).conversionTrace).boxing);
-  assert.equal(boxingTrace.length, 1);
+  assert.equal(boxingTrace.length, 2);
   return /** @type {Record<string, unknown>[]} */ (boxingTrace[0].events);
 }
 
 /** @param {{package: Readonly<Record<string, unknown>>, charts: Readonly<Record<string, unknown>>[]}} converted */
 function boxingBeatsFor(converted) {
-  return /** @type {Record<string, unknown>[]} */ (/** @type {Record<string, unknown>[]} */ (converted.charts)).filter((chart) => String(chart.mode) === "boxing").flatMap((chart) => /** @type {Record<string, unknown>[]} */ (chart.beats));
+  return /** @type {Record<string, unknown>[]} */ (/** @type {Record<string, unknown>[]} */ (converted.charts)).filter((chart) => String(chart.mode) === "boxing" && /** @type {Record<string,unknown>} */ (chart.prototype).rulesetId === "boxing_collider_v1").flatMap((chart) => /** @type {Record<string, unknown>[]} */ (chart.beats));
 }
 
 // (a) A v3 full-width TOP-row source ({x:0,y:2,w:4,h:1}) retains its

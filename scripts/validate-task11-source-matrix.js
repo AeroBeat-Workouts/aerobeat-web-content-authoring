@@ -44,6 +44,7 @@ for (const format of ["v2", "v3", "v4"]) {
   const difficultyHash = await prefixedSha256(difficultyBytes);
   const expectedIds = [
     `ab-chart-task-11-${format}-boxing-collider-hard`,
+    `ab-chart-task-11-${format}-boxing-collider-knee-hard`,
     `ab-chart-task-11-${format}-flow-hard`
   ];
   const profileResults = {};
@@ -72,16 +73,16 @@ for (const format of ["v2", "v3", "v4"]) {
       assert.equal(validation.valid, true, JSON.stringify(validation.issues));
       await assert.doesNotReject(() => validateRuntimePackage(authored.package, { declaredPackageHash: authored.handle.packageHash }), `${format} same-side guard package must pass the current sibling runtime`);
       const packageRecord = /** @type {{source: Record<string, unknown>, charts: {chartId:string,mode:string,prototype?:Record<string,unknown>,beats:Record<string,unknown>[]}[], conversionTrace:Record<string,unknown>}} */ (authored.package);
-      assert.equal(packageRecord.charts.length, 2);
+      assert.equal(packageRecord.charts.length, 3);
       assert.deepEqual(packageRecord.charts.map((chart) => chart.chartId), expectedIds);
-      assert.equal(packageRecord.charts.filter((chart) => chart.mode === "boxing").length, 1);
+      assert.equal(packageRecord.charts.filter((chart) => chart.mode === "boxing").length, 2);
       assert.equal(packageRecord.charts.filter((chart) => chart.mode === "flow").length, 1);
       assert.equal(packageRecord.source.sourceId, sourceId);
       assert.equal(packageRecord.source.sourceVersionHash, sourceVersionHash);
       assert.deepEqual(packageRecord.source.converterProfile, converterProfile);
       assert.deepEqual(packageRecord.conversionTrace.converterProfile, converterProfile);
       const boxingTrace = /** @type {Record<string,unknown>[]} */ (packageRecord.conversionTrace.boxing);
-      assert.equal(boxingTrace.length, 1);
+      assert.equal(boxingTrace.length, 2);
       assert.equal(Object.hasOwn(boxingTrace[0], "recipeId"), false, "collider conversion trace carries no conversion recipe identity");
       assert.equal(boxingTrace.every((trace) => canonicalJson(trace.converterProfile) === canonicalJson(converterProfile)), true);
       const flow = packageRecord.charts.find((chart) => chart.mode === "flow");
@@ -90,10 +91,10 @@ for (const format of ["v2", "v3", "v4"]) {
       assert.equal(flowTypes.has("burst"), format !== "v2", `${format} burst support must be truthful`);
       for (const chart of packageRecord.charts.filter((entry) => entry.mode === "boxing")) {
         const prototype = /** @type {Record<string, unknown>} */ (chart.prototype);
-        assert.equal(prototype.rulesetId, "boxing_collider_v1", "new import emits the sole collider Boxing ruleset");
+        assert.equal(prototype.rulesetId, chart.chartId.includes("-boxing-collider-knee-") ? "boxing_collider_knee_v1" : "boxing_collider_v1", "dual variants bind their distinct collider rulesets");
         assert.equal(Object.hasOwn(prototype, "recipeId"), false, "collider prototype carries no conversion recipe identity");
         assert.deepEqual(prototype.converterProfile, converterProfile);
-        assert.equal(prototype.contentHash, `sha256:${(await prefixedSha256(canonicalJson({ beats: chart.beats, sourceHash: prototype.sourceHash, rulesetId: "boxing_collider_v1", converterProfile }))).slice(7)}`, "collider content hash omits recipe identity and binds beats/source/ruleset/profile");
+        assert.equal(prototype.contentHash, `sha256:${(await prefixedSha256(canonicalJson({ beats: chart.beats, sourceHash: prototype.sourceHash, rulesetId: prototype.rulesetId, converterProfile }))).slice(7)}`, "collider content hash omits recipe identity and binds beats/source/ruleset/profile");
         assert.match(String(prototype.contentHash), /^sha256:[0-9a-f]{64}$/u);
         assert.match(String(prototype.recipeHash), /^sha256:[0-9a-f]{64}$/u);
         assert.match(String(prototype.rulesetHash), /^sha256:[0-9a-f]{64}$/u);
@@ -211,18 +212,16 @@ async function assertGuardRadiusSubcellDifference() {
   const summary={colorNotes:[{start:1,cell:4,hand:"left",direction:8,sourceIndex:0},{start:1,cell:5,hand:"right",direction:8,sourceIndex:1}],bombNotes:[],obstacles:[{start:1,duration:0.5,sourceGeometry:{schema:"aerobeat/obstacle_source_geometry",version:1,coordinateSpace:"beatsaber_v3_obstacle_rect",kind:"v3_rect",x:0,y:1,width:1,height:1},gameplayGeometry:{schema:"aerobeat/obstacle_gameplay_geometry",version:1,coordinateSpace:"aerobeat_top_left_grid",x:0,y:1,width:1,height:1},sourceIndex:0}],sliders:[],burstSliders:[]};
   const base={difficulty:/** @type {const} */("Hard"),songToken:"profile-guard-radius",songName:"Profile Guard Radius",bpm:120,noteJumpMovementSpeed:10,noteJumpStartBeatOffset:1,spawnTiming:deriveBeatSaberSpawnTiming(120,10,1),sourceProvider:"synthetic",sourceId:"profile-guard-radius",sourceVersionHash:"0".repeat(40),sourceInfoFormat:/** @type {const} */("v2"),sourceInfoVersion:"2.1.0",sourceInfoHash:syntheticHash,sourceDifficultyPath:"Hard.dat",sourceBeatmapFormat:/** @type {const} */("v3"),sourceBeatmapVersion:"3.3.0",sourceDifficultyHash:syntheticHash,notePalette:null};
   const legacy=await convertDifficulty(summary,base);const canonical=await convertDifficulty(summary,{...base,converterProfile:canonicalConverterProfile});const reach=await convertDifficulty(summary,{...base,converterProfile:prototypeReachConverterProfile});
-  // z7nw — with one generated beat set feeding the single collider chart, the relocation gate
-  // evidence becomes exact counts on that one chart (one guard note pair → at most one guard).
-  const guards=(result)=>result.charts.filter((chart)=>chart.mode==="boxing").reduce((count,chart)=>count+(/** @type {Record<string,unknown>[]} */(chart.beats)).filter((beat)=>beat.type==="guard").length,0);
+  // Compare the unchanged no-knee collider without double-counting the second chart.
+  const guards=(result)=>result.charts.filter((chart)=>chart.mode==="boxing" && chart.prototype.rulesetId==="boxing_collider_v1").reduce((count,chart)=>count+(/** @type {Record<string,unknown>[]} */(chart.beats)).filter((beat)=>beat.type==="guard").length,0);
   assert.equal(guards(legacy),1,"no-profile conversion must preserve unrestricted legacy guard relocation");
   assert.equal(guards(canonical),0,"radius 1 subcell must reject an adjacent 4x3-cell relocation because its center displacement is 2 subcells");
   assert.equal(guards(reach),0,"radius 2 subcells must reject a row 1 to fixed bottom-row relocation of 4 subcells");
 }
 
 async function assertMaterialProfileDifference() {
-  // z7nw — the material-difference evidence now sums hook emissions across two beat sets,
-  // comparing the no-profile legacy regeneration against the prototype-reach profile:
-  // reachAllowanceSubcells must still move reachable punches when each conversion is single-variant.
+  // Compare the no-knee chart to avoid double-counting identical zero-chance variants.
+  // reachAllowanceSubcells must still move reachable punches under each profile.
   const summaries = [
     { label: "single-late-left-hook", notes: [{ start: 0.6, cell: 1, hand: "left", direction: 2, sourceIndex: 0 }] },
     { label: "chained-left-hooks", notes: [
@@ -238,8 +237,8 @@ async function assertMaterialProfileDifference() {
     const summary = { colorNotes: entry.notes, bombNotes: [], obstacles: [], sliders: [], burstSliders: [] };
     const legacy = await convertDifficulty(summary, { ...base, songToken: `profile-materiality-${entry.label}` });
     const reach = await convertDifficulty(summary, { ...base, songToken: `profile-materiality-${entry.label}`, converterProfile: prototypeReachConverterProfile });
-    legacyTotal += legacy.charts.filter((chart) => chart.mode === "boxing").reduce((count, chart) => count + (/** @type {Record<string,unknown>[]} */ (chart.beats)).filter((beat) => String(beat.type).startsWith("hook_")).length, 0);
-    reachTotal += reach.charts.filter((chart) => chart.mode === "boxing").reduce((count, chart) => count + (/** @type {Record<string,unknown>[]} */ (chart.beats)).filter((beat) => String(beat.type).startsWith("hook_")).length, 0);
+    legacyTotal += legacy.charts.filter((chart) => chart.mode === "boxing" && (/** @type {Record<string,unknown>} */ (chart.prototype)).rulesetId === "boxing_collider_v1").reduce((count, chart) => count + (/** @type {Record<string,unknown>[]} */ (chart.beats)).filter((beat) => String(beat.type).startsWith("hook_")).length, 0);
+    reachTotal += reach.charts.filter((chart) => chart.mode === "boxing" && (/** @type {Record<string,unknown>} */ (chart.prototype)).rulesetId === "boxing_collider_v1").reduce((count, chart) => count + (/** @type {Record<string,unknown>[]} */ (chart.beats)).filter((beat) => String(beat.type).startsWith("hook_")).length, 0);
   }
   // 0.0.89 (Derrick): subcell reachability was REMOVED, so reachAllowanceSubcells no
   // longer influences emitted notes. The reach profile must now be behaviourally
