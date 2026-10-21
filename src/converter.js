@@ -218,12 +218,16 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
   candidates.sort(candidateOrder);
   if (converterSettings.repeatedPunchSwitchChancePercent > 0 || converterSettings.repeatedGuardReplaceChancePercent > 0) await applyRepeatedBoxingCandidates(candidates, String(recipe.recipeId), converterSettings);
   if (kneeEnabled && Number(converterSettings.kneeStrikeChancePercent ?? 0) > 0) await applyKneeCandidates(candidates, String(recipe.recipeId), Number(converterSettings.kneeStrikeChancePercent));
-  const optimizer = converterSettings.sameHandPunchMinGapMs > 0
-    ? selectHandGapOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings)
+  // Historical zero-gap selection (including its guard reservation) is byte-stable.
+  // Positive gaps use chronological emitted-beat decisions below instead of an
+  // unbounded search over cloned punch timelines.
+  const positiveGap = converterSettings.sameHandPunchMinGapMs > 0;
+  const optimizer = positiveGap
+    ? { selected: new Map(), infeasible: new Map() }
     : selectSpacingOptimizedPunches(candidates, bpm, obstacleWindows, difficulty, converterSettings);
   const beats = [];
   let lastPunchMs = -1e9; let previousHand = ""; let nextKneeHand = "left";
-  const lastHandPunchMs = { left: -1e9, right: -1e9 };
+  const lastHandBeatMs = { left: -1e9, right: -1e9 };
   const wristSubcell = { left: seedSubcell(5), right: seedSubcell(6) }; const wristBeat = { left: 0, right: 0 };
   const familyCounts = { straight: 0, hook: 0, uppercut: 0 };
   // 0.0.89 (Derrick): resolve the obstacle set ONCE and use the SAME set for punch
@@ -251,28 +255,38 @@ async function generateEvents(sourceSummary, difficulty, bpm, recipe, modifiers,
       continue;
     }
     if (candidate.kind === "guard") {
+      if (positiveGap && (startMs - lastHandBeatMs.left + 0.0001 < converterSettings.sameHandPunchMinGapMs || startMs - lastHandBeatMs.right + 0.0001 < converterSettings.sameHandPunchMinGapMs)) {
+        const previousHand = startMs - lastHandBeatMs.left + 0.0001 < converterSettings.sameHandPunchMinGapMs ? "left" : "right";
+        trace.push(dropTrace(candidate, "same_hand_beat_min_gap", { previousHand, spacingMs: startMs - lastHandBeatMs[previousHand] }));
+        continue;
+      }
       const emitted = await emitGuard(candidate, wristSubcell, wristBeat, difficulty, String(recipe.recipeId), converterSettings);
       trace.push(emitted.trace);
       if (emitted.ok && emitted.beat) {
         beats.push(emitted.beat); const target = emitted.beat.guardTarget;
         wristSubcell.left = seedSubcell(Number(target.leftCell)); wristSubcell.right = seedSubcell(Number(target.rightCell)); wristBeat.left = start; wristBeat.right = start;
+        if (positiveGap) { lastHandBeatMs.left = startMs; lastHandBeatMs.right = startMs; }
       }
       continue;
     }
-    if (!optimizer.selected.has(String(candidate.stableId))) { trace.push(dropTrace(candidate, optimizer.infeasible.get(String(candidate.stableId)) ?? "spacing_optimizer_rejected", { priorityOrder: optimizerPriority, ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) })); continue; }
+    if (!positiveGap && !optimizer.selected.has(String(candidate.stableId))) { trace.push(dropTrace(candidate, optimizer.infeasible.get(String(candidate.stableId)) ?? "spacing_optimizer_rejected", { priorityOrder: optimizerPriority, ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) })); continue; }
     const note = /** @type {DataRecord} */ (candidate.note); const hand = String(note.hand); const family = String(candidate.family);
     // 0.0.89 (Derrick) rule 1: no punch may be authored while a weave/squat is up.
     if (obstacleWindowActive(startMs)) { trace.push(dropTrace(candidate, "obstacle_window_active")); continue; }
+    if (positiveGap) {
+      const reason = staticInfeasibility(candidate, bpm, obstacleWindows, difficulty, converterSettings);
+      if (reason) { trace.push(dropTrace(candidate, reason, { priorityOrder: optimizerPriority, ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) })); continue; }
+    }
     const spatial = spatialTarget(family, hand, Number(candidate.targetRow), { uppercutOppositeLane: converterSettings.uppercutOppositeLane, anyOppositeLane: converterSettings.anyOppositeLane, anyPunch: modifiers.includes("any_punch") }); const blocked = blockedSubcellsAt(startMs, resolvedObstacleWindows);
     const safe = /** @type {number[]} */ (spatial.acceptedSubcells).filter((subcell) => !blocked.has(subcell));
     if (!safe.length) { trace.push(dropTrace(candidate, "spatial_target_blocked")); continue; }
     spatial.acceptedSubcells = safe;
-    if (startMs - lastPunchMs < punchMinSpacingMs) { trace.push(dropTrace(candidate, "punch_min_spacing", { previousHand, spacingMs: startMs - lastPunchMs })); continue; }
-    if (converterSettings.sameHandPunchMinGapMs > 0 && startMs - lastHandPunchMs[/** @type {"left" | "right"} */ (hand)] + 0.0001 < converterSettings.sameHandPunchMinGapMs) { trace.push(dropTrace(candidate, "same_hand_punch_min_gap", { previousHand: hand, spacingMs: startMs - lastHandPunchMs[/** @type {"left" | "right"} */ (hand)] })); continue; }
+    if (startMs - lastPunchMs < punchMinSpacingMs) { trace.push(dropTrace(candidate, positiveGap ? "spacing_optimizer_rejected" : "punch_min_spacing", { previousHand, spacingMs: startMs - lastPunchMs, ...(positiveGap ? { priorityOrder: optimizerPriority, ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) } : {}) })); continue; }
+    if (positiveGap && startMs - lastHandBeatMs[/** @type {"left" | "right"} */ (hand)] + 0.0001 < converterSettings.sameHandPunchMinGapMs) { trace.push(dropTrace(candidate, "same_hand_beat_min_gap", { previousHand: hand, spacingMs: startMs - lastHandBeatMs[/** @type {"left" | "right"} */ (hand)], priorityOrder: optimizerPriority, ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) })); continue; }
     const type = `${family}_${hand}`; const generatedEventId = await eventId(String(recipe.recipeId), String(candidate.stableId), type);
     const beat = { start, type, eventId: generatedEventId, sourceEventIds: cloneData(candidate.sourceEventIds), spatialTarget: spatial, timingWindowMs, evidenceFreshnessMs: freshnessMs };
     if (modifiers.includes("any_punch")) Object.assign(beat, { modifier: "any_punch" }); else if (modifiers.includes("cross_body")) Object.assign(beat, { modifier: "cross_body" });
-    beats.push(beat); lastPunchMs = startMs; lastHandPunchMs[/** @type {"left" | "right"} */ (hand)] = startMs; previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = seedSubcell(spatial.targetCell); wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
+    beats.push(beat); lastPunchMs = startMs; if (positiveGap) { lastHandBeatMs[/** @type {"left" | "right"} */ (hand)] = startMs; optimizer.selected.set(String(candidate.stableId), true); } previousHand = hand; familyCounts[/** @type {"straight" | "hook" | "uppercut"} */ (family)] += 1; wristSubcell[/** @type {"left" | "right"} */ (hand)] = seedSubcell(spatial.targetCell); wristBeat[/** @type {"left" | "right"} */ (hand)] = start;
     trace.push({ sourceEventIds: beat.sourceEventIds, eventId: generatedEventId, start, action: "emit", kind: "punch", family, hand, sourceDirection: Number(note.direction ?? 8), generatedDirection: spatial.entryDirection ?? "semantic_straight", target: cloneData(spatial), ...(candidate.repetition ? { repetition: cloneData(candidate.repetition) } : {}) });
   }
   for (const mergedWindow of resolvedObstacleWindows) {
@@ -367,46 +381,6 @@ function selectSpacingOptimizedPunches(candidates, bpm, obstacles, difficulty, c
     const take = [...best[compatible + 1], candidate]; const skip = [...best[index]]; best.push(sequenceBetter(take, skip) ? take : skip);
   }
   return { selected: new Map(best.at(-1).map((candidate) => [String(candidate.stableId), true])), infeasible };
-}
-
-/** Select globally spaced punches without allowing a same-hand-infeasible winner to exclude an opposite-hand candidate. @param {DataRecord[]} candidates @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean,sameHandPunchMinGapMs:number}} converterSettings */
-function selectHandGapOptimizedPunches(candidates, bpm, obstacles, difficulty, converterSettings) {
-  const punches = []; const infeasible = new Map();
-  const guardTimesMs = candidates.filter((candidate) => candidate.kind === "guard").map((candidate) => beatToMs(Number(candidate.start), bpm));
-  for (const candidate of candidates) {
-    if (candidate.kind !== "punch") continue;
-    const punchMs = beatToMs(Number(candidate.start), bpm);
-    const reserved = guardTimesMs.some((guardMs) => Math.abs(punchMs - guardMs) <= timingWindowMs + 0.0001);
-    const reason = reserved ? "guard_window_reserved_before_optimizer" : staticInfeasibility(candidate, bpm, obstacles, difficulty, converterSettings);
-    if (reason) infeasible.set(String(candidate.stableId), reason); else punches.push(candidate);
-  }
-  punches.sort(candidateOrder);
-  /** @type {Map<string,DataRecord[]>} */ const states = new Map([["-1|-1|-1", []]]);
-  const time = (candidate) => beatToMs(Number(candidate.start), bpm);
-  for (let index = 0; index < punches.length; index += 1) {
-    const candidate = punches[index]; const hand = String(/** @type {DataRecord} */ (candidate.note).hand); const candidateMs = time(candidate);
-    for (const [key, sequence] of [...states]) {
-      const [last, left, right] = key.split("|").map(Number);
-      if (last >= 0 && candidateMs - time(punches[last]) + 0.0001 < punchMinSpacingMs) continue;
-      const handIndex = hand === "left" ? left : right;
-      if (handIndex >= 0 && candidateMs - time(punches[handIndex]) + 0.0001 < converterSettings.sameHandPunchMinGapMs) continue;
-      const next = [index, hand === "left" ? index : left, hand === "right" ? index : right].join("|");
-      const take = [...sequence, candidate]; const previous = states.get(next);
-      if (!previous || sequenceBetter(take, previous)) states.set(next, take);
-    }
-  }
-  let best = /** @type {DataRecord[]} */ ([]);
-  for (const sequence of states.values()) if (sequenceBetter(sequence, best)) best = sequence;
-  const selected = new Map(best.map((candidate) => [String(candidate.stableId), true]));
-  for (const candidate of punches) {
-    const id = String(candidate.stableId);
-    if (selected.has(id)) continue;
-    const candidateMs = time(candidate); const hand = String(/** @type {DataRecord} */ (candidate.note).hand);
-    const sameHandPrior = best.some((winner) => String(/** @type {DataRecord} */ (winner.note).hand) === hand && time(winner) < candidateMs && candidateMs - time(winner) + 0.0001 < converterSettings.sameHandPunchMinGapMs);
-    const globallyBlocked = best.some((winner) => Math.abs(time(winner) - candidateMs) + 0.0001 < punchMinSpacingMs);
-    if (sameHandPrior && !globallyBlocked) infeasible.set(id, "same_hand_punch_min_gap");
-  }
-  return { selected, infeasible };
 }
 
 /** @param {DataRecord} candidate @param {number} bpm @param {ObstacleWindow[]} obstacles @param {Difficulty} difficulty @param {{guardRelocationRadius:number,reachAllowanceSubcells:number,guardSpacing:number,profileApplied:boolean,uppercutOppositeLane?:boolean,anyOppositeLane?:boolean}} converterSettings */

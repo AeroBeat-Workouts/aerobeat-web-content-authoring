@@ -146,8 +146,8 @@ try {
     assert.deepEqual(center.beats, [["left", 9], ["right", 2], ["left", 1], ["right", 10], ["left", 2], ["right", 1]], "browser Flow center cross-row hands and offset negative");
     assert.deepEqual(center.trace, [["right", 2, undefined], ["left", 9, 3], ["right", 10, undefined], ["left", 1, 3], ["left", 2, undefined], ["right", 1, 3]], "browser Flow trace preserves source placement, arrow/any, and swapped hands");
     const result = await page.evaluate(() => globalThis.runAuthoringHarness());
-    // z7nw — new imports convert to Flow + the sole collider chart.
-    assert.equal(result.chartCount, 2);
+    // New imports carry both no-knee and knee Boxing charts plus Flow.
+    assert.equal(result.chartCount, 3);
     assert.equal(result.listCount, 1);
     assert.deepEqual(result.audioBytes, [4, 3, 2, 1]);
     assert.equal(result.loadedPackageId, result.exportPackageId);

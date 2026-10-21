@@ -27,7 +27,7 @@ for (const hand of ["left", "right"]) {
   for (let i = 1; i < emitted.length; i += 1) assert.ok(ms(emitted[i]) - ms(emitted[i - 1]) >= 1000 - 0.0001, `${hand} punches meet actual song milliseconds`);
 }
 const events = /** @type {Record<string,unknown>[]} */ (tuned.traces[0].events);
-assert.ok(events.some((event) => event.reason === "same_hand_punch_min_gap" && event.action === "drop"), "dropped same-hand source is traced");
+assert.ok(events.some((event) => event.reason === "same_hand_beat_min_gap" && event.action === "drop"), "dropped same-hand source is traced");
 const baselineBoxing = /** @type {Record<string,unknown>} */ (baseline.charts.find((chart) => chart.mode === "boxing"));
 const baselinePunches = /** @type {Record<string,unknown>[]} */ (baselineBoxing.beats).filter((beat) => /^straight_|^hook_|^uppercut_/u.test(String(beat.type)));
 for (const beat of baselinePunches) {
@@ -37,8 +37,8 @@ for (const beat of baselinePunches) {
   assert.ok(punches.some((opposite) => String(opposite.type).endsWith(hand === "left" ? "_right" : "_left") && Math.abs(ms(beat) - ms(opposite)) < 1000), "opposite-hand punch remains available inside the removed punch's interval");
 }
 assert.deepEqual(tuned.charts.find((chart) => chart.mode === "flow"), baseline.charts.find((chart) => chart.mode === "flow"), "Flow chart remains unchanged");
-// Global 360-ms optimization previously picked left at 1300 ms, dropped it for
-// its 800-ms same-hand gap, and incorrectly excluded left at 1650 ms (1150-ms left gap).
+// Chronological selection must leave later feasible punches available after
+// dropping a candidate that conflicts with an earlier beat on the same hand.
 const conflict = { ...source, colorNotes: [[1, "left", 5], [1.8, "right", 6], [2.6, "left", 5], [3, "right", 6], [3.3, "left", 5], [4, "right", 6]].map(([start, hand, cell], sourceIndex) => ({ start, hand, cell, direction: 8, sourceIndex })) };
 const conflictBaseline = await convertDifficulty(conflict, options);
 const conflictZero = await convertDifficulty(conflict, { ...options, converterSettings: { sameHandPunchMinGapMs: 0 } });
@@ -47,13 +47,13 @@ const resolved = await convertDifficulty(conflict, { ...options, converterSettin
 const conflictBeats = /** @type {Record<string,unknown>[]} */ (resolved.charts.find((chart) => chart.mode === "boxing")?.beats ?? []);
 const conflictEmits = /** @type {Record<string,unknown>[]} */ (resolved.traces[0].events).filter((event) => event.action === "emit" && event.kind === "punch");
 const conflictDrops = /** @type {Record<string,unknown>[]} */ (resolved.traces[0].events).filter((event) => event.action === "drop");
-assert.deepEqual(conflictEmits.map((event) => event.sourceEventIds), [["note-000"], ["note-001"], ["note-004"]], "later feasible left must fill hole left by the globally selected but same-hand-infeasible left");
-assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.sourceEventIds).includes("note-002"))?.reason, "spacing_optimizer_rejected", "global conflict takes precedence when both constraints block a punch");
-assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.sourceEventIds).includes("note-003"))?.reason, "spacing_optimizer_rejected", "global conflict takes precedence over overlapping same-hand gap");
+assert.deepEqual(conflictEmits.map((event) => event.sourceEventIds), [["note-000"], ["note-001"], ["note-004"]], "later feasible left follows earlier winner after skipped conflict");
+assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.sourceEventIds).includes("note-002"))?.reason, "same_hand_beat_min_gap", "earlier left punch wins the hand conflict");
+assert.equal(conflictDrops.find((event) => /** @type {string[]} */ (event.sourceEventIds).includes("note-003"))?.reason, "same_hand_beat_min_gap", "earlier right punch wins the hand conflict");
 assert.ok(conflictBeats.some((beat) => /** @type {string[]} */ (beat.sourceEventIds ?? []).includes("note-004") && beat.type === "straight_left"));
 assert.deepEqual(resolved.charts.find((chart) => chart.mode === "flow"), conflictBaseline.charts.find((chart) => chart.mode === "flow"));
-// Independently identified eight-event sequence: the legacy global winner set
-// post-filtered away an addable 1280-ms left punch between right-hand pulses.
+// The earlier-wins sequence keeps an addable 1280-ms left punch between
+// right-hand pulses, without an exhaustive optimizer.
 const pulseTimes = [[500, "right", 6], [1090, "right", 6], [1280, "left", 5], [1470, "right", 6], [1820, "right", 6], [2170, "right", 6], [2840, "right", 6], [3750, "left", 5]];
 const pulses = { ...source, colorNotes: pulseTimes.map(([timeMs, hand, cell], sourceIndex) => ({ start: Number(timeMs) * options.bpm / 60000, hand, cell, direction: 8, sourceIndex })) };
 const pulseBaseline = await convertDifficulty(pulses, options);
@@ -68,4 +68,31 @@ for (const hand of ["left", "right"]) {
   for (let index = 1; index < handTimes.length; index += 1) assert.ok(handTimes[index] - handTimes[index - 1] >= 999.9999);
 }
 assert.deepEqual(pulseTuned.charts.find((chart) => chart.mode === "flow"), pulseBaseline.charts.find((chart) => chart.mode === "flow"));
-console.log("Same-hand gap, zero identity, two global optimizer conflicts, opposite hand, trace, and Flow validation passed.");
+
+// At positive gaps a guard occupies both hands. The earlier eligible beat
+// wins, including when that earlier beat is a punch and the guard comes later.
+const guardSource = (first, second, third = null) => ({ ...source, colorNotes: [first, second, ...(third ? [third] : [])].flatMap(([timeMs, kind], index) => (kind === "guard" ? [["left", 5], ["right", 6]] : [[kind, kind === "left" ? 5 : 6]]).map(([hand, cell], side) => ({ start: timeMs * options.bpm / 60000, hand, cell, direction: 8, sourceIndex: index * 2 + side }))) });
+const boxBeats = (result) => /** @type {Record<string,unknown>[]} */ (result.charts.find((chart) => chart.mode === "boxing")?.beats ?? []);
+const kneeBeats = (result) => /** @type {Record<string,unknown>[]} */ (result.charts.find((chart) => /** @type {Record<string,unknown>} */ (/** @type {Record<string,unknown>} */ (chart).prototype).rulesetId === "boxing_collider_knee_v1")?.beats ?? []);
+const boxDrops = (result) => /** @type {Record<string,unknown>[]} */ (result.traces[0].events).filter((event) => event.action === "drop");
+const guardFirst = guardSource([500, "guard"], [1000, "left"], [1100, "right"]);
+const guardFirstZero = await convertDifficulty(guardFirst, options);
+assert.equal((await convertDifficulty(guardFirst, { ...options, converterSettings: { sameHandPunchMinGapMs: 0 } })).packageHash, guardFirstZero.packageHash);
+const guardFirstTuned = await convertDifficulty(guardFirst, { ...options, converterSettings: { sameHandPunchMinGapMs: 1000 } });
+assert.deepEqual(boxBeats(guardFirstTuned).filter((beat) => String(beat.type) === "guard").map((beat) => ms(beat)), [500]);
+assert.equal(boxBeats(guardFirstTuned).filter((beat) => /^(straight|hook|uppercut)_/.test(String(beat.type))).length, 0, "earlier guard blocks either hand");
+assert.deepEqual(boxDrops(guardFirstTuned).filter((event) => event.reason === "same_hand_beat_min_gap").map((event) => event.previousHand), ["left", "right"]);
+const punchFirst = guardSource([500, "left"], [1000, "guard"], [1100, "right"]);
+const punchFirstTuned = await convertDifficulty(punchFirst, { ...options, converterSettings: { sameHandPunchMinGapMs: 1000 } });
+assert.deepEqual(boxBeats(punchFirstTuned).filter((beat) => /^(straight|hook|uppercut)_/.test(String(beat.type))).map((beat) => ms(beat)), [500, 1100], "later dropped guard cannot reserve the opposite hand");
+assert.equal(boxBeats(punchFirstTuned).filter((beat) => beat.type === "guard").length, 0);
+assert.equal(boxDrops(punchFirstTuned).find((event) => event.reason === "same_hand_beat_min_gap")?.previousHand, "left");
+for (const result of [guardFirstTuned, punchFirstTuned]) {
+  assert.equal((await validateAuthoredPackage(result.package)).valid, true);
+  assert.deepEqual(result.charts.find((chart) => chart.mode === "flow"), (await convertDifficulty(result === guardFirstTuned ? guardFirst : punchFirst, options)).charts.find((chart) => chart.mode === "flow"));
+  assert.deepEqual(kneeBeats(result), boxBeats(result), "0% knee and no-knee charts keep identical beats");
+}
+const legsIndependent = await convertDifficulty(guardFirst, { ...options, converterSettings: { sameHandPunchMinGapMs: 1000, kneeStrikeChancePercent: 100 } });
+assert.equal(boxBeats(legsIndependent).filter((beat) => beat.type === "guard").length, 1);
+assert.equal(kneeBeats(legsIndependent).filter((beat) => /^knee_/.test(String(beat.type))).length, 1, "knee remains independent of both hand gaps");
+console.log("Same-hand beat gap, zero identity, guard/punch earlier wins, opposite hand, knee and Flow validation passed.");
