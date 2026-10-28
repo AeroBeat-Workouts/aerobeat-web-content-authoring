@@ -1,6 +1,6 @@
 # Wall-heavy human-made maps must import
 
-Status: implemented in source, pending release (0.0.148) and Derrick's phone check.
+Status: live in 0.0.148 on the public playtest link; Derrick's phone check is the remaining field test.
 
 ## Symptom
 
@@ -62,11 +62,29 @@ from the converter alone: Hard 425 ms / 762 KB, Expert 125 ms / 461 KB, ExpertPl
 - Larger charts cost more memory and validation time; the cap keeps that bounded at 4,096 walls.
 - Packages authored under the old cap remain valid: the bound is only compared against the count.
 
+## Delivered
+
+1. Committed: contracts `43ec0a4`, content `4721207`, content-authoring `3d082d7`, assembly `d5e7fbb`
+   with pins `d46c5ce` and docs `4f877e1`.
+2. Full assembly `npm test` green at 0.0.148.
+3. Signed snapshot `.tmp/boxing-r148-d46c5ce` (build stamp `FRIEND-GAME-CPU-0.0.148-af1ed6e62bf54e636428ed73`)
+   imports `54441` in Chromium through the shipped bundle: one collection, three difficulties
+   persisted (Hard 302 walls, Expert 450, ExpertPlus 1,091), about 10 s, no page errors.
+4. Public cutover done: systemd user unit `aerobeat-r148` on loopback 4211, Funnel repointed from
+   4210. Public Chromium reports 0.0.148 directly and in a true cross-origin iframe, and the same
+   import succeeds over the public URL. Rollback: stop `aerobeat-r148`, point the Funnel at 4210.
+
 ## Remaining
 
-1. Commit contracts, content and content-authoring; bump the assembly to 0.0.148 and pin it.
-2. Build the signed snapshot and import this map in Chromium through the shipped bundle.
-3. Cut the public link over so Derrick can play it on his phone.
+- Derrick re-imports the song on his phone. Note that an earlier failed import left no collection, so
+  the song simply needs importing again; no local cleanup is required.
+
+## Accepted limits
+
+- ExpertPlus on this map is wall-heavy by design: 1,091 walls. It will play hard, which is the
+  mapper's choice rather than a conversion fault.
+- The `test:real` fixture lane in this repo still needs uncommitted local archives (3D44B); that gap
+  predates this change and `test:unit` plus the real-archive run above cover the converter.
 
 ## Parked thread
 
