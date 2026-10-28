@@ -88,9 +88,18 @@ from the converter alone: Hard 425 ms / 762 KB, Expert 125 ms / 461 KB, ExpertPl
 
 ## Parked thread
 
-Local ZIP reimport (Derrick chose "reimport from the stored copy") is not started. The blocker to
-record for that work: local imports are written as `sourceProvider: "beatsaver"` with
-`sourceId: "local"`, so today's Reimport looks the song up on BeatSaver and fails; the authoring
-persistence record also keeps no archive to replay, so "stored copy" needs the imported bytes (or
-an equivalent) persisted at import time. Derrick has not yet approved the extra storage that would
-cost, and I had told him it needed none — correct that before implementing.
+Local ZIP reimport (Derrick chose "reimport from the stored copy") is not started.
+
+Why it is affordable with no new storage: import already persists the source material it needs.
+`StoredPackageRecord.sourceCache` holds the cached `Info.dat` and difficulty bytes (import runs with
+`cacheSourceEntries: true`) and `assets` holds the decoded audio, and
+`prepareSourceMaterial(acquired, { manifest, listEntryPaths, readEntry })` accepts exactly that
+bundle. So a local song can be re-converted from what is already on disk, with no second copy of the
+archive.
+
+What still has to change: local imports are written as `sourceProvider: "beatsaver"` with
+`sourceId: "local"`, so today's Reimport tries a BeatSaver lookup and fails, and
+`reusableCollectionIds` wrongly offers those songs. The work is to label local imports honestly, add
+an authoring-service rebuild-from-cache path, route local reimport through it without a file prompt,
+and let local collections use `replaceCollectionId` (the batch replacement gate currently demands an
+exact BeatSaver source).
