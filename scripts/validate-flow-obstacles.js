@@ -230,4 +230,24 @@ for(const [format,document,code] of [["v2",{_obstacles:[{_time:1,_lineIndex:1,_t
   for (const field of ["w", "h"]) assert.throws(() => parse({ ...wall, [field]: 1.5 }), (error) => error?.code === "obstacle_geometry_invalid");
   assert.throws(() => parse({ ...wall, d: 0 }), (error) => error?.code === "obstacle_duration_invalid");
 }
+
+// 0.0.148 — Wall-heavy human-made maps must import. "On My Knees" (BeatSaver 54441)
+// ExpertPlus ships 3,619 raw v3 obstacle entries, of which 2,528 are degenerate
+// zero-size art placeholders; the remaining 1,091 normalized walls exceeded the
+// old 512-per-chart admission cap and failed the whole song import. This synthetic
+// chart reproduces that shape at a slightly higher wall count and must convert,
+// validate, and stay under contracts `maximumObstaclesPerChart`.
+{
+  const walls = Array.from({ length: 1200 }, (_, index) => ({ b: index / 8, d: 0.5, x: index % 4, y: 0, w: 1, h: 3 }));
+  // The real map marks art placeholders as zero-WIDTH walls (w:0, positive d/h), which
+  // parse drops because they enclose no volume.
+  const placeholders = Array.from({ length: 800 }, (_, index) => ({ b: index / 8, d: 0.125, x: 0, y: 0, w: 0, h: 5 }));
+  const document = { version: "3.3.0", bpmEvents: [{ b: 0, m: 150 }], colorNotes: [{ b: 1, x: 1, y: 0, c: 0, d: 1, a: 0 }], obstacles: [...walls, ...placeholders] };
+  const parsed = parseBeatMapDifficulty(JSON.stringify(document), "v3");
+  assert.equal(parsed.obstacles.length, 1200, "degenerate zero-size placeholders must be dropped and real walls retained");
+  const wallHeavy = await convertDifficulty(parsed, { difficulty: "ExpertPlus", songToken: "wallheavy", songName: "wall heavy", bpm: 150, noteJumpMovementSpeed: 16, noteJumpStartBeatOffset: 0, spawnTiming: deriveBeatSaberSpawnTiming(150, 16, 0), sourceProvider: "beatsaver", sourceId: "wallheavy", sourceVersionHash: "9".repeat(40), sourceInfoFormat: "v2", sourceInfoVersion: "2.0.0", sourceInfoHash: `sha256:${"0".repeat(64)}`, sourceDifficultyPath: "ExpertPlus.dat", sourceBeatmapFormat: "v3", sourceBeatmapVersion: "3.3.0", sourceDifficultyHash: `sha256:${"0".repeat(64)}`, notePalette: null });
+  const flowHeavy = wallHeavy.package.charts.find((chart) => chart.mode === "flow");
+  assert.equal(flowHeavy.beats.filter((beat) => beat.type === "obstacle").length, 1200, "every normalized wall must reach the Flow chart");
+  assert.equal((await validateAuthoredPackage(wallHeavy.package)).valid, true, "a wall-heavy chart must produce a valid authored package");
+}
 console.log("Versioned source-to-canonical obstacle normalization and exact 3c9d oracle passed.");
