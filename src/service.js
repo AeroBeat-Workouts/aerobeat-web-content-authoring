@@ -17,6 +17,12 @@ import { verifyBeatSaberSpawnTiming } from "./spawn-timing.js";
 /** @typedef {ReturnType<typeof createMemoryPersistenceAdapter> | ReturnType<typeof createIndexedDbPersistenceAdapter>} PersistenceAdapter */
 /** @typedef {{kind: string, convert: (request: unknown, runtime?: {signal?: AbortSignal, onProgress?: (progress: number, phase: string) => void}) => Promise<unknown>, destroy: () => void}} WorkerAdapter */
 /** @typedef {{difficulty:string,modifiers:string[],sourceProvider?:string,sourceId?:string,sourceVersionHash?:string,replaceCollectionId?:string,expectedAudioContentHash?:string,expectedDifficultyContentHashes?:Record<string,string>,presentationSuggestion?:Record<string,unknown>,converterProfile?:Record<string,unknown>,converterSettings?:Record<string,unknown>,limits?:Record<string,number>,cacheSourceEntries?:boolean,includeAudio?:boolean,signal?:AbortSignal}} NormalizedRequestOptions */
+/**
+ * Providers whose collection may be replaced in place: BeatSaver, and `local` for a song
+ * imported from a ZIP file whose source is rebuilt from the cache written at import time.
+ * @type {readonly string[]}
+ */
+const replaceableSourceProviders = Object.freeze(["beatsaver", "local"]);
 
 /**
  * Create one reconnectable browser content-authoring service instance.
@@ -107,7 +113,7 @@ export function createAeroWebContentAuthoringService(options = {}) {
     async convertAllStandardAndPersist(acquired, requestOptions) {
       assertOpen();
       const normalizedOptions = normalizeBatchRequestOptions(requestOptions);
-      if (normalizedOptions.replaceCollectionId && (normalizedOptions.sourceProvider !== "beatsaver" || !normalizedOptions.sourceId || !normalizedOptions.sourceVersionHash)) throw authoringError("request_invalid", "Replacement requires an exact BeatSaver source");
+      if (normalizedOptions.replaceCollectionId && (!replaceableSourceProviders.includes(String(normalizedOptions.sourceProvider)) || !normalizedOptions.sourceId || !normalizedOptions.sourceVersionHash)) throw authoringError("request_invalid", "Replacement requires an exact provider source");
       if (normalizedOptions.includeAudio === false) throw authoringError("request_invalid", "Batch conversion requires shared audio");
       const converterProfile = normalizedOptions.converterProfile ? await normalizeConverterProfile(normalizedOptions.converterProfile) : null;
       assertOpen(); active?.abort.abort();
@@ -257,6 +263,56 @@ export function createAeroWebContentAuthoringService(options = {}) {
       const values = fields.map((field) => dataProperty(stored, field));
       if (values.some((value) => typeof value !== "string" || !value || value.length > 1024) || values[0] !== id) throw authoringError("collection_invalid", "Stored collection source identity is invalid");
       return deepFreeze({ collectionId: values[0], sourceProvider: values[1], sourceId: values[2], sourceVersionHash: values[3] });
+    },
+    /**
+     * Return the exact cached source material a stored collection can be rebuilt from: the
+     * Info.dat and difficulty bytes captured at import time plus the stored audio. Nothing new is
+     * stored for this, and a collection imported before source caching answers `null`.
+     *
+     * @param {string} collectionId
+     */
+    async getCollectionStoredSource(collectionId) {
+      assertOpen();
+      const id = collectionKey(collectionId);
+      const stored = await persistence.getCollection(id);
+      assertOpen();
+      if (stored === null) return null;
+      const source = await this.getCollectionReimportSource(id);
+      if (source === null) return null;
+      const packageKeys = stored.packageKeys;
+      if (!Array.isArray(packageKeys) || packageKeys.length === 0) return null;
+      /** @type {Map<string, Uint8Array>} */
+      const entriesByPath = new Map();
+      /** @type {{path: string, bytes: Uint8Array} | null} */
+      let audio = null;
+      for (const key of packageKeys) {
+        const record = await persistence.get(key).catch(() => null);
+        assertOpen();
+        if (record === null) return null;
+        const sourceCache = Array.isArray(record.sourceCache) ? record.sourceCache : [];
+        if (sourceCache.length === 0) return null;
+        for (const entry of sourceCache) {
+          if (!entry || typeof entry.path !== "string" || !(entry.bytes instanceof Uint8Array)) continue;
+          if (!entriesByPath.has(entry.path)) entriesByPath.set(entry.path, Uint8Array.from(entry.bytes));
+        }
+        if (audio === null) {
+          const audioRef = Array.isArray(record.assetRefs) ? record.assetRefs[0] : undefined;
+          const audioBytes = Array.isArray(record.assets) ? record.assets[0] : undefined;
+          if (audioRef && typeof audioRef.path === "string" && audioBytes && audioBytes.bytes instanceof Uint8Array && typeof audioBytes.path === "string") {
+            audio = { path: audioRef.path, bytes: Uint8Array.from(audioBytes.bytes) };
+          }
+        }
+      }
+      if (audio === null || entriesByPath.size === 0) return null;
+      return deepFreeze({
+        collectionId: source.collectionId,
+        songName: dataProperty(stored, "songName"),
+        sourceProvider: source.sourceProvider,
+        sourceId: source.sourceId,
+        sourceVersionHash: source.sourceVersionHash,
+        entries: Object.freeze([...entriesByPath].map(([path, bytes]) => Object.freeze({ path, bytes }))),
+        audio: Object.freeze(audio)
+      });
     },
     /** @param {string} collectionId */
     async deleteCollection(collectionId) { assertOpen(); return persistence.deleteCollection(collectionKey(collectionId)); },

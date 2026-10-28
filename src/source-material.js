@@ -138,7 +138,15 @@ async function prepareSourceMaterialSet(acquired, options, all) {
 
   const cache = [];
   if (dataProperty(options, "cacheSourceEntries") === true) {
-    const requiredCachePaths = [...new Set([infoPath, ...prepared.map((item) => item.path)])];
+    // A full Standard import also caches any source-hash input that is not a selected difficulty,
+    // bounded by the cache entry limit, so the whole source can be rebuilt later. Beat Saber v4
+    // hashes audio data and lightshow files, and a cache without them could not reproduce the
+    // source identity for a local ZIP reimport. A hash input that does not fit is skipped rather
+    // than failing the import; that song then asks for its ZIP file again.
+    const optionalHashInputs = all ? arrayData(dataProperty(manifest, "hashInputPaths"), limits.entryCount, "source_manifest_invalid")
+      .map((path) => typeof path === "string" ? normalizePath(path, limits.pathChars) : "")
+      .filter((path) => path !== "" && listedByNormalized.has(path) && path !== infoPath && !prepared.some((item) => item.path === path) && entryBytesFit(listedByNormalized, readEntry, path, limits.cacheEntryBytes)) : [];
+    const requiredCachePaths = [...new Set([infoPath, ...prepared.map((item) => item.path), ...optionalHashInputs])];
     for (const path of requiredCachePaths) {
       checkAbort(signal);
       const original = listedByNormalized.get(path);
@@ -201,6 +209,16 @@ function selectedDifficultyMetadata(entry,difficulty,path,infoFormat){
   return {difficulty,path,beatMapFormat:/** @type {"v2"|"v3"|"v4"} */(beatMapFormat),beatMapVersion,notePalette,noteJumpMovementSpeed,noteJumpStartBeatOffset};
 }
 /** @param {unknown} value @returns {value is SourceBundle} */
+/** @param {ReadonlyMap<string, string>} listedByNormalized @param {(path: string) => unknown} readEntry @param {string} path @param {number} maximum */
+function entryBytesFit(listedByNormalized, readEntry, path, maximum) {
+  const original = listedByNormalized.get(path);
+  if (original === undefined) return false;
+  try {
+    const bytes = /** @type {(value: string) => unknown} */ (readEntry)(original);
+    return bytes instanceof Uint8Array && bytes.byteLength > 0 && bytes.byteLength <= maximum;
+  } catch { return false; }
+}
+
 function isSourceBundle(value) { return isPlainRecord(value) && isPlainRecord(dataProperty(value, "manifest")) && typeof dataProperty(value, "listEntryPaths") === "function" && typeof dataProperty(value, "readEntry") === "function"; }
 /** @param {Record<string, unknown>} record @param {string} key */
 function dataProperty(record, key) { const descriptor = Object.getOwnPropertyDescriptor(record, key); if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return undefined; return descriptor.value; }

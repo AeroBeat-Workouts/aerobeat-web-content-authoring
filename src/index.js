@@ -31,7 +31,11 @@ export {
   authoringWorkerProtocolVersion,
   createBrowserAuthoringWorkerAdapter,
   createInlineAuthoringWorkerAdapter,
-  executeWorkerConversion
+  executeWorkerConversion,
+  readFailureText,
+  workerCrashMessage,
+  workerFailureCode,
+  workerFailureMessage
 } from "./worker-protocol.js";
 
 /** @type {"aero.web.content-authoring"} */

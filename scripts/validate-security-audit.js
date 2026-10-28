@@ -17,7 +17,10 @@ import {
   prepareAllStandardSourceMaterials,
   prepareSourceMaterial,
   semanticParityHash,
-  validateAuthoredPackage
+  validateAuthoredPackage,
+  workerCrashMessage,
+  workerFailureCode,
+  workerFailureMessage
 } from "../src/index.js";
 // Resolve sibling runtime at execution time while contracts and runtime types converge independently.
 const { validateRuntimePackage } = await import(String(new URL("../../aerobeat-web-content/src/index.js", import.meta.url)));
@@ -131,6 +134,78 @@ const fakeTwo = new FakeWorker(); const adapterTwo = createBrowserAuthoringWorke
 const destroyedJob = adapterTwo.convert(request); adapterTwo.destroy(); await assert.rejects(() => destroyedJob, hasCode("worker_destroyed")); assert.equal(fakeTwo.terminated, true);
 const fakeThree = new FakeWorker(); const adapterThree = createBrowserAuthoringWorkerAdapter({ workerFactory: () => /** @type {Worker} */ (/** @type {unknown} */ (fakeThree)) });
 const controller = new AbortController(); const cancelledJob = adapterThree.convert(request, { signal: controller.signal }); controller.abort(); await assert.rejects(() => cancelledJob, hasCode("operation_aborted"));
+
+// 0.0.149 (Derrick): a BeatSaver import failed with the opaque "Worker conversion failed" text,
+// and only worked after every song was deleted. A device that drops the conversion worker must
+// not lose the import, and a crash must name itself instead of hiding behind a generic string.
+class CrashOnceWorker extends FakeWorker {
+  constructor() { super(); this.posted = 0; }
+  postMessage() { this.posted += 1; setImmediate(() => this.onerror?.({ message: "", filename: "https://example.test/assets/conversion-worker.js", lineno: 12, colno: 4 })); }
+}
+const crashSequence = [];
+const retryAdapter = createBrowserAuthoringWorkerAdapter({
+  workerFactory: () => /** @type {Worker} */ (/** @type {unknown} */ (new (() => {
+    const worker = new FakeWorker();
+    worker.postMessage = () => { setImmediate(() => worker.onmessage?.({ data: honestResultPosted })); };
+    crashSequence.push(worker);
+    return worker;
+  })()))
+});
+const honesty = await executeWorkerConversion(request);
+const honestResultPosted = { schema: "aerobeat/authoring_worker_message", version: 2, kind: "result", jobId: request.jobId, result: honesty };
+const firstWorkerCrashes = [];
+const retryFactory = createBrowserAuthoringWorkerAdapter({
+  workerFactory: () => {
+    const worker = new FakeWorker();
+    const index = firstWorkerCrashes.push(worker) - 1;
+    worker.postMessage = () => {
+      if (index === 0) setImmediate(() => worker.onerror?.({ message: "", filename: "https://example.test/assets/conversion-worker.js", lineno: 12, colno: 4 }));
+      else setImmediate(() => worker.onmessage?.({ data: honestResultPosted }));
+    };
+    return /** @type {Worker} */ (/** @type {unknown} */ (worker));
+  }
+});
+const recovered = await retryFactory.convert(request);
+assert.equal(recovered.packageHash, honesty.packageHash, "a worker crash must retry once and still import the song");
+assert.equal(firstWorkerCrashes.length, 2, "the crashed worker must be replaced exactly once");
+assert.equal(firstWorkerCrashes[0].terminated, true, "the crashed worker must be terminated before the retry");
+const alwaysCrazy = [];
+const doomedFactory = createBrowserAuthoringWorkerAdapter({
+  workerFactory: () => {
+    const worker = new FakeWorker();
+    alwaysCrazy.push(worker);
+    worker.postMessage = () => setImmediate(() => worker.onerror?.({ message: "", filename: "https://example.test/assets/conversion-worker.js", lineno: 99, colno: 2 }));
+    return /** @type {Worker} */ (/** @type {unknown} */ (worker));
+  }
+});
+const doomed = await doomedFactory.convert(request).catch((error) => error);
+assert.equal(doomed.code, "worker_failed");
+assert.equal(alwaysCrazy.length, 2, "a crash retries once and gives up instead of looping");
+assert.match(String(doomed.message), /crashed without an error message.*conversion-worker\.js:99:2/u, "the failure must name the crash site instead of 'Worker conversion failed'");
+assert.doesNotMatch(String(doomed.message), /^Worker conversion failed$/u);
+const abortingFactory = createBrowserAuthoringWorkerAdapter({
+  workerFactory: () => {
+    const worker = new FakeWorker();
+    worker.postMessage = () => setImmediate(() => worker.onerror?.({ message: "" }));
+    return /** @type {Worker} */ (/** @type {unknown} */ (worker));
+  }
+});
+const abortingController = new AbortController();
+const abortingJob = abortingFactory.convert(request, { signal: abortingController.signal });
+abortingController.abort();
+await assert.rejects(() => abortingJob, hasCode("operation_aborted"), "cancelling must win over the retry");
+// A DOMException keeps its real text: `message` lives on the prototype, which the old
+// own-property read missed and replaced with the generic placeholder.
+const quotaFailure = new DOMException("Quota exceeded while writing the converted package", "QuotaExceededError");
+assert.equal(workerFailureMessage(quotaFailure), "Quota exceeded while writing the converted package");
+assert.equal(workerFailureCode(/** @type {never} */ (/** @type {unknown} */ ({ code: "storage_quota_exceeded" }))), "storage_quota_exceeded");
+assert.equal(workerFailureMessage(Object.freeze({})), "Worker conversion failed", "only a value with nothing readable keeps the placeholder");
+assert.equal(workerCrashMessage({ message: "" }), "Conversion worker crashed without an error message");
+assert.equal(workerCrashMessage({ filename: "worker.js", lineno: 3 }), "Conversion worker crashed without an error message in worker.js:3", "an empty crash message must still name the file and line");
+let hostileMessageGetterThrew = false;
+const hostileFailure = Object.defineProperty({}, "message", { get() { hostileMessageGetterThrew = true; throw new Error("hostile"); } });
+assert.equal(typeof workerFailureMessage(hostileFailure), "string");
+assert.equal(hostileMessageGetterThrew, true);
 
 // Persistence: quota, shared ownership, migration and failed structured-clone write is atomic.
 const quota = createMemoryPersistenceAdapter({ quotaBytes: 4 });

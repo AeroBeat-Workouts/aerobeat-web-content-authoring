@@ -66,7 +66,9 @@ export function createBrowserAuthoringWorkerAdapter(options = {}) {
       if (destroyed) return Promise.reject(workerError("worker_destroyed", "Worker adapter is destroyed"));
       let expectedJobId = "";
       try { expectedJobId = narrowRequest(request).jobId; } catch (error) { return Promise.reject(error); }
-      return new Promise((resolve, reject) => {
+      // A device that drops the worker (memory pressure, backgrounded tab) killed the whole
+      // import even though a fresh worker converts the same request. Crash once, retry once.
+      const attempt = (retryAllowed) => new Promise((resolve, reject) => {
         let worker;
         try { worker = workerFactory(); } catch (cause) { reject(workerError("worker_failed", diagnostic("Worker creation failed", cause))); return; }
         let settled = false;
@@ -82,13 +84,20 @@ export function createBrowserAuthoringWorkerAdapter(options = {}) {
           else if (message.kind === "result") finish(resolve, message.result);
           else finish(reject, workerError(String(message.code), String(message.message)));
         };
-        worker.onerror = (event) => finish(reject, workerError("worker_failed", event.message || "Worker conversion failed"));
+        worker.onerror = (event) => {
+          const error = workerError("worker_failed", workerCrashMessage(event));
+          // Only a crash is retryable: clone, protocol and validation failures repeat exactly.
+          if (retryAllowed) Object.assign(error, { retryable: true });
+          finish(reject, error);
+        };
         let clone;
         try { clone = cloneData(request); } catch (cause) { finish(reject, workerError("worker_request_invalid", diagnostic("Worker request could not be cloned", cause))); return; }
         const bytes = isPlainRecord(clone) && clone.difficultyBytes instanceof Uint8Array ? clone.difficultyBytes : null;
         try { worker.postMessage(clone, bytes ? [bytes.buffer] : []); } catch (cause) { finish(reject, workerError("worker_failed", diagnostic("Worker request could not be posted", cause))); return; }
         if (runtime.signal?.aborted) abort();
       });
+      const shouldRetry = (error) => error?.code === "worker_failed" && error?.retryable === true && !destroyed && !runtime.signal?.aborted;
+      return attempt(true).catch((error) => { if (!shouldRetry(error)) throw error; return attempt(false); });
     },
     destroy() { if (destroyed) return; destroyed = true; for (const cancel of [...cancelActive]) cancel(); cancelActive.clear(); }
   });
@@ -173,6 +182,53 @@ function checkAbort(signal) { if (signal?.aborted) throw workerError("operation_
 /** @param {((progress:number,phase:string)=>void) | undefined} listener @param {number} progress @param {string} phase */
 function safeProgress(listener, progress, phase) { try { listener?.(Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0)), phase); } catch { /* observers cannot break conversion */ } }
 /** @param {string} message @param {unknown} cause */
-function diagnostic(message,cause){if(cause&&typeof cause==="object"){const descriptor=Object.getOwnPropertyDescriptor(cause,"message");if(descriptor&&"value" in descriptor&&typeof descriptor.value==="string"&&descriptor.value)return`${message}: ${descriptor.value.slice(0,4096)}`;}return message;}
+function diagnostic(message,cause){if(cause&&typeof cause==="object"){const text=readFailureText(cause);if(text)return`${message}: ${text.slice(0,4096)}`;}return message;}
+/**
+ * Read a failure's text even when `message` is not an own data property. DOMExceptions keep
+ * `message` on the prototype, so the previous own-property read collapsed every one of them to
+ * a generic string and hid the real cause from the UI and the logs.
+ * @param {unknown} value @returns {string}
+ */
+export function readFailureText(value) {
+  if (value === null || typeof value !== "object") return "";
+  const descriptor = Object.getOwnPropertyDescriptor(value, "message");
+  if (descriptor && "value" in descriptor && typeof descriptor.value === "string" && descriptor.value) return descriptor.value;
+  try { const inherited = /** @type {{message?: unknown}} */ (value).message; if (typeof inherited === "string" && inherited) return inherited; } catch { /* hostile getter */ }
+  return "";
+}
+/** @param {unknown} value @returns {string} */
+export function workerFailureCode(value) {
+  if (value === null || typeof value !== "object") return "worker_failed";
+  const descriptor = Object.getOwnPropertyDescriptor(value, "code");
+  if (descriptor && "value" in descriptor && typeof descriptor.value === "string") return descriptor.value.slice(0, 128);
+  try { const inherited = /** @type {{code?: unknown}} */ (value).code; if (typeof inherited === "string" && inherited) return inherited.slice(0, 128); } catch { /* hostile getter */ }
+  return "worker_failed";
+}
+/**
+ * Describe a conversion failure for the UI. A DOMException reports its own text; anything opaque
+ * reports its exception name; only a value with nothing readable keeps the historic fallback.
+ * @param {unknown} value @returns {string}
+ */
+export function workerFailureMessage(value) {
+  const text = readFailureText(value);
+  if (text) return `${text}`.slice(0, 4096);
+  if (value !== null && typeof value === "object") {
+    try { const name = /** @type {{name?: unknown}} */ (value).name; if (typeof name === "string" && name) return `Conversion failed with ${name.slice(0, 64)} (no message)`; } catch { /* hostile getter */ }
+  }
+  return "Worker conversion failed";
+}
+/**
+ * A crashed or unloadable browser worker reports an empty `message`, which used to collapse to the
+ * same generic string and left no clue about where it died.
+ * @param {unknown} event @returns {string}
+ */
+export function workerCrashMessage(event) {
+  const record = event !== null && typeof event === "object" ? /** @type {Record<string, unknown>} */ (event) : {};
+  const message = typeof record.message === "string" && record.message ? record.message.slice(0, 4096) : "";
+  if (message) return message;
+  const filename = typeof record.filename === "string" && record.filename ? ` in ${record.filename.slice(-160)}` : "";
+  const line = Number.isSafeInteger(record.lineno) && Number(record.lineno) > 0 ? `:${record.lineno}${Number.isSafeInteger(record.colno) && Number(record.colno) > 0 ? `:${record.colno}` : ""}` : "";
+  return `Conversion worker crashed without an error message${filename}${line}`;
+}
 /** @param {string} code @param {string} message */
 function workerError(code, message) { const error = new Error(message); error.name = "AeroAuthoringWorkerError"; Object.assign(error, { code }); return error; }
