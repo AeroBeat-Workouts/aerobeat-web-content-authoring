@@ -79,8 +79,8 @@ try {
 
   // Replacement still requires an exact source identity, and provider labels stay bounded.
   const replacement = { sourceProvider: "local", sourceId: localSourceId, sourceVersionHash: versionHash, includeAudio: true, replaceCollectionId: collectionId };
-  await assert.rejects(() => service.convertAllStandardAndPersist({ providerId: "beatsaver", sourceHash: versionHash, source: sourceBundle("Cached Song") }, { ...replacement, sourceVersionHash: "" }), (error) => error?.code === "request_invalid", "replacement without a version hash must fail");
-  await assert.rejects(() => service.convertAllStandardAndPersist({ providerId: "beatsaver", sourceHash: versionHash, source: sourceBundle("Cached Song") }, { ...replacement, sourceProvider: "unknown" }), (error) => error?.code === "request_invalid", "an unknown provider may not replace a collection");
+  await assert.rejects(() => service.convertAllStandardAndPersist({ providerId: "beatsaver", sourceHash: versionHash, source: sourceBundle("Cached Song") }, { ...replacement, sourceVersionHash: "" }), (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "request_invalid"), "replacement without a version hash must fail");
+  await assert.rejects(() => service.convertAllStandardAndPersist({ providerId: "beatsaver", sourceHash: versionHash, source: sourceBundle("Cached Song") }, { ...replacement, sourceProvider: "unknown" }), (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "request_invalid"), "an unknown provider may not replace a collection");
   console.log("Local stored-source reimport: honest provenance, byte-exact cache, in-place replacement, and no false reimport claims.");
 } finally {
   service.destroy();

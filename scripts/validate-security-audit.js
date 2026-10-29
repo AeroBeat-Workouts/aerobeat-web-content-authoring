@@ -144,7 +144,7 @@ class CrashOnceWorker extends FakeWorker {
 }
 const crashSequence = [];
 const retryAdapter = createBrowserAuthoringWorkerAdapter({
-  workerFactory: () => /** @type {Worker} */ (/** @type {unknown} */ (new (() => {
+  workerFactory: () => /** @type {Worker} */ (/** @type {unknown} */ ((() => {
     const worker = new FakeWorker();
     worker.postMessage = () => { setImmediate(() => worker.onmessage?.({ data: honestResultPosted })); };
     crashSequence.push(worker);

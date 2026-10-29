@@ -101,7 +101,26 @@ await assert.rejects(
 assert.equal(cancelled.listCalls(), 0, "pre-cancelled preparation must not enumerate or read source entries");
 assert.equal(cancelled.readCounts.size, 0);
 
-console.log("all-Standard source material validation passed");
+// GAS GAS GAS (BeatSaver b514) has a valid 3,874,764-byte Expert file.
+// Cache preparation must not reject it after difficulty admission succeeds.
+for (const size of [3874764, 8 * 1024 * 1024]) {
+  const large = makeSource([difficulty("Expert", "Expert.dat")]);
+  const bytes = new Uint8Array(size).fill(32);
+  bytes.set(chartBytes.Expert); // Valid JSON followed by whitespace; no huge fixture in Git.
+  large.entries.set("Expert.dat", bytes);
+  const prepared = await prepareAllStandardSourceMaterials(large.source, { cacheSourceEntries: true });
+  assert.equal(prepared.materials[0].difficultyBytes.byteLength, size);
+  assert.deepEqual(prepared.sourceCache.find(entry => entry.path === "expert.dat")?.bytes, bytes, "large accepted difficulty stays byte-exact in the reimport cache");
+  assert.equal(large.readCounts.get("Expert.dat"), 1, "cache reuses the admitted difficulty rather than reading it twice");
+  if (size === 3874764) {
+    await assert.rejects(() => prepareAllStandardSourceMaterials(large.source, { cacheSourceEntries: true, limits: { cacheEntryBytes: 2 * 1024 * 1024 } }), hasCode("source_entry_too_large"), "explicit smaller cache limits still apply");
+    await assert.rejects(() => prepareAllStandardSourceMaterials(large.source, { cacheSourceEntries: true, limits: { difficultyBytes: size - 1 } }), hasCode("source_entry_too_large"), "raising cache capacity does not bypass the separate difficulty limit");
+  }
+}
+const oversizedCache = makeSource([difficulty("Expert", "Expert.dat")]);
+oversizedCache.entries.set("Expert.dat", new Uint8Array(8 * 1024 * 1024 + 1).fill(32));
+await assert.rejects(() => prepareAllStandardSourceMaterials(oversizedCache.source, { cacheSourceEntries: true }), hasCode("source_entry_too_large"), "cache entries remain finitely bounded above 8 MiB");
+console.log("all-Standard source material validation passed, including GAS GAS GAS size and 8 MiB cache boundary");
 
 /** @param {string} name @param {string} path */
 function difficulty(name, path) { return { characteristic: "Standard", difficulty: name,difficultyRank:{Easy:1,Normal:3,Hard:5,Expert:7,ExpertPlus:9}[name]??5, path,beatMapFormatMajor:3, beatMapFormat:"v3", beatMapVersion:"3.3.0", notePalette:null,noteJumpMovementSpeed:10,noteJumpStartBeatOffset:0 }; }
@@ -145,7 +164,7 @@ function makeSource(difficulties, beatMapMajor = 3) {
       return bytes;
     }
   };
-  return { source, readCounts, listCalls: () => lists };
+  return { source, entries, readCounts, listCalls: () => lists };
 }
 
 /** @param {string} code */

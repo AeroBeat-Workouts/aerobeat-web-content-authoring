@@ -7,7 +7,7 @@ import { deriveBeatSaberSpawnTiming } from "./spawn-timing.js";
 /** @typedef {{manifest: Record<string, unknown>, listEntryPaths: () => readonly string[], readEntry: (path: string) => Uint8Array}} SourceBundle */
 
 /** @type {Readonly<Record<string, number>>} */
-const defaultLimits = Object.freeze({ difficultyBytes: 64 * 1024 * 1024, audioBytes: 128 * 1024 * 1024, selectedBytes: 192 * 1024 * 1024, cacheEntryBytes: 2 * 1024 * 1024, entryCount: 4096, pathChars: 1024 });
+const defaultLimits = Object.freeze({ difficultyBytes: 64 * 1024 * 1024, audioBytes: 128 * 1024 * 1024, selectedBytes: 192 * 1024 * 1024, cacheEntryBytes: 8 * 1024 * 1024, entryCount: 4096, pathChars: 1024 });
 const maximumDifficulties = 100;
 const maximumIdentityChars = 512;
 
@@ -208,7 +208,6 @@ function selectedDifficultyMetadata(entry,difficulty,path,infoFormat){
   if(typeof noteJumpStartBeatOffset!=="number"||!Number.isFinite(noteJumpStartBeatOffset))throw sourceError("spawn_timing_offset_invalid","Selected difficulty offset must be finite");
   return {difficulty,path,beatMapFormat:/** @type {"v2"|"v3"|"v4"} */(beatMapFormat),beatMapVersion,notePalette,noteJumpMovementSpeed,noteJumpStartBeatOffset};
 }
-/** @param {unknown} value @returns {value is SourceBundle} */
 /** @param {ReadonlyMap<string, string>} listedByNormalized @param {(path: string) => unknown} readEntry @param {string} path @param {number} maximum */
 function entryBytesFit(listedByNormalized, readEntry, path, maximum) {
   const original = listedByNormalized.get(path);
@@ -219,6 +218,7 @@ function entryBytesFit(listedByNormalized, readEntry, path, maximum) {
   } catch { return false; }
 }
 
+/** @param {unknown} value @returns {value is SourceBundle} */
 function isSourceBundle(value) { return isPlainRecord(value) && isPlainRecord(dataProperty(value, "manifest")) && typeof dataProperty(value, "listEntryPaths") === "function" && typeof dataProperty(value, "readEntry") === "function"; }
 /** @param {Record<string, unknown>} record @param {string} key */
 function dataProperty(record, key) { const descriptor = Object.getOwnPropertyDescriptor(record, key); if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return undefined; return descriptor.value; }

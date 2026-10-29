@@ -77,6 +77,13 @@ A new conversion aborts the previous job. Cancellation, replacement and destruct
 
 Public snapshots and persistence handles conform to the finalized web contracts and contain no ZIP, difficulty, audio, `Blob`, `File`, provider object, or browser capability values. Request metadata is narrowed before the first snapshot. Raw source/audio copies remain inside source, Worker-transfer, persistence, and explicit `readAsset`/export boundaries.
 
+Source caching permits up to 8 MiB per entry by default, so large but valid difficulty files such as
+BeatSaver b514's 3,874,764-byte `ExpertStandard.dat` remain available for reimport. The separate
+64 MiB difficulty, 128 MiB audio and 192 MiB selected-source bounds remain unchanged. Explicit
+smaller cache limits still apply. The byte-limit fix does not add Noodle Extensions/custom-wall
+support: b514 still fails later on its unsupported v2 obstacle types. Compatibility discussion is
+tracked separately as `aerobeat-web-assembly-igiw`.
+
 Source adaptation accepts only the exact finalized `aerobeat.beatsaver-source-manifest.v2` own-data shape, including independent Info fields and complete Standard difficulty rank/format/version/palette/movement fields, plus bounded dense path/difficulty arrays, normalized unique paths, bounded selected bytes and text, and optional lowercase SHA-256 expectations. When an expected difficulty or audio hash is supplied, mismatch fails closed before conversion or persistence; no coercion/accessor hooks execute.
 
 Current output is the reimport-required successor package schema `aerobeat.song-package.v6`, schema version `6`, package version `6.0.0`, with immutable hash-bound `source.spawnTiming`. The exact selected-difficulty Info.dat BPM/NJS/offset are carried through the strict source manifest and Worker request, then authoring recomputes HJD/reaction time/diagnostic jump distance with pinned `beatsaber_core_hjd_v1` constants and operation order; every trace and package hash binds the same exact record. Versions 1–4 require stable `spawn_timing_reimport_required` rather than inferred defaults. Version 5 requires exact `flow_colliders_reimport_required`: neither persistence nor a new consumer may derive, append, or silently promote the missing identity.
